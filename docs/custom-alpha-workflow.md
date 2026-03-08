@@ -8,6 +8,18 @@ This document is the maintainer playbook for keeping a fast local alpha build of
 
 It is written so future agents can follow one consistent workflow.
 
+## Configured Local Layout
+
+This clone is intended to use:
+
+- `origin` = `https://github.com/aaditagrawal/t3code.git`
+- `upstream` = `https://github.com/pingdotgg/t3code`
+- `main` tracking `upstream/main`
+- `codex/alpha` as the persistent custom integration branch
+- `../t3code-alpha` as the dedicated alpha worktree
+
+Agents should preserve this layout unless explicitly asked to change it.
+
 ## Goals
 
 - Keep one always-runnable local alpha branch.
@@ -116,6 +128,7 @@ Keep these branch roles stable:
 
 - `main`: clean mirror of `upstream/main`
 - `codex/alpha`: long-lived integration branch for your custom local app
+- `codex/feat-<short-name>`: focused feature branches created from `codex/alpha`
 - `codex/pr-<number>-track`: one local tracking branch per upstream PR you want to follow
 
 Do not do active feature work directly on `main`.
@@ -134,6 +147,22 @@ Recommended usage:
 - `../t3code-alpha`: day-to-day local running and manual QA
 
 That keeps your alpha branch runnable even while another agent is rebasing or comparing branches in the main clone.
+
+## Repo-Local Git Defaults
+
+These local git settings are recommended for this clone:
+
+```bash
+git config --local fetch.prune true
+git config --local rerere.enabled true
+git config --local remote.pushDefault origin
+```
+
+Why:
+
+- `fetch.prune` keeps remote branch state tidy.
+- `rerere.enabled` helps with repeated conflict resolution on long-lived PR transplants.
+- `remote.pushDefault origin` avoids accidentally pushing to upstream.
 
 ## Daily Upstream Sync
 
@@ -164,6 +193,68 @@ Default recommendation:
 - use `rebase` if the branch is mostly local and private
 - use `merge` if several agents or machines are already sharing the branch tip
 
+## Standard Feature Workflow
+
+Use this for normal custom feature development:
+
+### 1. Refresh the base
+
+```bash
+git checkout main
+git fetch upstream
+git merge --ff-only upstream/main
+git checkout codex/alpha
+git rebase main
+```
+
+### 2. Create a feature branch from alpha
+
+```bash
+git checkout -b codex/feat-<short-name> codex/alpha
+```
+
+### 3. Implement the feature
+
+Keep changes focused. Prefer multiple small commits over one mixed commit.
+
+### 4. Run validation
+
+Always:
+
+```bash
+bun lint
+bun typecheck
+```
+
+Then run the area-specific commands from the validation matrix.
+
+### 5. Land the feature back into alpha
+
+Preferred:
+
+```bash
+git checkout codex/alpha
+git cherry-pick <feature-commit>...
+```
+
+If the feature branch is already clean and linear:
+
+```bash
+git checkout codex/alpha
+git merge --ff-only codex/feat-<short-name>
+```
+
+### 6. Keep alpha runnable
+
+After landing, verify the alpha worktree still starts:
+
+```bash
+cd ../t3code-alpha
+bun run dev
+```
+
+Use `bun run dev:desktop` instead when the work touched desktop behavior.
+
 ## PR Tracking Method
 
 Never merge an old open PR branch directly into `codex/alpha` without comparing it to current `main`.
@@ -188,6 +279,13 @@ git log --left-right --cherry-pick --oneline main...codex/pr-178-track
 
 If the PR was stacked on older work, most of its commits may already exist on `main` in equivalent form.
 
+Also useful:
+
+```bash
+git diff --stat main...codex/pr-178-track
+git range-diff main...codex/pr-178-track
+```
+
 ### 3. Review the still-unique commits
 
 ```bash
@@ -205,6 +303,11 @@ git cherry-pick <commit-a> <commit-b> <commit-c>
 
 Keep that fix separate from the transplanted PR commits so future rebases are easier to reason about.
 
+Commit message recommendation:
+
+- `fix: adapt PR #178 integration to current upstream provider API`
+- `fix: reconcile PR #XYZ web model picker with current alpha settings flow`
+
 ### 6. Run the validation matrix
 
 At minimum:
@@ -216,6 +319,39 @@ bun typecheck
 
 Then run the area-specific tests/build steps from this document.
 
+### 7. Record the outcome
+
+For each imported PR, record in commit messages or handoff notes:
+
+- PR number
+- source branch or commit SHAs
+- whether the import was full or partial
+- what had to be reconciled against current upstream
+- which validation commands were run
+
+## Standard Upstream Merge Workflow
+
+When upstream `main` moves and you want alpha caught up:
+
+1. Update `main` with `git merge --ff-only upstream/main`.
+2. Rebase `codex/alpha` onto `main` if the branch is private and linear.
+3. Otherwise merge `main` into `codex/alpha`.
+4. Run `bun lint` and `bun typecheck`.
+5. Run targeted tests for any conflict-heavy areas that were touched during the rebase or merge.
+6. If desktop/runtime wiring changed, run `bun run build:desktop`.
+
+## Conflict Resolution Rules
+
+When a PR or upstream sync conflicts:
+
+- Prefer current `main` behavior where the same area has evolved significantly.
+- Keep transplanted PR functionality only where it is still unique and intentional.
+- Preserve existing repo conventions and current contract shapes instead of reviving stale APIs.
+- Add local compatibility fixes as separate commits after the transplanted commits.
+- Re-run the minimum gates immediately after conflict resolution.
+
+Do not flatten multiple unrelated fixes into one resolution commit.
+
 ## Feature Addition Method For Agents
 
 For any new feature added on top of `codex/alpha`, agents should use this order:
@@ -226,6 +362,17 @@ For any new feature added on top of `codex/alpha`, agents should use this order:
 4. Run targeted tests for the touched surface.
 5. If the change touches packaging or runtime wiring, run `bun run build:desktop`.
 6. Merge or rebase the feature branch back into `codex/alpha`.
+
+## Handoff Format For Future Agent Runs
+
+When handing off work, include:
+
+- active branch name
+- whether work was done in the main clone or `../t3code-alpha`
+- upstream sync status
+- PRs currently being tracked
+- exact validation commands already run
+- remaining risks, if any
 
 ## Integration Notes Convention
 
