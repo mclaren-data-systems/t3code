@@ -1075,6 +1075,14 @@ const makeCopilotAdapter = (options?: CopilotAdapterLiveOptions) =>
         record.toolTitlesByCallId.delete(event.data.toolCallId);
       }
       if (event.type === "abort" || event.type === "session.idle") {
+        // If the turn terminates before assistant.turn_start consumed the
+        // pending ID, remove the stale entry so it never leaks into a future
+        // turn.
+        if (record.currentTurnId) {
+          record.pendingTurnIds = record.pendingTurnIds.filter(
+            (id) => id !== record.currentTurnId,
+          );
+        }
         record.currentTurnId = undefined;
         record.currentProviderTurnId = undefined;
       }
@@ -1088,7 +1096,10 @@ const makeCopilotAdapter = (options?: CopilotAdapterLiveOptions) =>
       return Effect.succeed(record);
     };
 
-    const stopRecord = async (record: ActiveCopilotSession) => {
+    const stopRecord = async (
+      record: ActiveCopilotSession,
+      options?: { readonly emitExitEvent?: boolean },
+    ) => {
       record.unsubscribe();
       try {
         await record.session.destroy();
@@ -1100,12 +1111,51 @@ const makeCopilotAdapter = (options?: CopilotAdapterLiveOptions) =>
       } catch {
         // best effort
       }
-      for (const pending of record.pendingApprovalResolvers.values()) {
+
+      const teardownEvents: ProviderRuntimeEvent[] = [];
+
+      for (const [requestId, pending] of record.pendingApprovalResolvers) {
         pending.resolve({ kind: "denied-interactively-by-user" });
+        teardownEvents.push(
+          makeSyntheticEvent(
+            record.threadId,
+            "request.resolved",
+            {
+              requestType: pending.requestType,
+              decision: "cancel",
+              resolution: { kind: "denied-interactively-by-user" },
+            },
+            { requestId, turnId: pending.turnId },
+          ),
+        );
       }
-      for (const pending of record.pendingUserInputResolvers.values()) {
+      record.pendingApprovalResolvers.clear();
+
+      for (const [requestId, pending] of record.pendingUserInputResolvers) {
         pending.resolve({ answer: "", wasFreeform: true });
+        teardownEvents.push(
+          makeSyntheticEvent(
+            record.threadId,
+            "user-input.resolved",
+            { answers: {} },
+            { requestId, turnId: pending.turnId },
+          ),
+        );
       }
+      record.pendingUserInputResolvers.clear();
+
+      if (options?.emitExitEvent !== false) {
+        teardownEvents.push(
+          makeSyntheticEvent(record.threadId, "session.exited", {
+            reason: "stopped",
+          }),
+        );
+      }
+
+      if (teardownEvents.length > 0) {
+        await emitRuntimeEvents(teardownEvents);
+      }
+
       sessions.delete(record.threadId);
     };
 
@@ -1263,25 +1313,28 @@ const makeCopilotAdapter = (options?: CopilotAdapterLiveOptions) =>
             : input.model && input.model !== record.model
               ? undefined
               : record.reasoningEffort;
-        const attachments = (input.attachments ?? [])
-          .map((attachment) => {
-            const attachmentPath = resolveAttachmentPath({
-              stateDir: serverConfig.stateDir,
-              attachment,
-            });
-            if (!attachmentPath) {
-              throw new ProviderAdapterRequestError({
-                provider: PROVIDER,
-                method: "session.send",
-                detail: `Invalid attachment id '${attachment.id}'.`,
+        const attachments = yield* Effect.forEach(
+          input.attachments ?? [],
+          (attachment) =>
+            Effect.gen(function* () {
+              const attachmentPath = resolveAttachmentPath({
+                stateDir: serverConfig.stateDir,
+                attachment,
               });
-            }
-            return {
-              type: "file" as const,
-              path: attachmentPath,
-              displayName: attachment.name,
-            };
-          });
+              if (!attachmentPath) {
+                return yield* new ProviderAdapterRequestError({
+                  provider: PROVIDER,
+                  method: "session.send",
+                  detail: `Invalid attachment id '${attachment.id}'.`,
+                });
+              }
+              return {
+                type: "file" as const,
+                path: attachmentPath,
+                displayName: attachment.name,
+              };
+            }),
+        );
 
         yield* validateSessionConfiguration({
           client: record.client,
@@ -1418,7 +1471,7 @@ const makeCopilotAdapter = (options?: CopilotAdapterLiveOptions) =>
         const record = yield* getSessionRecord(threadId);
         yield* Effect.tryPromise({
           try: async () => {
-            await stopRecord(record);
+            await stopRecord(record, { emitExitEvent: true });
           },
           catch: (cause) =>
             new ProviderAdapterProcessError({
@@ -1493,7 +1546,9 @@ const makeCopilotAdapter = (options?: CopilotAdapterLiveOptions) =>
     const stopAll: CopilotAdapterShape["stopAll"] = () =>
       Effect.tryPromise({
         try: async () => {
-          await Promise.all(Array.from(sessions.values()).map((record) => stopRecord(record)));
+          await Promise.all(
+            Array.from(sessions.values()).map((record) => stopRecord(record, { emitExitEvent: true })),
+          );
         },
         catch: (cause) =>
           new ProviderAdapterProcessError({
@@ -1503,6 +1558,15 @@ const makeCopilotAdapter = (options?: CopilotAdapterLiveOptions) =>
             cause,
           }),
       });
+
+    yield* Effect.addFinalizer(() =>
+      Effect.forEach(
+        sessions,
+        ([, record]) =>
+          Effect.promise(() => stopRecord(record, { emitExitEvent: false }).catch(() => undefined)),
+        { discard: true },
+      ).pipe(Effect.tap(() => Queue.shutdown(runtimeEventQueue))),
+    );
 
     return {
       provider: PROVIDER,

@@ -383,14 +383,30 @@ function titleForTool(itemType: CanonicalItemType): string {
   }
 }
 
-function buildUserMessage(input: ProviderSendTurnInput): SDKUserMessage {
+function buildUserMessage(
+  input: ProviderSendTurnInput,
+): Effect.Effect<SDKUserMessage, ProviderAdapterRequestError> {
   const fragments: string[] = [];
 
   if (input.input && input.input.trim().length > 0) {
     fragments.push(input.input.trim());
   }
 
-  for (const attachment of input.attachments ?? []) {
+  const attachments = input.attachments ?? [];
+  const unsupportedAttachments = attachments.filter((a) => a.type !== "image");
+
+  if (unsupportedAttachments.length > 0) {
+    const types = [...new Set(unsupportedAttachments.map((a) => a.type))].join(", ");
+    return Effect.fail(
+      new ProviderAdapterRequestError({
+        provider: PROVIDER,
+        method: "turn/start",
+        detail: `Unsupported attachment type(s): ${types}. Claude Code only supports image attachments as descriptive text.`,
+      }),
+    );
+  }
+
+  for (const attachment of attachments) {
     if (attachment.type === "image") {
       fragments.push(
         `Attached image: ${attachment.name} (${attachment.mimeType}, ${attachment.sizeBytes} bytes).`,
@@ -400,7 +416,18 @@ function buildUserMessage(input: ProviderSendTurnInput): SDKUserMessage {
 
   const text = fragments.join("\n\n");
 
-  return {
+  if (text.length === 0) {
+    return Effect.fail(
+      new ProviderAdapterRequestError({
+        provider: PROVIDER,
+        method: "turn/start",
+        detail:
+          "Cannot send an empty turn: no text input and all attachments were reduced to empty content.",
+      }),
+    );
+  }
+
+  return Effect.succeed({
     type: "user",
     session_id: "",
     parent_tool_use_id: null,
@@ -408,7 +435,7 @@ function buildUserMessage(input: ProviderSendTurnInput): SDKUserMessage {
       role: "user",
       content: [{ type: "text", text }],
     },
-  } as SDKUserMessage;
+  } as SDKUserMessage);
 }
 
 function turnStatusFromResult(result: SDKResultMessage): ProviderRuntimeTurnStatus {
@@ -1510,6 +1537,12 @@ function makeClaudeCodeAdapter(options?: ClaudeCodeAdapterLiveOptions) {
         const resumeState = readClaudeResumeState(input.resumeCursor);
         const threadId = resumeState?.threadId ?? input.threadId;
 
+        // Guard against duplicate threadId: stop/cleanup any existing session before creating a new one.
+        const existingContext = sessions.get(threadId);
+        if (existingContext) {
+          yield* stopSessionInternal(existingContext, { emitExitEvent: true });
+        }
+
         const promptQueue = yield* Queue.unbounded<PromptQueueItem>();
         const prompt = Stream.fromQueue(promptQueue).pipe(
           Stream.filter((item) => item.type === "message"),
@@ -1832,7 +1865,7 @@ function makeClaudeCodeAdapter(options?: ClaudeCodeAdapterLiveOptions) {
           },
         });
 
-        const message = buildUserMessage(input);
+        const message = yield* buildUserMessage(input);
 
         yield* Queue.offer(context.promptQueue, {
           type: "message",
@@ -1863,13 +1896,15 @@ function makeClaudeCodeAdapter(options?: ClaudeCodeAdapterLiveOptions) {
         return yield* snapshotThread(context);
       });
 
-    const rollbackThread: ClaudeCodeAdapterShape["rollbackThread"] = (threadId, numTurns) =>
+    const rollbackThread: ClaudeCodeAdapterShape["rollbackThread"] = (threadId, _numTurns) =>
       Effect.gen(function* () {
-        const context = yield* requireSession(threadId);
-        const nextLength = Math.max(0, context.turns.length - numTurns);
-        context.turns.splice(nextLength);
-        yield* updateResumeCursor(context);
-        return yield* snapshotThread(context);
+        yield* requireSession(threadId);
+        return yield* new ProviderAdapterRequestError({
+          provider: PROVIDER,
+          method: "thread.rollback",
+          detail:
+            "Claude Code rollback is not supported without rewinding the underlying provider session.",
+        });
       });
 
     const respondToRequest: ClaudeCodeAdapterShape["respondToRequest"] = (

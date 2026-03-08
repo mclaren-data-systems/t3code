@@ -94,6 +94,9 @@ describe("GeminiCliServerManager", () => {
       }
     });
 
+    // TODO: Strengthen this test by mocking child_process.spawn and asserting it
+    // is NOT called during startSession. Currently we only verify session state,
+    // which doesn't prove that no process was spawned.
     it("does not spawn a process on startSession (lazy per-turn spawning)", async () => {
       const manager = new GeminiCliServerManager();
       try {
@@ -559,56 +562,59 @@ const hasGemini = await (async () => {
   }
 })();
 
-describe.skipIf(!hasGemini)("GeminiCliServerManager live integration", () => {
-  it(
-    "sends a prompt and receives streaming events ending with turn.completed",
-    async () => {
-      const manager = new GeminiCliServerManager();
-      const events: ProviderRuntimeEvent[] = [];
-      manager.on("event", (event) => events.push(event));
+describe.skipIf(!hasGemini || process.env.RUN_GEMINI_LIVE_TESTS !== "1")(
+  "GeminiCliServerManager live integration",
+  () => {
+    it(
+      "sends a prompt and receives streaming events ending with turn.completed",
+      async () => {
+        const manager = new GeminiCliServerManager();
+        const events: ProviderRuntimeEvent[] = [];
+        manager.on("event", (event) => events.push(event));
 
-      try {
-        await manager.startSession({
-          threadId: asThreadId("live-thread"),
-          provider: "geminiCli",
-          runtimeMode: "full-access",
-          model: "gemini-2.5-flash",
-        });
+        try {
+          await manager.startSession({
+            threadId: asThreadId("live-thread"),
+            provider: "geminiCli",
+            runtimeMode: "full-access",
+            model: "gemini-2.5-flash",
+          });
 
-        const result = await manager.sendTurn({
-          threadId: asThreadId("live-thread"),
-          input: "Reply with exactly the word PONG",
-        });
+          const result = await manager.sendTurn({
+            threadId: asThreadId("live-thread"),
+            input: "Reply with exactly the word PONG",
+          });
 
-        expect(result.threadId).toBe("live-thread");
-        expect(result.turnId).toBeTruthy();
+          expect(result.threadId).toBe("live-thread");
+          expect(result.turnId).toBeTruthy();
 
-        // Wait for the turn to complete.
-        await vi.waitFor(
-          () => {
-            const completed = events.find((e) => e.type === "turn.completed");
-            expect(completed).toBeDefined();
-          },
-          { timeout: 30_000, interval: 500 },
-        );
+          // Wait for the turn to complete.
+          await vi.waitFor(
+            () => {
+              const completed = events.find((e) => e.type === "turn.completed");
+              expect(completed).toBeDefined();
+            },
+            { timeout: 30_000, interval: 500 },
+          );
 
-        // Should have received content deltas.
-        const deltas = events.filter((e) => e.type === "content.delta");
-        expect(deltas.length).toBeGreaterThan(0);
+          // Should have received content deltas.
+          const deltas = events.filter((e) => e.type === "content.delta");
+          expect(deltas.length).toBeGreaterThan(0);
 
-        // The text should contain "PONG" somewhere.
-        const fullText = deltas
-          .map((e) => (e.payload as { delta: string }).delta)
-          .join("");
-        expect(fullText.toLowerCase()).toContain("pong");
+          // The text should contain "PONG" somewhere.
+          const fullText = deltas
+            .map((e) => (e.payload as { delta: string }).delta)
+            .join("");
+          expect(fullText.toLowerCase()).toContain("pong");
 
-        // Turn should be completed successfully.
-        const completed = events.find((e) => e.type === "turn.completed");
-        expect((completed?.payload as { state: string }).state).toBe("completed");
-      } finally {
-        manager.stopAll();
-      }
-    },
-    60_000,
-  );
-});
+          // Turn should be completed successfully.
+          const completed = events.find((e) => e.type === "turn.completed");
+          expect((completed?.payload as { state: string }).state).toBe("completed");
+        } finally {
+          manager.stopAll();
+        }
+      },
+      60_000,
+    );
+  },
+);

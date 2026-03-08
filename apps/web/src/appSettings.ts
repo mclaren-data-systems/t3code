@@ -2,7 +2,7 @@ import { useCallback, useSyncExternalStore } from "react";
 import { Option, Schema } from "effect";
 import { type ProviderKind, type ProviderServiceTier } from "@t3tools/contracts";
 import { getDefaultModel, getModelOptions, normalizeModelSlug } from "@t3tools/shared/model";
-import { DEFAULT_ACCENT_COLOR, normalizeAccentColor } from "./accentColor";
+import { DEFAULT_ACCENT_COLOR, isValidAccentColor, normalizeAccentColor } from "./accentColor";
 
 const APP_SETTINGS_STORAGE_KEY = "t3code:app-settings:v1";
 const MAX_CUSTOM_MODEL_COUNT = 32;
@@ -160,7 +160,7 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     accentColor: normalizeAccentColor(settings.accentColor),
     providerAccentColors: Object.fromEntries(
       Object.entries(settings.providerAccentColors)
-        .filter(([, v]) => v.trim().length > 0)
+        .filter(([, v]) => isValidAccentColor(v))
         .map(([k, v]) => [k, normalizeAccentColor(v)]),
     ),
   };

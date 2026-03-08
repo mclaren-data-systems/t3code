@@ -1201,6 +1201,11 @@ export class KiloServerManager extends EventEmitter<KiloManagerEvents> {
 
       const startedBaseUrl = await new Promise<string>((resolve, reject) => {
         const timeout = setTimeout(() => {
+          try {
+            child.kill();
+          } catch {
+            // Process may already be dead.
+          }
           reject(
             new Error(
               `Timed out waiting for Kilo server to start after ${SERVER_START_TIMEOUT_MS}ms`,

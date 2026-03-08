@@ -883,9 +883,18 @@ export default function ChatView({ threadId }: ChatViewProps) {
     selectedProvider === "cursor" && selectedCursorModel
       ? selectedCursorModel.family
       : selectedModel;
-  const copilotModelsQuery = useQuery(providerListModelsQueryOptions("copilot"));
-  const opencodeModelsQuery = useQuery(providerListModelsQueryOptions("opencode"));
-  const kiloModelsQuery = useQuery(providerListModelsQueryOptions("kilo"));
+  const copilotModelsQuery = useQuery({
+    ...providerListModelsQueryOptions("copilot"),
+    staleTime: Infinity,
+  });
+  const opencodeModelsQuery = useQuery({
+    ...providerListModelsQueryOptions("opencode"),
+    staleTime: Infinity,
+  });
+  const kiloModelsQuery = useQuery({
+    ...providerListModelsQueryOptions("kilo"),
+    staleTime: Infinity,
+  });
   const modelOptionsByProvider = useMemo(
     () =>
       mergeDiscoveredModels(getCustomModelOptionsByProvider(settings), {
@@ -5339,7 +5348,8 @@ const MessagesTimeline = memo(function MessagesTimeline({
       {row.kind === "message" &&
         row.message.role === "assistant" &&
         (() => {
-          if (!row.message.text && !row.message.streaming) return null;
+          const turnSummary = turnDiffSummaryByAssistantMessageId.get(row.message.id);
+          if (!row.message.text && !row.message.streaming && !turnSummary) return null;
           const messageText = row.message.text || "";
           return (
             <>
@@ -5359,7 +5369,6 @@ const MessagesTimeline = memo(function MessagesTimeline({
                   isStreaming={Boolean(row.message.streaming)}
                 />
                 {(() => {
-                  const turnSummary = turnDiffSummaryByAssistantMessageId.get(row.message.id);
                   if (!turnSummary) return null;
                   const checkpointFiles = turnSummary.files;
                   if (checkpointFiles.length === 0) return null;
@@ -5534,7 +5543,7 @@ function getCustomModelOptionsByProvider(settings: {
   };
 }
 
-type ModelOptionEntry = { slug: string; name: string; pricingTier?: string };
+type ModelOptionEntry = { slug: string; name: string; pricingTier?: string; isCustom?: boolean };
 
 function mergeDiscoveredModels(
   base: Record<ProviderKind, ReadonlyArray<ModelOptionEntry>>,
@@ -5558,7 +5567,7 @@ function mergeDiscoveredModels(
         return tier ? { ...m, pricingTier: tier } : m;
       });
       const customOnly = (base[provider] ?? []).filter(
-        (m) => !models.some((d) => d.slug === m.slug),
+        (m) => m.isCustom && !models.some((d) => d.slug === m.slug),
       );
       result[provider] = [...enriched, ...customOnly];
       continue;

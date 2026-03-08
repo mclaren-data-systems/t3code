@@ -388,7 +388,7 @@ export class GeminiCliServerManager extends EventEmitter<{
       sessions.push({
         provider: PROVIDER,
         status: session.status === "closed" ? "closed" : "ready",
-        runtimeMode: "full-access",
+        runtimeMode: session.runtimeMode as ProviderSession["runtimeMode"],
         threadId: session.threadId,
         cwd: session.cwd,
         model: session.model,

@@ -102,14 +102,16 @@ declare module "@anthropic-ai/claude-agent-sdk" {
     readonly additionalDirectories?: ReadonlyArray<string>;
   }
 
-  export function query(input: {
-    readonly prompt: AsyncIterable<SDKUserMessage>;
-    readonly options: Options;
-  }): AsyncIterable<SDKMessage> & {
+  export type Query = AsyncIterable<SDKMessage> & {
     readonly interrupt?: () => Promise<void>;
     readonly setModel?: (model?: string) => Promise<void>;
     readonly setPermissionMode?: (mode: PermissionMode) => Promise<void>;
     readonly setMaxThinkingTokens?: (maxThinkingTokens: number | null) => Promise<void>;
     readonly close?: () => void;
   };
+
+  export function query(input: {
+    readonly prompt: string | AsyncIterable<SDKUserMessage>;
+    readonly options?: Options;
+  }): Query;
 }

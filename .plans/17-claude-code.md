@@ -1,5 +1,7 @@
 # Plan: Claude Code Integration (Orchestration Architecture)
 
+> **Note -- Multi-provider scope:** This plan was originally written for the Claude Code adapter, but the patterns described here (adapter shape, canonical runtime mapping, resume cursor ownership, provider registry wiring, and orchestration integration) apply equally to the full multi-provider adapter infrastructure now implemented in this PR: **ClaudeCodeAdapter**, **CopilotAdapter**, **OpenCodeAdapter**, **GeminiCliAdapter**, **KiloAdapter**, and **AmpAdapter**. Where the text says "Claude adapter", read it as the reference implementation; every other adapter follows the same contract surface.
+
 ## Why this plan was rewritten
 
 The previous plan targeted a pre-orchestration architecture (`ProviderManager`, provider-native WS event methods, and direct provider UI wiring). The current app now routes everything through:
@@ -112,6 +114,14 @@ Baseline adapter options to support from day one:
 9. `canUseTool`
 10. `hooks`
 11. `env` and `additionalDirectories` (if needed for sandbox/workspace parity)
+
+### 2.1.b Credential management and resource limits
+
+Each provider manages its own authentication externally:
+
+1. **Environment variables and CLI auth** -- Credentials are resolved via provider-native mechanisms (e.g. `ANTHROPIC_API_KEY` for Claude, `OPENAI_API_KEY` for Codex, `gh auth` for Copilot). The adapter layer never stores or brokers credentials directly; it relies on the underlying CLI/SDK picking them up from the environment.
+2. **Per-provider rate limiting** -- Each server manager (`codexAppServerManager`, `claudeCodeServerManager`, etc.) is responsible for honoring its provider's rate limits. Adapters should surface rate-limit errors as `ProviderAdapterProcessError` so orchestration can report them cleanly.
+3. **Concurrent session limits** -- The number of simultaneous provider sessions is bounded by system resources (open processes, file descriptors, memory). `ProviderSessionDirectory` tracks active sessions but does not enforce hard caps; operators should monitor resource usage when running multiple providers concurrently.
 
 ### 2.2 Claude runtime bridge
 
@@ -415,6 +425,15 @@ Add/extend integration tests around:
 5. stopAll/restart recovery
 
 These should validate real orchestration flows, not just adapter behavior.
+
+### 6.5 Multi-provider test scenarios
+
+Cover cross-provider interactions that single-adapter tests miss:
+
+1. **Provider switching mid-conversation** -- Start a thread on Codex, then switch to Claude (or any other provider) for the next turn. Verify the old session is stopped, bindings are updated, and the new adapter receives the correct `providerOptions`.
+2. **Concurrent active sessions** -- Run sessions on two or more different providers simultaneously. Verify events from each session are routed to the correct orchestration thread without cross-contamination.
+3. **Resume cursor isolation** -- Persist resume cursors from two different providers, then attempt to resume each. Confirm that one provider's cursor cannot accidentally be used to resume another provider's session (adapter parse should reject mismatched cursors).
+4. **Provider health monitoring** -- Simulate a provider becoming unavailable (process crash, binary missing). Verify `listProviderStatuses()` reflects the degraded state and that orchestration surfaces a clear error to the client rather than hanging.
 
 ---
 

@@ -25,6 +25,20 @@ function tryRunGit(args) {
   }
 }
 
+function deriveRepoUrl(remoteName) {
+  const remoteUrl = tryRunGit(["remote", "get-url", remoteName]);
+  if (!remoteUrl) return null;
+
+  // Handle SSH (git@github.com:owner/repo.git) and HTTPS (https://github.com/owner/repo.git)
+  const sshMatch = remoteUrl.match(/git@([^:]+):(.+?)(?:\.git)?$/);
+  if (sshMatch) return `https://${sshMatch[1]}/${sshMatch[2]}`;
+
+  const httpsMatch = remoteUrl.match(/^https?:\/\/(.+?)(?:\.git)?$/);
+  if (httpsMatch) return `https://${httpsMatch[1]}`;
+
+  return null;
+}
+
 function loadConfig() {
   const raw = fs.readFileSync(configPath, "utf8");
   const parsed = JSON.parse(raw);
@@ -34,6 +48,8 @@ function loadConfig() {
   if (!Array.isArray(parsed.trackedPrs) || parsed.trackedPrs.length === 0) {
     throw new Error("No tracked PRs configured.");
   }
+  // Derive the repo URL from the upstream remote instead of hardcoding it.
+  parsed.repoUrl = deriveRepoUrl(parsed.upstreamRemote) ?? deriveRepoUrl(parsed.forkRemote);
   return parsed;
 }
 
@@ -94,7 +110,7 @@ function main() {
     const integrationSummary = getComparisonSummary(integrationBranch, pr.localBranch);
 
     formatSection(`PR #${pr.number}: ${pr.title}`);
-    console.log(`URL: https://github.com/pingdotgg/t3code/pull/${pr.number}`);
+    console.log(`URL: ${config.repoUrl ?? "https://github.com/pingdotgg/t3code"}/pull/${pr.number}`);
     console.log(`Tracking branch: ${pr.localBranch}`);
     console.log(`Branch SHA: ${branchSha}`);
     console.log(`Merge base with ${baseBranch}: ${baseSummary.mergeBase ?? "(missing)"}`);

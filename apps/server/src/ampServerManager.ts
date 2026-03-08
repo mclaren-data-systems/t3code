@@ -74,6 +74,8 @@ interface AmpSession {
   runtimeMode: string;
   status: "ready" | "running" | "closed";
   activeTurnId: TurnId | undefined;
+  /** Stable itemId reused across content.delta events within a single assistant message. */
+  activeAssistantItemId: RuntimeItemId | undefined;
   /** Maps parent_tool_use_id → RuntimeTaskId for tracking subagent tasks. */
   readonly subagentTasks: Map<string, string>;
   readonly createdAt: string;
@@ -207,6 +209,7 @@ export class AmpServerManager extends EventEmitter<{
       runtimeMode: input.runtimeMode,
       status: "ready",
       activeTurnId: undefined,
+      activeAssistantItemId: undefined,
       subagentTasks: new Map(),
       createdAt: now,
       updatedAt: now,
@@ -539,6 +542,7 @@ export class AmpServerManager extends EventEmitter<{
       });
       session.status = "ready";
       session.activeTurnId = undefined;
+      session.activeAssistantItemId = undefined;
       session.updatedAt = new Date().toISOString();
     }
   }
@@ -549,27 +553,47 @@ export class AmpServerManager extends EventEmitter<{
     block: AmpContentBlock,
   ): void {
     switch (block.type) {
-      case "text":
-        this.emitEvent(threadId, session.activeTurnId, {
-          type: "content.delta",
-          payload: {
-            streamKind: "assistant_text",
-            delta: block.text,
+      case "text": {
+        if (!session.activeAssistantItemId) {
+          session.activeAssistantItemId = RuntimeItemId.makeUnsafe(randomUUID());
+        }
+        this.emitEvent(
+          threadId,
+          session.activeTurnId,
+          {
+            type: "content.delta",
+            payload: {
+              streamKind: "assistant_text",
+              delta: block.text,
+            },
           },
-        });
+          session.activeAssistantItemId,
+        );
         break;
+      }
 
-      case "thinking":
-        this.emitEvent(threadId, session.activeTurnId, {
-          type: "content.delta",
-          payload: {
-            streamKind: "reasoning_text",
-            delta: block.thinking,
+      case "thinking": {
+        if (!session.activeAssistantItemId) {
+          session.activeAssistantItemId = RuntimeItemId.makeUnsafe(randomUUID());
+        }
+        this.emitEvent(
+          threadId,
+          session.activeTurnId,
+          {
+            type: "content.delta",
+            payload: {
+              streamKind: "reasoning_text",
+              delta: block.thinking,
+            },
           },
-        });
+          session.activeAssistantItemId,
+        );
         break;
+      }
 
       case "tool_use": {
+        // A tool use starts a new assistant message segment — clear the active item.
+        session.activeAssistantItemId = undefined;
         const itemType = classifyToolName(block.name);
         const itemId = RuntimeItemId.makeUnsafe(block.id);
         this.emitEvent(
@@ -714,6 +738,7 @@ export class AmpServerManager extends EventEmitter<{
 
     session.status = "ready";
     session.activeTurnId = undefined;
+    session.activeAssistantItemId = undefined;
     session.updatedAt = new Date().toISOString();
   }
 

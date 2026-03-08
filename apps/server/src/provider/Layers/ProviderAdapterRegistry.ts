@@ -7,6 +7,7 @@
  *
  * @module ProviderAdapterRegistryLive
  */
+import type { ProviderKind } from "@t3tools/contracts";
 import { Effect, Layer } from "effect";
 
 import { ProviderUnsupportedError, type ProviderAdapterError } from "../Errors.ts";
@@ -43,7 +44,15 @@ const makeProviderAdapterRegistry = (options?: ProviderAdapterRegistryLiveOption
             yield* AmpAdapter,
             yield* KiloAdapter,
           ];
-    const byProvider = new Map(adapters.map((adapter) => [adapter.provider, adapter]));
+    const byProvider = new Map<ProviderKind, ProviderAdapterShape<ProviderAdapterError>>();
+    for (const adapter of adapters) {
+      if (byProvider.has(adapter.provider)) {
+        throw new Error(
+          `Duplicate provider adapter registration for provider "${adapter.provider}"`,
+        );
+      }
+      byProvider.set(adapter.provider, adapter);
+    }
 
     const getByProvider: ProviderAdapterRegistryShape["getByProvider"] = (provider) => {
       const adapter = byProvider.get(provider);

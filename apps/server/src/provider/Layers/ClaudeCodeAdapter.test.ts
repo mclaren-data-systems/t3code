@@ -10,6 +10,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect, Fiber, Random, Stream } from "effect";
 
 import {
+  ProviderAdapterRequestError,
   ProviderAdapterValidationError,
 } from "../Errors.ts";
 import { ClaudeCodeAdapter } from "../Services/ClaudeCodeAdapter.ts";
@@ -756,7 +757,7 @@ describe("ClaudeCodeAdapterLive", () => {
     );
   });
 
-  it.effect("supports rollbackThread by trimming in-memory turns and preserving earlier turns", () => {
+  it.effect("rollbackThread returns ProviderAdapterRequestError because Claude Code does not support rewinding", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {
       const adapter = yield* ClaudeCodeAdapter;
@@ -767,68 +768,12 @@ describe("ClaudeCodeAdapterLive", () => {
         runtimeMode: "full-access",
       });
 
-      const firstTurn = yield* adapter.sendTurn({
-        threadId: session.threadId,
-        input: "first",
-        attachments: [],
-      });
-
-      const firstCompletedFiber = yield* Stream.filter(adapter.streamEvents, (event) => event.type === "turn.completed").pipe(
-        Stream.runHead,
-        Effect.forkChild,
-      );
-
-      harness.query.emit({
-        type: "result",
-        subtype: "success",
-        is_error: false,
-        errors: [],
-        session_id: "sdk-session-rollback",
-        uuid: "result-first",
-      } as unknown as SDKMessage);
-
-      const firstCompleted = yield* Fiber.join(firstCompletedFiber);
-      assert.equal(firstCompleted._tag, "Some");
-      if (firstCompleted._tag === "Some" && firstCompleted.value.type === "turn.completed") {
-        assert.equal(String(firstCompleted.value.turnId), String(firstTurn.turnId));
+      const result = yield* adapter.rollbackThread(session.threadId, 1).pipe(Effect.flip);
+      assert.equal(result._tag, "ProviderAdapterRequestError");
+      if (result._tag === "ProviderAdapterRequestError") {
+        assert.equal(result.method, "thread.rollback");
+        assert.ok(result.detail?.includes("not supported"));
       }
-
-      const secondTurn = yield* adapter.sendTurn({
-        threadId: session.threadId,
-        input: "second",
-        attachments: [],
-      });
-
-      const secondCompletedFiber = yield* Stream.filter(adapter.streamEvents, (event) => event.type === "turn.completed").pipe(
-        Stream.runHead,
-        Effect.forkChild,
-      );
-
-      harness.query.emit({
-        type: "result",
-        subtype: "success",
-        is_error: false,
-        errors: [],
-        session_id: "sdk-session-rollback",
-        uuid: "result-second",
-      } as unknown as SDKMessage);
-
-      const secondCompleted = yield* Fiber.join(secondCompletedFiber);
-      assert.equal(secondCompleted._tag, "Some");
-      if (secondCompleted._tag === "Some" && secondCompleted.value.type === "turn.completed") {
-        assert.equal(String(secondCompleted.value.turnId), String(secondTurn.turnId));
-      }
-
-      const threadBeforeRollback = yield* adapter.readThread(session.threadId);
-      assert.equal(threadBeforeRollback.turns.length, 2);
-
-      const rolledBack = yield* adapter.rollbackThread(session.threadId, 1);
-      assert.equal(rolledBack.turns.length, 1);
-      assert.equal(rolledBack.turns[0]?.id, firstTurn.turnId);
-
-      const threadAfterRollback = yield* adapter.readThread(session.threadId);
-      assert.equal(threadAfterRollback.turns.length, 1);
-      assert.equal(threadAfterRollback.turns[0]?.id, firstTurn.turnId);
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),
