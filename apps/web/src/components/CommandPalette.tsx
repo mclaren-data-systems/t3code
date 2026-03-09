@@ -528,7 +528,11 @@ export default function CommandPalette({
   const activateItem = useCallback(async (item: PaletteItem | undefined) => {
     if (!item || item.disabled) return;
     closePalette();
-    await item.onSelect();
+    try {
+      await item.onSelect();
+    } catch (error) {
+      console.error("Failed to execute command palette action", error);
+    }
   }, [closePalette]);
 
   const onListKeyDown = useCallback(

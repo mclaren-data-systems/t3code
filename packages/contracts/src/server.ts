@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { IsoDateTime, NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas";
-import { KeybindingRule, ResolvedKeybindingsConfig } from "./keybindings";
+import { KeybindingCommand, KeybindingRule, ResolvedKeybindingsConfig } from "./keybindings";
 import { EditorId } from "./editor";
 import { CODEX_REASONING_EFFORT_OPTIONS } from "./model";
 import { ProviderKind } from "./orchestration";
@@ -91,6 +91,17 @@ export const ServerUpsertKeybindingResult = Schema.Struct({
   issues: ServerConfigIssues,
 });
 export type ServerUpsertKeybindingResult = typeof ServerUpsertKeybindingResult.Type;
+
+export const ServerRemoveKeybindingInput = Schema.Struct({
+  command: KeybindingCommand,
+});
+export type ServerRemoveKeybindingInput = typeof ServerRemoveKeybindingInput.Type;
+
+export const ServerRemoveKeybindingResult = Schema.Struct({
+  keybindings: ResolvedKeybindingsConfig,
+  issues: ServerConfigIssues,
+});
+export type ServerRemoveKeybindingResult = typeof ServerRemoveKeybindingResult.Type;
 
 export const ServerConfigUpdatedPayload = Schema.Struct({
   issues: ServerConfigIssues,

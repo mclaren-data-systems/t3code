@@ -1797,6 +1797,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
       if (isElectron && keybindingRule) {
         await api.server.upsertKeybinding(keybindingRule);
         await queryClient.invalidateQueries({ queryKey: serverQueryKeys.all });
+      } else if (isElectron && input.keybinding === null) {
+        // Explicitly null keybinding means the script (and its shortcut) is
+        // being deleted. Remove any persisted keybinding for this command so
+        // stale accelerators don't linger.
+        await api.server.removeKeybinding({ command: input.keybindingCommand });
+        await queryClient.invalidateQueries({ queryKey: serverQueryKeys.all });
       }
     },
     [queryClient],
@@ -3321,6 +3327,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
       )
       .then(() => api.orchestration.getSnapshot())
       .then((snapshot) => {
+        // Snapshot sync is a safety net for the navigation/thread creation
+        // flow: the newly created thread must exist in the client-side read
+        // model before we navigate to it. The WebSocket push channel
+        // (`orchestration.domainEvent`) is the primary update path and will
+        // usually deliver the event first, but a snapshot fetch here
+        // guarantees correctness when the push hasn't arrived yet.
         syncServerReadModel(snapshot);
         // Signal that the plan sidebar should open on the new thread.
         planSidebarOpenOnNextThreadRef.current = true;
@@ -3337,6 +3349,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
             threadId: nextThreadId,
           })
           .catch(() => undefined);
+        // Re-sync after rollback so the deleted thread is removed from
+        // the client read model even if the WebSocket push is delayed.
         await api.orchestration
           .getSnapshot()
           .then((snapshot) => {

@@ -2,6 +2,8 @@ import type {
   OrchestrationCommand,
   OrchestrationEvent,
   OrchestrationReadModel,
+  ProviderStartOptions,
+  ProviderStartOptionsRedacted,
 } from "@t3tools/contracts";
 import { Effect } from "effect";
 
@@ -15,6 +17,22 @@ import {
 
 const nowIso = () => new Date().toISOString();
 const DEFAULT_ASSISTANT_DELIVERY_MODE = "buffered" as const;
+
+/** Strip sensitive fields (username, password) from provider start options for safe event persistence. */
+function redactProviderStartOptions(
+  opts: ProviderStartOptions,
+): ProviderStartOptionsRedacted {
+  const redacted = { ...opts } as Record<string, unknown>;
+  if (opts.opencode) {
+    const { username: _u, password: _p, ...rest } = opts.opencode;
+    redacted.opencode = rest;
+  }
+  if (opts.kilo) {
+    const { username: _u, password: _p, ...rest } = opts.kilo;
+    redacted.kilo = rest;
+  }
+  return redacted as ProviderStartOptionsRedacted;
+}
 
 const defaultMetadata: Omit<OrchestrationEvent, "sequence" | "type" | "payload"> = {
   eventId: crypto.randomUUID() as OrchestrationEvent["eventId"],
@@ -303,7 +321,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           ...(command.model !== undefined ? { model: command.model } : {}),
           ...(command.serviceTier !== undefined ? { serviceTier: command.serviceTier } : {}),
           ...(command.modelOptions !== undefined ? { modelOptions: command.modelOptions } : {}),
-          ...(command.providerOptions !== undefined ? { providerOptions: command.providerOptions } : {}),
+          ...(command.providerOptions !== undefined ? { providerOptions: redactProviderStartOptions(command.providerOptions) } : {}),
           assistantDeliveryMode: command.assistantDeliveryMode ?? DEFAULT_ASSISTANT_DELIVERY_MODE,
           runtimeMode:
             readModel.threads.find((entry) => entry.id === command.threadId)?.runtimeMode ??

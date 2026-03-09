@@ -109,6 +109,10 @@ export class WsTransport {
     const ws = new WebSocket(this.url);
 
     ws.addEventListener("open", () => {
+      if (this.disposed) {
+        ws.close();
+        return;
+      }
       this.ws = ws;
       if (this.reconnectTimer !== null) {
         clearTimeout(this.reconnectTimer);

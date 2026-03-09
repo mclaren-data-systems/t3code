@@ -1023,6 +1023,14 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         return { keybindings: keybindingsConfig, issues: [] };
       }
 
+      case WS_METHODS.serverRemoveKeybinding: {
+        const body = stripRequestTag(request.body);
+        const keybindingsConfig = yield* keybindingsManager.removeKeybindingForCommand(
+          body.command,
+        );
+        return { keybindings: keybindingsConfig, issues: [] };
+      }
+
       default: {
         const _exhaustiveCheck: never = request.body;
         return yield* new RouteRequestError({

@@ -644,6 +644,7 @@ function SettingsRouteView() {
                           <div className="mt-2 flex flex-wrap items-center gap-2">
                             <input
                               type="color"
+                              aria-label={`${providerSettings.title} accent color override`}
                               value={settings.providerAccentColors[provider] ?? accentColor}
                               className="size-5 cursor-pointer appearance-none rounded-full border-0 bg-transparent p-0 [&::-moz-color-swatch]:rounded-full [&::-moz-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-full [&::-webkit-color-swatch]:border-0"
                               onChange={(event) => {

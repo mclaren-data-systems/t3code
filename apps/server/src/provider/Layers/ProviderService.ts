@@ -195,7 +195,12 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           const activeSessions = yield* adapter.listSessions();
           const existing = activeSessions.find((session) => session.threadId === input.binding.threadId);
           if (existing) {
-            yield* upsertSessionBinding(existing, input.binding.threadId);
+            const existingProviderOptions = readPersistedProviderOptions(input.binding.runtimePayload);
+            yield* upsertSessionBinding(
+              existing,
+              input.binding.threadId,
+              existingProviderOptions !== undefined ? { providerOptions: existingProviderOptions } : undefined,
+            );
             yield* analytics.record("provider.session.recovered", {
               provider: existing.provider,
               strategy: "adopt-existing",
@@ -230,7 +235,11 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           );
         }
 
-        yield* upsertSessionBinding(resumed, input.binding.threadId);
+        yield* upsertSessionBinding(
+          resumed,
+          input.binding.threadId,
+          persistedProviderOptions !== undefined ? { providerOptions: persistedProviderOptions } : undefined,
+        );
         yield* analytics.record("provider.session.recovered", {
           provider: resumed.provider,
           strategy: "resume-thread",
@@ -331,6 +340,10 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           allowRecovery: true,
         });
         const turn = yield* routed.adapter.sendTurn(input);
+        const sendTurnBinding = yield* directory.getBinding(input.threadId);
+        const sendTurnProviderOptions = readPersistedProviderOptions(
+          Option.getOrUndefined(sendTurnBinding)?.runtimePayload,
+        );
         yield* directory.upsert({
           threadId: input.threadId,
           provider: routed.adapter.provider,
@@ -340,6 +353,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
             activeTurnId: turn.turnId,
             lastRuntimeEvent: "provider.sendTurn",
             lastRuntimeEventAt: new Date().toISOString(),
+            ...(sendTurnProviderOptions !== undefined ? { providerOptions: sendTurnProviderOptions } : {}),
           },
         });
         yield* analytics.record("provider.turn.sent", {
@@ -502,19 +516,23 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
         const threadIds = yield* directory.listThreadIds();
         yield* Effect.forEach(adapters, (adapter) => adapter.stopAll()).pipe(Effect.asVoid);
         yield* Effect.forEach(threadIds, (threadId) =>
-          directory.getProvider(threadId).pipe(
-            Effect.flatMap((provider) =>
-              directory.upsert({
+          directory.getBinding(threadId).pipe(
+            Effect.flatMap((bindingOption) => {
+              const binding = Option.getOrUndefined(bindingOption);
+              if (!binding) return Effect.void;
+              const existingProviderOptions = readPersistedProviderOptions(binding.runtimePayload);
+              return directory.upsert({
                 threadId,
-                provider,
+                provider: binding.provider,
                 status: "stopped",
                 runtimePayload: {
                   activeTurnId: null,
                   lastRuntimeEvent: "provider.stopAll",
                   lastRuntimeEventAt: new Date().toISOString(),
+                  ...(existingProviderOptions !== undefined ? { providerOptions: existingProviderOptions } : {}),
                 },
-              }),
-            ),
+              });
+            }),
           ),
         ).pipe(Effect.asVoid);
         yield* analytics.record("provider.sessions.stopped_all", {

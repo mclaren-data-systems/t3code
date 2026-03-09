@@ -139,6 +139,10 @@ const make = Effect.gen(function* () {
     lookup: () => Effect.succeed(true),
   });
 
+  // NOTE: Provider options stored here are only consumed at session start time
+  // (inside `startProviderSession`). If a thread already has a live session and
+  // only `providerOptions` change, `ensureSessionForThread` keeps the existing
+  // session — the updated options won't take effect until the next session restart.
   const threadProviderOptions = new Map<ThreadId, ProviderStartOptions>();
 
   const hasHandledTurnStartRecently = (key: string) =>
@@ -643,9 +647,10 @@ const make = Effect.gen(function* () {
 
     const now = event.payload.createdAt;
     if (thread.session && thread.session.status !== "stopped") {
-      yield* providerService
+      const stopFailed = yield* providerService
         .stopSession({ threadId: thread.id })
         .pipe(
+          Effect.as(false),
           Effect.catchCause((cause) =>
             Effect.gen(function* () {
               if (Cause.hasInterruptsOnly(cause)) {
@@ -660,9 +665,15 @@ const make = Effect.gen(function* () {
                 turnId: null,
                 createdAt: event.payload.createdAt,
               });
+              // Signal that the stop failed so we don't clear thread state
+              // while the provider may still be running.
+              return true;
             }),
           ),
         );
+      if (stopFailed) {
+        return;
+      }
     }
 
     threadProviderOptions.delete(thread.id);

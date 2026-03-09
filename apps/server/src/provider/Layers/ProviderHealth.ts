@@ -481,17 +481,8 @@ export const checkCopilotProviderStatus: Effect.Effect<ServerProviderStatus, nev
       try {
         await client.start();
         const models = await client.listModels();
-        const quotaSnapshots = await (async () => {
-          try {
-            const clientRecord = client as unknown as Record<string, unknown>;
-            if (typeof clientRecord.getQuotaInfo === "function") {
-              return (clientRecord.getQuotaInfo as () => Promise<Record<string, CopilotQuotaSnapshotInfo> | undefined>)();
-            }
-            return undefined;
-          } catch {
-            return undefined;
-          }
-        })();
+        const quota = await (client as unknown as { rpc: { account: { getQuota: () => Promise<{ quotaSnapshots?: unknown }> } } }).rpc.account.getQuota().catch(() => undefined);
+        const quotaSnapshots = quota?.quotaSnapshots as Record<string, CopilotQuotaSnapshotInfo> | undefined;
         return { models, quotaSnapshots } as {
           models: ModelInfo[];
           quotaSnapshots: Record<string, CopilotQuotaSnapshotInfo> | undefined;

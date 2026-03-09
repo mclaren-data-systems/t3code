@@ -1709,10 +1709,22 @@ function makeClaudeCodeAdapter(options?: ClaudeCodeAdapterLiveOptions) {
           (input.runtimeMode === "full-access" ? "bypassPermissions" : undefined);
         const effort = claudeCodeModelOptions?.effort as EffortLevel | undefined;
 
+        const pathToClaudeCodeExecutable = yield* Effect.try({
+          try: () =>
+            (providerOptions?.binaryPath as string | undefined) ?? defaultClaudeSdkCliPath(),
+          catch: (cause) =>
+            new ProviderAdapterProcessError({
+              provider: PROVIDER,
+              threadId,
+              detail: toMessage(cause, "Failed to resolve Claude Code executable."),
+              cause,
+            }),
+        });
+
         const queryOptions: ClaudeQueryOptions = {
           ...(input.cwd ? { cwd: input.cwd } : {}),
           ...(input.model ? { model: input.model } : {}),
-          pathToClaudeCodeExecutable: (providerOptions?.binaryPath as string | undefined) ?? defaultClaudeSdkCliPath(),
+          pathToClaudeCodeExecutable,
           ...(permissionMode ? { permissionMode } : {}),
           ...(permissionMode === "bypassPermissions"
             ? { allowDangerouslySkipPermissions: true }

@@ -8,6 +8,7 @@ import {
   IsoDateTime,
   MessageId,
   NonNegativeInt,
+  PositiveInt,
   ProjectId,
   ProviderItemId,
   ThreadId,
@@ -92,7 +93,7 @@ export const OpencodeProviderStartOptions = Schema.Struct({
   serverUrl: Schema.optional(TrimmedNonEmptyString),
   binaryPath: Schema.optional(TrimmedNonEmptyString),
   hostname: Schema.optional(TrimmedNonEmptyString),
-  port: Schema.optional(Schema.Number),
+  port: Schema.optional(PositiveInt),
   workspace: Schema.optional(TrimmedNonEmptyString),
   username: Schema.optional(TrimmedNonEmptyString),
   password: Schema.optional(TrimmedNonEmptyString),
@@ -103,7 +104,7 @@ export const KiloProviderStartOptions = Schema.Struct({
   serverUrl: Schema.optional(TrimmedNonEmptyString),
   binaryPath: Schema.optional(TrimmedNonEmptyString),
   hostname: Schema.optional(TrimmedNonEmptyString),
-  port: Schema.optional(Schema.Number),
+  port: Schema.optional(PositiveInt),
   workspace: Schema.optional(TrimmedNonEmptyString),
   username: Schema.optional(TrimmedNonEmptyString),
   password: Schema.optional(TrimmedNonEmptyString),
@@ -121,6 +122,37 @@ export const ProviderStartOptions = Schema.Struct({
   kilo: Schema.optional(KiloProviderStartOptions),
 });
 export type ProviderStartOptions = typeof ProviderStartOptions.Type;
+
+/** Opencode options with credentials stripped for safe persistence in events. */
+const OpencodeProviderStartOptionsRedacted = Schema.Struct({
+  serverUrl: Schema.optional(TrimmedNonEmptyString),
+  binaryPath: Schema.optional(TrimmedNonEmptyString),
+  hostname: Schema.optional(TrimmedNonEmptyString),
+  port: Schema.optional(PositiveInt),
+  workspace: Schema.optional(TrimmedNonEmptyString),
+});
+
+/** Kilo options with credentials stripped for safe persistence in events. */
+const KiloProviderStartOptionsRedacted = Schema.Struct({
+  serverUrl: Schema.optional(TrimmedNonEmptyString),
+  binaryPath: Schema.optional(TrimmedNonEmptyString),
+  hostname: Schema.optional(TrimmedNonEmptyString),
+  port: Schema.optional(PositiveInt),
+  workspace: Schema.optional(TrimmedNonEmptyString),
+});
+
+/** ProviderStartOptions without sensitive fields (username/password). Use in persisted events. */
+export const ProviderStartOptionsRedacted = Schema.Struct({
+  codex: Schema.optional(CodexProviderStartOptions),
+  copilot: Schema.optional(CopilotProviderStartOptions),
+  claudeCode: Schema.optional(ClaudeCodeProviderStartOptions),
+  cursor: Schema.optional(CursorProviderStartOptions),
+  amp: Schema.optional(AmpProviderStartOptions),
+  geminiCli: Schema.optional(GeminiCliProviderStartOptions),
+  opencode: Schema.optional(OpencodeProviderStartOptionsRedacted),
+  kilo: Schema.optional(KiloProviderStartOptionsRedacted),
+});
+export type ProviderStartOptionsRedacted = typeof ProviderStartOptionsRedacted.Type;
 export const RuntimeMode = Schema.Literals(["approval-required", "full-access"]);
 export type RuntimeMode = typeof RuntimeMode.Type;
 export const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
@@ -758,7 +790,7 @@ export const ThreadTurnStartRequestedPayload = Schema.Struct({
   model: Schema.optional(TrimmedNonEmptyString),
   serviceTier: Schema.optional(Schema.NullOr(ProviderServiceTier)),
   modelOptions: Schema.optional(ProviderModelOptions),
-  providerOptions: Schema.optional(ProviderStartOptions),
+  providerOptions: Schema.optional(ProviderStartOptionsRedacted),
   assistantDeliveryMode: Schema.optional(AssistantDeliveryMode),
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(() => DEFAULT_RUNTIME_MODE)),
   interactionMode: ProviderInteractionMode.pipe(

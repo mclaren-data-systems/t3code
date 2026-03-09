@@ -53,12 +53,17 @@ if [[ ! -t 0 ]]; then
   INTERACTIVE=false
 fi
 
-# Prompt helper — falls back to default when non-interactive
+# Prompt helper — reads from /dev/tty when stdin is piped, falls back to default
 prompt() {
   local var_name="$1" message="$2" default="$3"
   if $INTERACTIVE; then
     read -rp "  ${CYAN}?${RESET} ${message} [${BOLD}${default}${RESET}]: " input
     printf -v "$var_name" '%s' "${input:-$default}"
+  elif [[ -r /dev/tty ]]; then
+    printf "  %s?%s %s [%s%s%s]: " "$CYAN" "$RESET" "$message" "$BOLD" "$default" "$RESET" > /dev/tty
+    local answer
+    read -r answer < /dev/tty
+    printf -v "$var_name" '%s' "${answer:-$default}"
   else
     printf -v "$var_name" '%s' "$default"
   fi
@@ -68,17 +73,25 @@ prompt_choice() {
   local var_name="$1" message="$2" default="$3"
   shift 3
   local options=("$@")
-  if $INTERACTIVE; then
-    printf "\n  ${CYAN}?${RESET} %s\n" "$message"
+  if $INTERACTIVE || [[ -r /dev/tty ]]; then
+    local tty_out="/dev/tty"
+    local tty_in="/dev/tty"
+    if $INTERACTIVE; then
+      tty_out="/dev/stderr"
+      tty_in="/dev/stdin"
+    fi
+    printf "\n  %s?%s %s\n" "$CYAN" "$RESET" "$message" > "$tty_out"
     for i in "${!options[@]}"; do
       local num=$((i + 1))
       if [[ "$num" == "$default" ]]; then
-        printf "    ${BOLD}[%d] %s (default)${RESET}\n" "$num" "${options[$i]}"
+        printf "    %s[%d] %s (default)%s\n" "$BOLD" "$num" "${options[$i]}" "$RESET" > "$tty_out"
       else
-        printf "    [%d] %s\n" "$num" "${options[$i]}"
+        printf "    [%d] %s\n" "$num" "${options[$i]}" > "$tty_out"
       fi
     done
-    read -rp "  ${CYAN}→${RESET} Enter choice: " input
+    printf "  %s→%s Enter choice: " "$CYAN" "$RESET" > "$tty_out"
+    local input
+    read -r input < "$tty_in"
     input="${input:-$default}"
     # Validate
     if [[ ! "$input" =~ ^[0-9]+$ ]] || (( input < 1 || input > ${#options[@]} )); then
@@ -162,13 +175,18 @@ find_bin() {
   fi
   # Then check explicit candidate paths
   for candidate in "$@"; do
-    # Expand globs (e.g. nvm version dirs)
-    for expanded in $candidate; do
-      if [[ -x "$expanded" ]]; then
-        echo "$expanded"
-        return 0
-      fi
-    done
+    # Expand globs (e.g. nvm version dirs), preserving paths with spaces
+    if [[ "$candidate" == *[\*\?\[]* ]]; then
+      while IFS= read -r expanded; do
+        if [[ -x "$expanded" ]]; then
+          echo "$expanded"
+          return 0
+        fi
+      done < <(compgen -G "$candidate")
+    elif [[ -x "$candidate" ]]; then
+      echo "$candidate"
+      return 0
+    fi
   done
   return 1
 }
@@ -338,6 +356,10 @@ install_bun() {
   local do_install="y"
   if $INTERACTIVE; then
     read -rp "  ${CYAN}?${RESET} Install bun now? [Y/n]: " do_install
+    do_install="${do_install:-y}"
+  elif [[ -r /dev/tty ]]; then
+    printf "  %s?%s Install bun now? [Y/n]: " "$CYAN" "$RESET" > /dev/tty
+    read -r do_install < /dev/tty
     do_install="${do_install:-y}"
   fi
 
