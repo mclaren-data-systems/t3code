@@ -1126,6 +1126,7 @@ const makeCopilotAdapter = (options?: CopilotAdapterLiveOptions) =>
           });
 
           record.session = nextSession;
+          record.interactionMode = undefined;
           record.model = input.model;
           record.reasoningEffort = input.reasoningEffort;
           record.updatedAt = new Date().toISOString();

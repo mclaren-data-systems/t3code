@@ -481,7 +481,7 @@ export const checkCopilotProviderStatus: Effect.Effect<ServerProviderStatus> = E
         try {
           await client.start();
           const [status, authStatus] = await Promise.all([
-            (client as unknown as { getStatus(): Promise<{ version?: string }> }).getStatus(),
+            (client as unknown as { getStatus(): Promise<{ version?: string }> }).getStatus().catch(() => undefined),
             (client as unknown as { getAuthStatus(): Promise<{ isAuthenticated?: boolean; statusMessage?: string }> }).getAuthStatus().catch(() => undefined),
           ]);
           const [models, quota] =
