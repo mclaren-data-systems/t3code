@@ -173,7 +173,7 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
   const { data: branchList = null } = useQuery(gitBranchesQueryOptions(gitCwd));
   // Default to true while loading so we don't flash init controls.
   const isRepo = branchList?.isRepo ?? true;
-  const hasOriginRemote = branchList?.hasOriginRemote ?? false;
+  const hasOriginRemote = branchList?.hasOriginRemote ?? true;
   const currentBranch = branchList?.branches.find((branch) => branch.current)?.name ?? null;
   const isGitStatusOutOfSync =
     !!gitStatus?.branch && !!currentBranch && gitStatus.branch !== currentBranch;

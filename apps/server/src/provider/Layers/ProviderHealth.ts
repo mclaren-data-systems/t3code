@@ -17,7 +17,7 @@ import type {
   ServerProviderStatusState,
 } from "@t3tools/contracts";
 import { CopilotClient, type ModelInfo } from "@github/copilot-sdk";
-import { Array, Effect, Fiber, FileSystem, Layer, Option, Path, Result, Stream } from "effect";
+import { Effect, Fiber, FileSystem, Layer, Option, Path, Result, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { resolveBundledCopilotCliPath, withSanitizedCopilotDesktopEnv } from "./copilotCliPath.ts";

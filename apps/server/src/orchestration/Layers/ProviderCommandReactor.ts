@@ -561,6 +561,7 @@ const make = Effect.gen(function* () {
             if (Cause.hasInterruptsOnly(cause)) {
               return yield* Effect.failCause(cause);
             }
+            if (isUnknownPendingApprovalRequestError(cause)) return;
             yield* appendProviderFailureActivity({
               threadId: event.payload.threadId,
               kind: "provider.approval.respond.failed",
@@ -570,8 +571,6 @@ const make = Effect.gen(function* () {
               createdAt: event.payload.createdAt,
               requestId: event.payload.requestId,
             });
-
-            if (!isUnknownPendingApprovalRequestError(cause)) return;
           }),
         ),
       );

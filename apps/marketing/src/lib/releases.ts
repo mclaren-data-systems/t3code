@@ -20,7 +20,11 @@ export async function fetchLatestRelease(): Promise<Release> {
   const cached = sessionStorage.getItem(CACHE_KEY);
   if (cached) return JSON.parse(cached);
 
-  const data = await fetch(API_URL).then((r) => r.json());
+  const response = await fetch(API_URL);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch latest release (${response.status})`);
+  }
+  const data = (await response.json()) as Release;
 
   if (data?.assets) {
     sessionStorage.setItem(CACHE_KEY, JSON.stringify(data));
