@@ -7,24 +7,6 @@ import { DEFAULT_ACCENT_COLOR, isValidAccentColor, normalizeAccentColor } from "
 const APP_SETTINGS_STORAGE_KEY = "t3code:app-settings:v1";
 const MAX_CUSTOM_MODEL_COUNT = 32;
 export const MAX_CUSTOM_MODEL_LENGTH = 256;
-export const APP_SERVICE_TIER_OPTIONS = [
-  {
-    value: "auto",
-    label: "Automatic",
-    description: "Use Codex defaults without forcing a service tier.",
-  },
-  {
-    value: "fast",
-    label: "Fast",
-    description: "Request the fast service tier when the model supports it.",
-  },
-  {
-    value: "flex",
-    label: "Flex",
-    description: "Request the flex service tier when the model supports it.",
-  },
-] as const;
-export type AppServiceTier = (typeof APP_SERVICE_TIER_OPTIONS)[number]["value"];
 export const APP_PROVIDER_LOGO_APPEARANCE_OPTIONS = [
   {
     value: "original",
@@ -44,9 +26,7 @@ export const APP_PROVIDER_LOGO_APPEARANCE_OPTIONS = [
 ] as const;
 export type AppProviderLogoAppearance =
   (typeof APP_PROVIDER_LOGO_APPEARANCE_OPTIONS)[number]["value"];
-const AppServiceTierSchema = Schema.Literals(["auto", "fast", "flex"]);
 const AppProviderLogoAppearanceSchema = Schema.Literals(["original", "grayscale", "accent"]);
-const MODELS_WITH_FAST_SUPPORT = new Set(["gpt-5.4"]);
 const BUILT_IN_MODEL_SLUGS_BY_PROVIDER: Record<ProviderKind, ReadonlySet<string>> = {
   codex: new Set(getModelOptions("codex").map((option) => option.slug)),
   copilot: new Set(getModelOptions("copilot").map((option) => option.slug)),
