@@ -1,6 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { Option, Schema } from "effect";
-import { type ProviderKind, type ProviderServiceTier } from "@t3tools/contracts";
+import { type ProviderKind } from "@t3tools/contracts";
 import { getDefaultModel, getModelOptions, normalizeModelSlug } from "@t3tools/shared/model";
 import { DEFAULT_ACCENT_COLOR, isValidAccentColor, normalizeAccentColor } from "./accentColor";
 
@@ -25,7 +25,27 @@ export const APP_SERVICE_TIER_OPTIONS = [
   },
 ] as const;
 export type AppServiceTier = (typeof APP_SERVICE_TIER_OPTIONS)[number]["value"];
+export const APP_PROVIDER_LOGO_APPEARANCE_OPTIONS = [
+  {
+    value: "original",
+    label: "Default color",
+    description: "Use each provider's native logo colors.",
+  },
+  {
+    value: "grayscale",
+    label: "Grayscale",
+    description: "Desaturate provider logos while keeping their original shapes.",
+  },
+  {
+    value: "accent",
+    label: "Accent color",
+    description: "Tint every provider logo with your global or per-provider accent color.",
+  },
+] as const;
+export type AppProviderLogoAppearance =
+  (typeof APP_PROVIDER_LOGO_APPEARANCE_OPTIONS)[number]["value"];
 const AppServiceTierSchema = Schema.Literals(["auto", "fast", "flex"]);
+const AppProviderLogoAppearanceSchema = Schema.Literals(["original", "grayscale", "accent"]);
 const MODELS_WITH_FAST_SUPPORT = new Set(["gpt-5.4"]);
 const BUILT_IN_MODEL_SLUGS_BY_PROVIDER: Record<ProviderKind, ReadonlySet<string>> = {
   codex: new Set(getModelOptions("codex").map((option) => option.slug)),
@@ -55,7 +75,6 @@ const AppSettingsSchema = Schema.Struct({
   enableAssistantStreaming: Schema.Boolean.pipe(
     Schema.withConstructorDefault(() => Option.some(false)),
   ),
-  codexServiceTier: AppServiceTierSchema.pipe(Schema.withConstructorDefault(() => Option.some("auto"))),
   customCodexModels: Schema.Array(Schema.String).pipe(
     Schema.withConstructorDefault(() => Option.some([])),
   ),
@@ -80,6 +99,9 @@ const AppSettingsSchema = Schema.Struct({
   customKiloModels: Schema.Array(Schema.String).pipe(
     Schema.withConstructorDefault(() => Option.some([])),
   ),
+  providerLogoAppearance: AppProviderLogoAppearanceSchema.pipe(
+    Schema.withConstructorDefault(() => Option.some("original")),
+  ),
   grayscaleProviderLogos: Schema.Boolean.pipe(
     Schema.withConstructorDefault(() => Option.some(false)),
   ),
@@ -96,27 +118,6 @@ export interface AppModelOption {
   slug: string;
   name: string;
   isCustom: boolean;
-}
-
-export interface BuiltInAppModelOption {
-  slug: string;
-  name: string;
-}
-
-export function resolveAppServiceTier(serviceTier: AppServiceTier): ProviderServiceTier | null {
-  return serviceTier === "auto" ? null : serviceTier;
-}
-
-export function shouldShowFastTierIcon(
-  model: string | null | undefined,
-  serviceTier: AppServiceTier,
-): boolean {
-  const normalizedModel = normalizeModelSlug(model);
-  return (
-    resolveAppServiceTier(serviceTier) === "fast" &&
-    normalizedModel !== null &&
-    MODELS_WITH_FAST_SUPPORT.has(normalizedModel)
-  );
 }
 
 const DEFAULT_APP_SETTINGS = AppSettingsSchema.makeUnsafe({});
@@ -268,13 +269,29 @@ function emitChange(): void {
   }
 }
 
+function migratePersistedAppSettings(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+
+  const settings = { ...(value as Record<string, unknown>) };
+  if (settings.providerLogoAppearance === undefined && settings.grayscaleProviderLogos === true) {
+    settings.providerLogoAppearance = "grayscale";
+  }
+
+  return settings;
+}
+
 function parsePersistedSettings(value: string | null): AppSettings {
   if (!value) {
     return DEFAULT_APP_SETTINGS;
   }
 
   try {
-    return normalizeAppSettings(Schema.decodeSync(Schema.fromJsonString(AppSettingsSchema))(value));
+    const parsed = JSON.parse(value) as unknown;
+    return normalizeAppSettings(
+      AppSettingsSchema.makeUnsafe(migratePersistedAppSettings(parsed) as Record<string, unknown>),
+    );
   } catch {
     return DEFAULT_APP_SETTINGS;
   }
