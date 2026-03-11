@@ -477,9 +477,13 @@ export const makeGitManager = Effect.gen(function* () {
   ) =>
     Effect.gen(function* () {
       const remoteName = yield* readConfigValueNullable(cwd, `branch.${details.branch}.remote`);
-      const headBranchFromUpstream = details.upstreamRef
-        ? extractBranchFromRef(details.upstreamRef)
-        : "";
+      const remotePrefix = remoteName ? `${remoteName}/` : null;
+      const headBranchFromUpstream =
+        details.upstreamRef && remotePrefix && details.upstreamRef.startsWith(remotePrefix)
+          ? details.upstreamRef.slice(remotePrefix.length).trim()
+          : details.upstreamRef
+            ? extractBranchFromRef(details.upstreamRef)
+            : "";
       const headBranch =
         headBranchFromUpstream.length > 0 ? headBranchFromUpstream : details.branch;
 

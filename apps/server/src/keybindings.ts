@@ -838,12 +838,11 @@ const makeKeybindings = Effect.gen(function* () {
   });
 
   const start = Effect.gen(function* () {
-    const alreadyStarted = yield* Ref.get(startedRef);
+    const alreadyStarted = yield* Ref.getAndSet(startedRef, true);
     if (alreadyStarted) {
       return yield* Deferred.await(startedDeferred);
     }
 
-    yield* Ref.set(startedRef, true);
     const startup = Effect.gen(function* () {
       yield* startWatcher;
       yield* syncDefaultKeybindingsOnStartup;

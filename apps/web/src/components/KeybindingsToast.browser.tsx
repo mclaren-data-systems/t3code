@@ -240,7 +240,7 @@ async function waitForToast(title: string, count = 1): Promise<void> {
   await vi.waitFor(
     () => {
       const matches = queryToastTitles().filter((t) => t === title);
-      expect(matches.length, `Expected ${count} "${title}" toast(s)`).toBeGreaterThanOrEqual(count);
+      expect(matches, `Expected exactly ${count} "${title}" toast(s)`).toHaveLength(count);
     },
     { timeout: 4_000, interval: 16 },
   );

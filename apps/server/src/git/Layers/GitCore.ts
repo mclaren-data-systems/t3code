@@ -334,19 +334,50 @@ const makeGitCore = Effect.gen(function* () {
         return null;
       }
 
+      // Resolve the remote name from branch config to handle remotes whose
+      // names contain `/` (e.g. `my-org/upstream`).  Splitting on the first
+      // `/` would incorrectly truncate such names.
+      const branch = yield* runGitStdout(
+        "GitCore.resolveCurrentUpstream.branch",
+        cwd,
+        ["rev-parse", "--abbrev-ref", "HEAD"],
+        true,
+      ).pipe(Effect.map((stdout) => stdout.trim()));
+
+      const remoteName = branch.length > 0
+        ? yield* runGitStdout(
+            "GitCore.resolveCurrentUpstream.remote",
+            cwd,
+            ["config", "--get", `branch.${branch}.remote`],
+            true,
+          ).pipe(
+            Effect.map((stdout) => stdout.trim()),
+            Effect.catch(() => Effect.succeed("")),
+          )
+        : "";
+
+      if (remoteName.length > 0 && upstreamRef.startsWith(`${remoteName}/`)) {
+        const upstreamBranch = upstreamRef.slice(remoteName.length + 1);
+        if (upstreamBranch.length === 0) {
+          return null;
+        }
+        return { upstreamRef, remoteName, upstreamBranch };
+      }
+
+      // Fallback: split on first `/` for cases where config lookup fails.
       const separatorIndex = upstreamRef.indexOf("/");
       if (separatorIndex <= 0) {
         return null;
       }
-      const remoteName = upstreamRef.slice(0, separatorIndex);
+      const fallbackRemoteName = upstreamRef.slice(0, separatorIndex);
       const upstreamBranch = upstreamRef.slice(separatorIndex + 1);
-      if (remoteName.length === 0 || upstreamBranch.length === 0) {
+      if (fallbackRemoteName.length === 0 || upstreamBranch.length === 0) {
         return null;
       }
 
       return {
         upstreamRef,
-        remoteName,
+        remoteName: fallbackRemoteName,
         upstreamBranch,
       };
     });

@@ -76,6 +76,7 @@ export interface GitHubCliShape {
     readonly headSelector: string;
     readonly title: string;
     readonly bodyFile: string;
+    readonly repository?: string;
   }) => Effect.Effect<void, GitHubCliError>;
 
   /**

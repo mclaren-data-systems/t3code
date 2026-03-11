@@ -86,7 +86,7 @@ sequenceDiagram
     Codex-->>Ingest: Provider runtime events
     Ingest->>Engine: Normalize into orchestration events
     Engine-->>Server: Domain events
-    Server->>Push: Publish orchestration.domainEvent
+    Server->>Push: Publish on terminal.event / server.configUpdated
     Push-->>Browser: Typed push
 ```
 
@@ -95,7 +95,7 @@ sequenceDiagram
 3. [`ProviderService`][8] starts or resumes a session and talks to `codex app-server` over JSON-RPC on stdio.
 4. Provider-native events are pulled back into the server by [`ProviderRuntimeIngestion`][9], which converts them into orchestration events.
 5. [`OrchestrationEngine`][10] persists those events, updates the read model, and exposes them as domain events.
-6. [`wsServer`][3] pushes those updates to the browser through [`ServerPushBus`][5] on channels defined in [`orchestration.ts`][11].
+6. [`wsServer`][3] pushes those updates to the browser through [`ServerPushBus`][5] on channels defined in [`ws.ts`][6] (`terminal.event`, `server.welcome`, `server.configUpdated`).
 
 ### Async completion flow
 
