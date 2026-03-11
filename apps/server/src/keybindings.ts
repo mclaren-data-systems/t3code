@@ -545,7 +545,7 @@ const makeKeybindings = Effect.gen(function* () {
   const changesPubSub = yield* PubSub.unbounded<KeybindingsChangeEvent>();
   const startedRef = yield* Ref.make(false);
   let startedDeferred = yield* Deferred.make<void, KeybindingsConfigError>();
-  const watcherScope = yield* Scope.make("sequential");
+  let watcherScope = yield* Scope.make("sequential");
   yield* Effect.addFinalizer(() => Scope.close(watcherScope, Exit.void));
   const emitChange = (configState: KeybindingsConfigState) =>
     PubSub.publish(changesPubSub, configState).pipe(Effect.asVoid);
@@ -852,6 +852,9 @@ const makeKeybindings = Effect.gen(function* () {
 
     const startupExit = yield* Effect.exit(startup);
     if (startupExit._tag === "Failure") {
+      // Close the watcher scope to stop any forked watcher fibers from this attempt
+      yield* Scope.close(watcherScope, Exit.void);
+      watcherScope = yield* Scope.make("sequential");
       // Reset the gate so subsequent callers can retry
       yield* Ref.set(startedRef, false);
       yield* Deferred.failCause(startedDeferred, startupExit.cause).pipe(Effect.orDie);
