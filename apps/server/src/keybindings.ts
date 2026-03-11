@@ -866,7 +866,7 @@ const makeKeybindings = Effect.gen(function* () {
 
   return {
     start,
-    ready: Deferred.await(startedDeferred),
+    ready: Effect.suspend(() => Deferred.await(startedDeferred)),
     syncDefaultKeybindingsOnStartup,
     loadConfigState: loadConfigStateFromCacheOrDisk,
     getSnapshot: loadConfigStateFromCacheOrDisk,
