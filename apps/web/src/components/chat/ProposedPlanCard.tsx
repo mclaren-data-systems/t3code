@@ -84,7 +84,8 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
       });
       return;
     }
-    if (relativePath.startsWith("/") || relativePath.includes("..")) {
+    const hasTraversalSegment = relativePath.split("/").some((segment) => segment === "..");
+    if (relativePath.startsWith("/") || hasTraversalSegment) {
       toastManager.add({
         type: "warning",
         title: "Invalid path",
