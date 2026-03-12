@@ -466,15 +466,22 @@ export function clearWorkspaceIndexCache(cwd: string): void {
   inFlightWorkspaceIndexBuilds.delete(cwd);
 }
 
+function compareRankedEntries(
+  left: { entry: ProjectEntry; score: number },
+  right: { entry: ProjectEntry; score: number },
+): number {
+  return left.score - right.score || left.entry.path.localeCompare(right.entry.path);
+}
+
 function findInsertionIndex(
   ranked: Array<{ entry: ProjectEntry; score: number }>,
-  score: number,
+  candidate: { entry: ProjectEntry; score: number },
 ): number {
   let lo = 0;
   let hi = ranked.length;
   while (lo < hi) {
     const mid = (lo + hi) >>> 1;
-    if ((ranked[mid] as { score: number }).score <= score) {
+    if (compareRankedEntries(ranked[mid]!, candidate) <= 0) {
       lo = mid + 1;
     } else {
       hi = mid;
@@ -489,11 +496,15 @@ function insertRankedEntry(
   score: number,
   limit: number,
 ): void {
-  if (ranked.length >= limit && score >= (ranked[ranked.length - 1] as { score: number }).score) {
+  if (limit <= 0) {
     return;
   }
-  const index = findInsertionIndex(ranked, score);
-  ranked.splice(index, 0, { entry, score });
+  const candidate = { entry, score };
+  if (ranked.length >= limit && compareRankedEntries(candidate, ranked[ranked.length - 1]!) >= 0) {
+    return;
+  }
+  const index = findInsertionIndex(ranked, candidate);
+  ranked.splice(index, 0, candidate);
   if (ranked.length > limit) {
     ranked.pop();
   }
