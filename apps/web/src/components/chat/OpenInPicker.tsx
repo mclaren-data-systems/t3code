@@ -21,10 +21,12 @@ export const OpenInPicker = memo(function OpenInPicker({
   openInCwd: string | null;
 }) {
   const [lastEditor, setLastEditor] = useState<EditorId>(() => {
+    if (typeof window === "undefined") return EDITORS[0].id;
     const stored = localStorage.getItem(LAST_EDITOR_KEY);
     return EDITORS.some((e) => e.id === stored) ? (stored as EditorId) : EDITORS[0].id;
   });
 
+  const platform = typeof navigator !== "undefined" ? navigator.platform : "";
   const allOptions = useMemo<Array<{ label: string; Icon: Icon; value: EditorId }>>(
     () => [
       {
@@ -43,16 +45,16 @@ export const OpenInPicker = memo(function OpenInPicker({
         value: "zed",
       },
       {
-        label: isMacPlatform(navigator.platform)
+        label: isMacPlatform(platform)
           ? "Finder"
-          : isWindowsPlatform(navigator.platform)
+          : isWindowsPlatform(platform)
             ? "Explorer"
             : "Files",
         Icon: FolderClosedIcon,
         value: "file-manager",
       },
     ],
-    [],
+    [platform],
   );
   const options = useMemo(
     () => allOptions.filter((option) => availableEditors.includes(option.value)),
@@ -97,7 +99,7 @@ export const OpenInPicker = memo(function OpenInPicker({
   }, [effectiveEditor, keybindings, openInCwd]);
 
   return (
-    <Group aria-label="Subscription actions">
+    <Group aria-label="Open in editor actions">
       <Button
         size="xs"
         variant="outline"
@@ -111,7 +113,7 @@ export const OpenInPicker = memo(function OpenInPicker({
       </Button>
       <GroupSeparator className="hidden @sm/header-actions:block" />
       <Menu>
-        <MenuTrigger render={<Button aria-label="Copy options" size="icon-xs" variant="outline" />}>
+        <MenuTrigger render={<Button aria-label="Select editor" size="icon-xs" variant="outline" />}>
           <ChevronDownIcon aria-hidden="true" className="size-4" />
         </MenuTrigger>
         <MenuPopup align="end">

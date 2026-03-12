@@ -83,7 +83,7 @@ export const CursorTraitsPicker = memo(function CursorTraitsPicker(props: {
             >
               {CURSOR_REASONING_OPTIONS.map((reasoning) => (
                 <MenuRadioItem key={reasoning} value={reasoning}>
-                  {reasoning}
+                  {reasoningLabelByOption[reasoning]}
                   {reasoning === "normal" ? " (default)" : ""}
                 </MenuRadioItem>
               ))}

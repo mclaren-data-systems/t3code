@@ -63,6 +63,14 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
       });
       return;
     }
+    if (!readNativeApi()) {
+      toastManager.add({
+        type: "error",
+        title: "Native API unavailable",
+        description: "Saving to workspace requires the native desktop app.",
+      });
+      return;
+    }
     setSavePath((existing) => (existing.length > 0 ? existing : downloadFilename));
     setIsSaveDialogOpen(true);
   };

@@ -1,14 +1,33 @@
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { CopyIcon, CheckIcon } from "lucide-react";
 import { Button } from "../ui/button";
 
 export const MessageCopyButton = memo(function MessageCopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
+  const resetTimerRef = useRef<number | null>(null);
 
-  const handleCopy = useCallback(() => {
-    void navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  useEffect(() => {
+    return () => {
+      if (resetTimerRef.current !== null) {
+        window.clearTimeout(resetTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      if (resetTimerRef.current !== null) {
+        window.clearTimeout(resetTimerRef.current);
+      }
+      resetTimerRef.current = window.setTimeout(() => {
+        resetTimerRef.current = null;
+        setCopied(false);
+      }, 2000);
+    } catch {
+      setCopied(false);
+    }
   }, [text]);
 
   return (

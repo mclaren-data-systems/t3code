@@ -68,7 +68,9 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
               ? "Searching workspace files..."
               : props.triggerKind === "path"
                 ? "No matching files or folders."
-                : "No matching command."}
+                : props.triggerKind === "slash-model"
+                  ? "No matching models."
+                  : "No matching command."}
           </p>
         )}
       </div>
