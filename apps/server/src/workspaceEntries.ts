@@ -466,7 +466,10 @@ export function clearWorkspaceIndexCache(cwd: string): void {
   inFlightWorkspaceIndexBuilds.delete(cwd);
 }
 
-function findInsertionIndex(ranked: Array<{ entry: ProjectEntry; score: number }>, score: number): number {
+function findInsertionIndex(
+  ranked: Array<{ entry: ProjectEntry; score: number }>,
+  score: number,
+): number {
   let lo = 0;
   let hi = ranked.length;
   while (lo < hi) {

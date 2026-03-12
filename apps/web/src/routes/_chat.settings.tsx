@@ -787,8 +787,8 @@ function SettingsRouteView() {
                   />
                 </div>
 
-                {(settings.showCommandOutput !== defaults.showCommandOutput ||
-                  settings.showFileChangeDiffs !== defaults.showFileChangeDiffs) ? (
+                {settings.showCommandOutput !== defaults.showCommandOutput ||
+                settings.showFileChangeDiffs !== defaults.showFileChangeDiffs ? (
                   <div className="flex justify-end">
                     <Button
                       size="xs"
