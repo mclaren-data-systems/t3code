@@ -13,14 +13,19 @@ function getStorage(): Storage {
   return {
     clear: () => store.clear(),
     getItem: (_) => store.get(_) ?? null,
-    key: (_) => Array.from(store.keys()).at(_) ?? null,
+    key: (index) => {
+      if (index < 0 || index >= store.size) return null;
+      return Array.from(store.keys())[index] ?? null;
+    },
     get length() {
       return store.size;
     },
     removeItem: (_) => {
       store.delete(_);
     },
-    setItem: (_, value) => store.set(_, value),
+    setItem: (_, value) => {
+      store.set(_, value);
+    },
   };
 }
 
@@ -109,10 +114,18 @@ export function useLocalStorage<T, E>(
       return;
     }
     try {
+      // Compare encoded values to avoid dispatching when the serialized form hasn't changed.
+      // This prevents cross-instance ping-pong loops when multiple hooks share the same key
+      // (re-decoded objects create new references, triggering the effect again).
+      const currentRaw = resolveStorage().getItem(key);
+      const nextRaw = storedValue === null ? null : encode(schema, storedValue);
       if (storedValue === null) {
         removeLocalStorageItem(key);
+      } else if (nextRaw !== currentRaw) {
+        resolveStorage().setItem(key, nextRaw!);
       } else {
-        setLocalStorageItem(key, storedValue, schema);
+        // Value unchanged — skip dispatch entirely
+        return;
       }
       isSelfDispatch.current = true;
       dispatchLocalStorageChange(key);
