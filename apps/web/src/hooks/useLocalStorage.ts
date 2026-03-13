@@ -1,22 +1,33 @@
 import * as Schema from "effect/Schema";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const isomorphicLocalStorage: Storage =
-  typeof window !== "undefined"
-    ? window.localStorage
-    : (function () {
-        const store = new Map<string, string>();
-        return {
-          clear: () => store.clear(),
-          getItem: (_) => store.get(_) ?? null,
-          key: (_) => Array.from(store.keys()).at(_) ?? null,
-          get length() {
-            return store.size;
-          },
-          removeItem: (_) => store.delete(_),
-          setItem: (_, value) => store.set(_, value),
-        };
-      })();
+function getStorage(): Storage {
+  if (typeof window !== "undefined") {
+    try {
+      return window.localStorage;
+    } catch {
+      // localStorage blocked (e.g. sandboxed iframe, privacy mode)
+    }
+  }
+  const store = new Map<string, string>();
+  return {
+    clear: () => store.clear(),
+    getItem: (_) => store.get(_) ?? null,
+    key: (_) => Array.from(store.keys()).at(_) ?? null,
+    get length() {
+      return store.size;
+    },
+    removeItem: (_) => {
+      store.delete(_);
+    },
+    setItem: (_, value) => store.set(_, value),
+  };
+}
+
+let _storage: Storage | undefined;
+function resolveStorage(): Storage {
+  return (_storage ??= getStorage());
+}
 
 const decode = <T, E>(schema: Schema.Codec<T, E>, value: string) =>
   Schema.decodeSync(Schema.fromJsonString(schema))(value);
@@ -25,17 +36,17 @@ const encode = <T, E>(schema: Schema.Codec<T, E>, value: T) =>
   Schema.encodeSync(Schema.fromJsonString(schema))(value);
 
 export const getLocalStorageItem = <T, E>(key: string, schema: Schema.Codec<T, E>): T | null => {
-  const item = isomorphicLocalStorage.getItem(key);
+  const item = resolveStorage().getItem(key);
   return item ? decode(schema, item) : null;
 };
 
 export const setLocalStorageItem = <T, E>(key: string, value: T, schema: Schema.Codec<T, E>) => {
   const valueToSet = encode(schema, value);
-  isomorphicLocalStorage.setItem(key, valueToSet);
+  resolveStorage().setItem(key, valueToSet);
 };
 
 export const removeLocalStorageItem = (key: string) => {
-  isomorphicLocalStorage.removeItem(key);
+  resolveStorage().removeItem(key);
 };
 
 const LOCAL_STORAGE_CHANGE_EVENT = "t3code:local_storage_change";
@@ -69,27 +80,37 @@ export function useLocalStorage<T, E>(
     }
   });
 
-  // Return a wrapped version of useState's setter function that persists the new value to localStorage
-  const setValue = useCallback(
-    (value: T | ((val: T) => T)) => {
-      try {
-        setStoredValue((prev) => {
-          const valueToStore = typeof value === "function" ? (value as (val: T) => T)(prev) : value;
-          if (valueToStore === null) {
-            removeLocalStorageItem(key);
-          } else {
-            setLocalStorageItem(key, valueToStore, schema);
-          }
-          // Dispatch event after state update completes to avoid nested state updates
-          queueMicrotask(() => dispatchLocalStorageChange(key));
-          return valueToStore;
-        });
-      } catch (error) {
-        console.error("[LOCALSTORAGE] Error:", error);
+  // Return a wrapped version of useState's setter function that persists the new value to localStorage.
+  // Persistence is done outside the setState updater to avoid side-effects that React StrictMode replays.
+  const setValue = useCallback((value: T | ((val: T) => T)) => {
+    try {
+      setStoredValue((prev) => {
+        const valueToStore = typeof value === "function" ? (value as (val: T) => T)(prev) : value;
+        return valueToStore;
+      });
+    } catch (error) {
+      console.error("[LOCALSTORAGE] Error:", error);
+    }
+  }, []);
+
+  // Persist to localStorage whenever storedValue changes
+  const isInitialMount = useRef(true);
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    try {
+      if (storedValue === null) {
+        removeLocalStorageItem(key);
+      } else {
+        setLocalStorageItem(key, storedValue, schema);
       }
-    },
-    [key, schema],
-  );
+      dispatchLocalStorageChange(key);
+    } catch (error) {
+      console.error("[LOCALSTORAGE] Error:", error);
+    }
+  }, [storedValue, key, schema]);
 
   const prevKeyRef = useRef(key);
 
