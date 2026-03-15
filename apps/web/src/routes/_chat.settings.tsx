@@ -1029,14 +1029,79 @@ function SettingsRouteView() {
                 </p>
               </div>
 
-              <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2">
-                <div>
-                  <p className="text-sm font-medium text-foreground">Version</p>
-                  <p className="text-xs text-muted-foreground">
-                    Current version of the application.
-                  </p>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Version</p>
+                    <p className="text-xs text-muted-foreground">
+                      {updateState?.status === "up-to-date"
+                        ? "You're on the latest version."
+                        : updateState?.status === "checking"
+                          ? "Checking for updates..."
+                          : updateState?.status === "available"
+                            ? `Version ${updateState.availableVersion ?? "unknown"} is available.`
+                            : updateState?.status === "downloading"
+                              ? `Downloading update${typeof updateState.downloadPercent === "number" ? ` (${Math.floor(updateState.downloadPercent)}%)` : ""}...`
+                              : updateState?.status === "downloaded"
+                                ? `Version ${updateState.downloadedVersion ?? updateState.availableVersion ?? "unknown"} is ready to install.`
+                                : updateState?.status === "error"
+                                  ? (updateState.message ?? "Update check failed.")
+                                  : "Current version of the application."}
+                    </p>
+                    {updateState?.checkedAt ? (
+                      <p className="mt-0.5 text-[11px] text-muted-foreground/70">
+                        Last checked: {new Date(updateState.checkedAt).toLocaleString()}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="ml-3 flex shrink-0 items-center gap-2">
+                    <code className="text-xs font-medium text-muted-foreground">{APP_VERSION}</code>
+                    {isElectron ? (
+                      <>
+                        {updateState?.status === "available" ? (
+                          <Button size="xs" onClick={handleDownloadUpdate}>
+                            Download
+                          </Button>
+                        ) : null}
+                        {updateState?.status === "downloaded" ? (
+                          <Button size="xs" onClick={handleInstallUpdate}>
+                            Restart & Install
+                          </Button>
+                        ) : null}
+                        {updateState?.status === "error" && updateState.errorContext === "download" && updateState.availableVersion ? (
+                          <Button size="xs" variant="outline" onClick={handleDownloadUpdate}>
+                            Retry Download
+                          </Button>
+                        ) : null}
+                        {updateState?.status === "error" && updateState.errorContext === "install" && updateState.downloadedVersion ? (
+                          <Button size="xs" variant="outline" onClick={handleInstallUpdate}>
+                            Retry Install
+                          </Button>
+                        ) : null}
+                        <Button
+                          size="xs"
+                          variant="outline"
+                          disabled={isCheckingUpdate || updateState?.status === "checking" || updateState?.status === "downloading"}
+                          onClick={handleCheckForUpdate}
+                        >
+                          {isCheckingUpdate || updateState?.status === "checking"
+                            ? "Checking..."
+                            : "Check for Updates"}
+                        </Button>
+                      </>
+                    ) : null}
+                  </div>
                 </div>
-                <code className="text-xs font-medium text-muted-foreground">{APP_VERSION}</code>
+                {updateState?.status === "downloading" && typeof updateState.downloadPercent === "number" ? (
+                  <div className="px-1">
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-primary transition-all duration-300"
+                        style={{ width: `${updateState.downloadPercent}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </section>
           </div>
