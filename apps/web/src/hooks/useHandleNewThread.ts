@@ -1,4 +1,10 @@
-import { DEFAULT_RUNTIME_MODE, type ProjectId, ThreadId } from "@t3tools/contracts";
+import {
+  DEFAULT_RUNTIME_MODE,
+  type ModelSlug,
+  type ProjectId,
+  type ProviderKind,
+  ThreadId,
+} from "@t3tools/contracts";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useCallback } from "react";
 import {
@@ -32,14 +38,19 @@ export function useHandleNewThread() {
         branch?: string | null;
         worktreePath?: string | null;
         envMode?: DraftThreadEnvMode;
+        provider?: ProviderKind | null;
+        model?: ModelSlug | null;
       },
     ): Promise<void> => {
       const {
         clearProjectDraftThreadId,
+        draftsByThreadId,
         getDraftThread,
         getDraftThreadByProjectId,
         setDraftThreadContext,
+        setModel: setDraftModel,
         setProjectDraftThreadId,
+        setProvider: setDraftProvider,
       } = useComposerDraftStore.getState();
       const hasBranchOption = options?.branch !== undefined;
       const hasWorktreePathOption = options?.worktreePath !== undefined;
@@ -97,13 +108,31 @@ export function useHandleNewThread() {
           runtimeMode: DEFAULT_RUNTIME_MODE,
         });
 
+        // Seed provider/model from explicit options, or carry over from the
+        // active thread / draft so the user's current provider selection
+        // persists across new-thread creation.
+        const sourceThread = activeThread?.projectId === projectId ? activeThread : undefined;
+        const sameProjectDraft =
+          routeThreadId && latestActiveDraftThread?.projectId === projectId
+            ? draftsByThreadId[routeThreadId]
+            : undefined;
+        const seedProvider =
+          options?.provider ?? sourceThread?.provider ?? sameProjectDraft?.provider ?? null;
+        const seedModel = options?.model ?? sourceThread?.model ?? sameProjectDraft?.model ?? null;
+        if (seedProvider != null) {
+          setDraftProvider(threadId, seedProvider);
+        }
+        if (seedModel != null) {
+          setDraftModel(threadId, seedModel);
+        }
+
         await navigate({
           to: "/$threadId",
           params: { threadId },
         });
       })();
     },
-    [navigate, routeThreadId],
+    [activeThread, navigate, routeThreadId],
   );
 
   return {
