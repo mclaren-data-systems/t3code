@@ -308,6 +308,24 @@ function SettingsRouteView() {
   const [isLogViewerOpen, setIsLogViewerOpen] = useState(false);
   const logViewerRef = useRef<HTMLPreElement>(null);
 
+  const loadLogFile = useCallback(async (filename: string) => {
+    setIsLoadingLogs(true);
+    try {
+      const api = ensureNativeApi();
+      const result = await api.logs.read(filename);
+      setLogContent(result.content);
+      requestAnimationFrame(() => {
+        if (logViewerRef.current) {
+          logViewerRef.current.scrollTop = logViewerRef.current.scrollHeight;
+        }
+      });
+    } catch {
+      setLogContent("Failed to read log file.");
+    } finally {
+      setIsLoadingLogs(false);
+    }
+  }, []);
+
   const hasDesktopBridge = isElectron && !!window.desktopBridge;
 
   useEffect(() => {
@@ -581,28 +599,31 @@ function SettingsRouteView() {
                     {settings.customAccentPresets.map((preset) => {
                       const selected = accentColor === preset.value;
                       return (
-                        <button
+                        <div
                           key={`custom:${preset.value}:${preset.label}`}
-                          type="button"
                           className={`group inline-flex items-center gap-2 rounded-md border px-2 py-1 text-xs transition-colors ${
                             selected
                               ? "border-primary/60 bg-primary/8 text-foreground"
                               : "border-border bg-background text-muted-foreground hover:bg-accent"
                           }`}
-                          onClick={() => updateSettings({ accentColor: preset.value })}
                         >
-                          <span
-                            aria-hidden="true"
-                            className="size-3 rounded-full border border-black/20"
-                            style={{ backgroundColor: preset.value }}
-                          />
-                          {preset.label}
-                          <span
-                            role="button"
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-2"
+                            onClick={() => updateSettings({ accentColor: preset.value })}
+                          >
+                            <span
+                              aria-hidden="true"
+                              className="size-3 rounded-full border border-black/20"
+                              style={{ backgroundColor: preset.value }}
+                            />
+                            {preset.label}
+                          </button>
+                          <button
+                            type="button"
                             aria-label={`Remove ${preset.label} preset`}
                             className="ml-0.5 hidden text-muted-foreground/50 hover:text-foreground group-hover:inline"
-                            onClick={(e) => {
-                              e.stopPropagation();
+                            onClick={() => {
                               updateSettings({
                                 customAccentPresets: settings.customAccentPresets.filter(
                                   (p) => p.value !== preset.value || p.label !== preset.label,
@@ -611,8 +632,8 @@ function SettingsRouteView() {
                             }}
                           >
                             &times;
-                          </span>
-                        </button>
+                          </button>
+                        </div>
                       );
                     })}
                   </div>
@@ -667,6 +688,12 @@ function SettingsRouteView() {
                           e.preventDefault();
                           const name = presetNameInput.trim();
                           if (!name) return;
+                          if (
+                            settings.customAccentPresets.some(
+                              (p) => p.label.toLowerCase() === name.toLowerCase(),
+                            )
+                          )
+                            return;
                           updateSettings({
                             customAccentPresets: [
                               ...settings.customAccentPresets,
@@ -1300,8 +1327,7 @@ function SettingsRouteView() {
                       setLogFiles(files);
                       if (files.length > 0 && !selectedLogFile) {
                         setSelectedLogFile(files[0]!);
-                        const readResult = await api.logs.read(files[0]!);
-                        setLogContent(readResult.content);
+                        await loadLogFile(files[0]!);
                       }
                       setIsLogViewerOpen(true);
                     } catch {
@@ -1324,24 +1350,10 @@ function SettingsRouteView() {
                     <div className="flex items-center gap-2">
                       <Select
                         value={selectedLogFile ?? ""}
-                        onValueChange={async (value) => {
+                        onValueChange={(value) => {
                           if (!value) return;
                           setSelectedLogFile(value);
-                          setIsLoadingLogs(true);
-                          try {
-                            const api = ensureNativeApi();
-                            const result = await api.logs.read(value);
-                            setLogContent(result.content);
-                            requestAnimationFrame(() => {
-                              if (logViewerRef.current) {
-                                logViewerRef.current.scrollTop = logViewerRef.current.scrollHeight;
-                              }
-                            });
-                          } catch {
-                            setLogContent("Failed to read log file.");
-                          } finally {
-                            setIsLoadingLogs(false);
-                          }
+                          void loadLogFile(value);
                         }}
                       >
                         <SelectTrigger className="h-7 w-60 text-xs">
@@ -1359,23 +1371,8 @@ function SettingsRouteView() {
                         size="xs"
                         variant="outline"
                         disabled={!selectedLogFile || isLoadingLogs}
-                        onClick={async () => {
-                          if (!selectedLogFile) return;
-                          setIsLoadingLogs(true);
-                          try {
-                            const api = ensureNativeApi();
-                            const result = await api.logs.read(selectedLogFile);
-                            setLogContent(result.content);
-                            requestAnimationFrame(() => {
-                              if (logViewerRef.current) {
-                                logViewerRef.current.scrollTop = logViewerRef.current.scrollHeight;
-                              }
-                            });
-                          } catch {
-                            setLogContent("Failed to read log file.");
-                          } finally {
-                            setIsLoadingLogs(false);
-                          }
+                        onClick={() => {
+                          if (selectedLogFile) void loadLogFile(selectedLogFile);
                         }}
                       >
                         Refresh

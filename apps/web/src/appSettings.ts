@@ -105,8 +105,8 @@ const AppSettingsSchema = Schema.Struct({
   ),
   customAccentPresets: Schema.Array(
     Schema.Struct({
-      label: Schema.String,
-      value: Schema.String,
+      label: Schema.String.check(Schema.isMaxLength(64)),
+      value: Schema.String.check(Schema.isMaxLength(16)),
     }),
   ).pipe(
     Schema.withConstructorDefault(() =>

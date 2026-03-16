@@ -753,7 +753,20 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   return (
     <div
       className={cn("rounded-lg px-1 py-1", isExpandable && "cursor-pointer")}
+      role={isExpandable ? "button" : undefined}
+      tabIndex={isExpandable ? 0 : undefined}
+      aria-expanded={isExpandable ? expanded : undefined}
       onClick={isExpandable ? () => setExpanded((prev) => !prev) : undefined}
+      onKeyDown={
+        isExpandable
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setExpanded((prev) => !prev);
+              }
+            }
+          : undefined
+      }
     >
       <div className="flex items-start gap-2 transition-[opacity,translate] duration-200">
         <span
