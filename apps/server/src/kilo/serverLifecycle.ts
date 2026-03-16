@@ -62,8 +62,8 @@ export async function ensureServer(
     const state = await serverPromise;
     return { state, serverPromise };
   } catch (error) {
-    // Clear the promise so next call will retry instead of re-awaiting the
-    // same rejected promise.
+    // Propagate the error — the caller's finally block clears serverPromise
+    // when this.server is still undefined, enabling retry on next call.
     throw error;
   }
 }

@@ -754,6 +754,9 @@ function handleVcsBranchUpdatedEvent(
   context: KiloSessionContext,
   event: EventVcsBranchUpdated,
 ): void {
+  if (event.properties.sessionID && event.properties.sessionID !== context.providerSessionId) {
+    return;
+  }
   emitter.emitRuntimeEvent({
     type: "thread.metadata.updated",
     eventId: eventId("kilo-vcs-branch-updated"),
@@ -777,6 +780,9 @@ function handleFileEditedEvent(
   context: KiloSessionContext,
   event: EventFileEdited,
 ): void {
+  if (event.properties.sessionID && event.properties.sessionID !== context.providerSessionId) {
+    return;
+  }
   emitter.emitRuntimeEvent({
     type: "files.persisted",
     eventId: eventId("kilo-file-edited"),

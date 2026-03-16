@@ -164,7 +164,7 @@ export function parseProviderModels(
   >,
   connectedIds?: ReadonlySet<string>,
 ): ReadonlyArray<KiloDiscoveredModel> {
-  const sorted = [...providers].sort((a, b) => {
+  const sorted = providers.toSorted((a, b) => {
     const nameA = a.name || a.id;
     const nameB = b.name || b.id;
     return nameA.localeCompare(nameB);

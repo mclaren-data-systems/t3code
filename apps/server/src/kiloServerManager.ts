@@ -449,14 +449,22 @@ export class KiloServerManager extends EventEmitter<KiloManagerEvents> {
   }
 
   async rollbackThread(threadId: ThreadId, numTurns = 1): Promise<ProviderThreadSnapshot> {
+    if (!Number.isInteger(numTurns) || numTurns < 1) {
+      throw new Error(`Invalid numTurns (${numTurns}) — must be a positive integer`);
+    }
     const context = this.requireSession(threadId);
     const ids = context.messageIds;
     if (ids.length === 0) {
       throw new Error(`No tracked messages for Kilo thread '${threadId}' — cannot rollback`);
     }
+    if (numTurns >= ids.length) {
+      throw new Error(
+        `Cannot rollback ${numTurns} turns — only ${ids.length} tracked message(s) available`,
+      );
+    }
     // Target the message just before the last `numTurns` messages.
     // Each message ID in the tracked list corresponds to one assistant turn.
-    const targetIndex = Math.max(0, ids.length - numTurns - 1);
+    const targetIndex = ids.length - numTurns - 1;
     const targetMessageId = ids[targetIndex]!;
     await readJsonData(
       context.client.session.revert({

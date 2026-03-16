@@ -754,6 +754,9 @@ function handleVcsBranchUpdatedEvent(
   context: OpenCodeSessionContext,
   event: EventVcsBranchUpdated,
 ): void {
+  if (event.properties.sessionID && event.properties.sessionID !== context.providerSessionId) {
+    return;
+  }
   emitter.emitRuntimeEvent({
     type: "thread.metadata.updated",
     eventId: eventId("opencode-vcs-branch-updated"),
@@ -777,6 +780,9 @@ function handleFileEditedEvent(
   context: OpenCodeSessionContext,
   event: EventFileEdited,
 ): void {
+  if (event.properties.sessionID && event.properties.sessionID !== context.providerSessionId) {
+    return;
+  }
   emitter.emitRuntimeEvent({
     type: "files.persisted",
     eventId: eventId("opencode-file-edited"),
