@@ -40,7 +40,10 @@ export async function createClient(options: OpencodeClientOptions): Promise<Open
  */
 export async function ensureServer(
   options: OpenCodeProviderOptions | undefined,
-  cached: { server: SharedServerState | undefined; serverPromise: Promise<SharedServerState> | undefined },
+  cached: {
+    server: SharedServerState | undefined;
+    serverPromise: Promise<SharedServerState> | undefined;
+  },
 ): Promise<{
   state: SharedServerState;
   serverPromise: Promise<SharedServerState> | undefined;

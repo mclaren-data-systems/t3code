@@ -406,11 +406,7 @@ function handleQuestionAskedEvent(
   context: OpenCodeSessionContext,
   event: EventQuestionAsked,
 ): void {
-  const {
-    id: requestIdValue,
-    sessionID: sessionId,
-    questions: askedQuestions,
-  } = event.properties;
+  const { id: requestIdValue, sessionID: sessionId, questions: askedQuestions } = event.properties;
   if (sessionId !== context.providerSessionId) {
     return;
   }

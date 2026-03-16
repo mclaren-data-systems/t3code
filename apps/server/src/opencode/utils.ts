@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 
-import { EventId, TurnId, type CanonicalRequestType, type ProviderApprovalDecision } from "@t3tools/contracts";
+import {
+  EventId,
+  TurnId,
+  type CanonicalRequestType,
+  type ProviderApprovalDecision,
+} from "@t3tools/contracts";
 
 import type {
   ConfigProvidersResponse,
@@ -197,7 +202,9 @@ export function toOpencodeRequestType(permission: string | undefined): Canonical
   }
 }
 
-export function toPermissionReply(decision: ProviderApprovalDecision): "once" | "always" | "reject" {
+export function toPermissionReply(
+  decision: ProviderApprovalDecision,
+): "once" | "always" | "reject" {
   switch (decision) {
     case "acceptForSession":
       return "always";

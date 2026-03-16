@@ -47,7 +47,10 @@ import {
 import { handleEvent } from "./opencode/eventHandlers.ts";
 import { createClient, ensureServer } from "./opencode/serverLifecycle.ts";
 
-export { type OpenCodeDiscoveredModel, type OpenCodeModelDiscoveryOptions } from "./opencode/types.ts";
+export {
+  type OpenCodeDiscoveredModel,
+  type OpenCodeModelDiscoveryOptions,
+} from "./opencode/types.ts";
 
 export class OpenCodeServerManager extends EventEmitter<OpenCodeManagerEvents> {
   private readonly sessions = new Map<ThreadId, OpenCodeSessionContext>();
