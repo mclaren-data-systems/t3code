@@ -113,6 +113,22 @@ const AppSettingsSchema = Schema.Struct({
       Option.some([] as ReadonlyArray<{ label: string; value: string }>),
     ),
   ),
+  backgroundColorOverride: Schema.String.check(Schema.isMaxLength(16)).pipe(
+    Schema.withConstructorDefault(() => Option.some("")),
+  ),
+  foregroundColorOverride: Schema.String.check(Schema.isMaxLength(16)).pipe(
+    Schema.withConstructorDefault(() => Option.some("")),
+  ),
+  uiFont: Schema.String.check(Schema.isMaxLength(256)).pipe(
+    Schema.withConstructorDefault(() => Option.some("")),
+  ),
+  codeFont: Schema.String.check(Schema.isMaxLength(256)).pipe(
+    Schema.withConstructorDefault(() => Option.some("")),
+  ),
+  uiFontSize: Schema.Number.pipe(Schema.withConstructorDefault(() => Option.some(0))),
+  codeFontSize: Schema.Number.pipe(Schema.withConstructorDefault(() => Option.some(0))),
+  contrast: Schema.Number.pipe(Schema.withConstructorDefault(() => Option.some(0))),
+  translucency: Schema.Boolean.pipe(Schema.withConstructorDefault(() => Option.some(false))),
 });
 export type AppSettings = typeof AppSettingsSchema.Type;
 export interface AppModelOption {

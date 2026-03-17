@@ -11,6 +11,7 @@ import { getRouter } from "./router";
 import { APP_DISPLAY_NAME } from "./branding";
 import { getAppSettingsSnapshot } from "./appSettings";
 import { applyAccentColorToDocument } from "./accentColor";
+import { applyThemeConfigToDocument } from "./themeConfig";
 
 // Electron loads the app from a file-backed shell, so hash history avoids path resolution issues.
 const history = isElectron ? createHashHistory() : createBrowserHistory();
@@ -18,7 +19,9 @@ const history = isElectron ? createHashHistory() : createBrowserHistory();
 const router = getRouter(history);
 
 document.title = APP_DISPLAY_NAME;
-applyAccentColorToDocument(getAppSettingsSnapshot().accentColor);
+const initialSettings = getAppSettingsSnapshot();
+applyAccentColorToDocument(initialSettings.accentColor);
+applyThemeConfigToDocument(initialSettings);
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

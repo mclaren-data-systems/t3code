@@ -13,6 +13,7 @@ import { Throttler } from "@tanstack/react-pacer";
 import { APP_DISPLAY_NAME } from "../branding";
 import { useAppSettings } from "../appSettings";
 import { applyAccentColorToDocument } from "../accentColor";
+import { applyThemeConfigToDocument } from "../themeConfig";
 import { Button } from "../components/ui/button";
 import { AnchoredToastProvider, ToastProvider, toastManager } from "../components/ui/toast";
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
@@ -58,6 +59,19 @@ function RootRouteView() {
   useEffect(() => {
     applyAccentColorToDocument(settings.accentColor);
   }, [settings.accentColor]);
+
+  useEffect(() => {
+    applyThemeConfigToDocument(settings);
+  }, [
+    settings.uiFont,
+    settings.codeFont,
+    settings.uiFontSize,
+    settings.codeFontSize,
+    settings.backgroundColorOverride,
+    settings.foregroundColorOverride,
+    settings.contrast,
+    settings.translucency,
+  ]);
 
   if (!readNativeApi()) {
     return (
