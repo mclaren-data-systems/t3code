@@ -26,7 +26,7 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import { restrictToFirstScrollableAncestor, restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { CSS } from "@dnd-kit/utilities";
 import {
   DEFAULT_MODEL_BY_PROVIDER,
@@ -993,7 +993,6 @@ export default function Sidebar() {
       if (!api) return;
       const thread = threads.find((t) => t.id === threadId);
       if (!thread) return;
-
       const threadProject = projects.find((project) => project.id === thread.projectId);
       // When bulk-deleting, exclude the other threads being deleted so
       // getOrphanedWorktreePathForThread correctly detects that no surviving
@@ -1104,7 +1103,7 @@ export default function Sidebar() {
     ],
   );
 
-  const { copyToClipboard } = useCopyToClipboard<{ threadId: ThreadId }>({
+  const { copyToClipboard: copyThreadIdToClipboard } = useCopyToClipboard<{ threadId: ThreadId }>({
     onCopy: (ctx) => {
       toastManager.add({
         type: "success",
@@ -1120,21 +1119,40 @@ export default function Sidebar() {
       });
     },
   });
+  const { copyToClipboard: copyPathToClipboard } = useCopyToClipboard<{ path: string }>({
+    onCopy: (ctx) => {
+      toastManager.add({
+        type: "success",
+        title: "Path copied",
+        description: ctx.path,
+      });
+    },
+    onError: (error) => {
+      toastManager.add({
+        type: "error",
+        title: "Failed to copy path",
+        description: error instanceof Error ? error.message : "An error occurred.",
+      });
+    },
+  });
   const handleThreadContextMenu = useCallback(
     async (threadId: ThreadId, position: { x: number; y: number }) => {
       const api = readNativeApi();
       if (!api) return;
+      const thread = threads.find((t) => t.id === threadId);
+      if (!thread) return;
+      const threadWorkspacePath =
+        thread.worktreePath ?? projectCwdById.get(thread.projectId) ?? null;
       const clicked = await api.contextMenu.show(
         [
           { id: "rename", label: "Rename thread" },
           { id: "mark-unread", label: "Mark unread" },
+          { id: "copy-path", label: "Copy Path" },
           { id: "copy-thread-id", label: "Copy Thread ID" },
           { id: "delete", label: "Delete", destructive: true },
         ],
         position,
       );
-      const thread = threads.find((t) => t.id === threadId);
-      if (!thread) return;
 
       if (clicked === "rename") {
         setRenamingThreadId(threadId);
@@ -1147,8 +1165,20 @@ export default function Sidebar() {
         markThreadUnread(threadId);
         return;
       }
+      if (clicked === "copy-path") {
+        if (!threadWorkspacePath) {
+          toastManager.add({
+            type: "error",
+            title: "Path unavailable",
+            description: "This thread does not have a workspace path to copy.",
+          });
+          return;
+        }
+        copyPathToClipboard(threadWorkspacePath, { path: threadWorkspacePath });
+        return;
+      }
       if (clicked === "copy-thread-id") {
-        copyToClipboard(threadId, { threadId });
+        copyThreadIdToClipboard(threadId, { threadId });
         return;
       }
       if (clicked !== "delete") return;
@@ -1165,7 +1195,15 @@ export default function Sidebar() {
       }
       await deleteThread(threadId);
     },
-    [appSettings.confirmThreadDelete, copyToClipboard, deleteThread, markThreadUnread, threads],
+    [
+      appSettings.confirmThreadDelete,
+      copyPathToClipboard,
+      copyThreadIdToClipboard,
+      deleteThread,
+      markThreadUnread,
+      projectCwdById,
+      threads,
+    ],
   );
 
   const handleMultiSelectContextMenu = useCallback(
@@ -1783,7 +1821,7 @@ export default function Sidebar() {
           <DndContext
             sensors={projectDnDSensors}
             collisionDetection={projectCollisionDetection}
-            modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+            modifiers={[restrictToVerticalAxis, restrictToFirstScrollableAncestor]}
             onDragStart={handleProjectDragStart}
             onDragEnd={handleProjectDragEnd}
             onDragCancel={handleProjectDragCancel}
