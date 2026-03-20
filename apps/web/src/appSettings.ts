@@ -4,7 +4,12 @@ import {
   DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER,
   type ProviderKind,
 } from "@t3tools/contracts";
-import { getDefaultModel, getModelOptions, normalizeModelSlug } from "@t3tools/shared/model";
+import {
+  getDefaultModel,
+  getModelOptions,
+  normalizeModelSlug,
+  resolveSelectableModel,
+} from "@t3tools/shared/model";
 import { DEFAULT_ACCENT_COLOR, isValidAccentColor, normalizeAccentColor } from "./accentColor";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { EnvMode } from "./components/BranchToolbar.logic";
@@ -35,6 +40,24 @@ const AppProviderLogoAppearanceSchema = Schema.Literals(["original", "grayscale"
 export const TIMESTAMP_FORMAT_OPTIONS = ["locale", "12-hour", "24-hour"] as const;
 export type TimestampFormat = (typeof TIMESTAMP_FORMAT_OPTIONS)[number];
 export const DEFAULT_TIMESTAMP_FORMAT: TimestampFormat = "locale";
+type CustomModelSettingsKey =
+  | "customCodexModels"
+  | "customCopilotModels"
+  | "customClaudeModels"
+  | "customCursorModels"
+  | "customOpencodeModels"
+  | "customGeminiCliModels"
+  | "customAmpModels"
+  | "customKiloModels";
+export type ProviderCustomModelConfig = {
+  provider: ProviderKind;
+  settingsKey: CustomModelSettingsKey;
+  defaultSettingsKey: CustomModelSettingsKey;
+  title: string;
+  description: string;
+  placeholder: string;
+  example: string;
+};
 
 const BUILT_IN_MODEL_SLUGS_BY_PROVIDER: Record<ProviderKind, ReadonlySet<string>> = {
   codex: new Set(getModelOptions("codex").map((option) => option.slug)),
@@ -140,6 +163,81 @@ type ProviderCustomModelSettings = Pick<
 >;
 
 const DEFAULT_APP_SETTINGS = AppSettingsSchema.makeUnsafe({});
+const PROVIDER_CUSTOM_MODEL_CONFIG: Record<ProviderKind, ProviderCustomModelConfig> = {
+  codex: {
+    provider: "codex",
+    settingsKey: "customCodexModels",
+    defaultSettingsKey: "customCodexModels",
+    title: "Codex",
+    description: "Save additional Codex model slugs for the picker and `/model` command.",
+    placeholder: "your-codex-model-slug",
+    example: "gpt-6.7-codex-ultra-preview",
+  },
+  copilot: {
+    provider: "copilot",
+    settingsKey: "customCopilotModels",
+    defaultSettingsKey: "customCopilotModels",
+    title: "Copilot",
+    description: "Save additional Copilot model slugs for the picker and `/model` command.",
+    placeholder: "your-copilot-model-slug",
+    example: "gpt-4o-copilot",
+  },
+  claudeAgent: {
+    provider: "claudeAgent",
+    settingsKey: "customClaudeModels",
+    defaultSettingsKey: "customClaudeModels",
+    title: "Claude",
+    description: "Save additional Claude model slugs for the picker and `/model` command.",
+    placeholder: "your-claude-model-slug",
+    example: "claude-sonnet-5-0",
+  },
+  cursor: {
+    provider: "cursor",
+    settingsKey: "customCursorModels",
+    defaultSettingsKey: "customCursorModels",
+    title: "Cursor",
+    description: "Save additional Cursor model slugs for the picker and `/model` command.",
+    placeholder: "your-cursor-model-slug",
+    example: "cursor-fast",
+  },
+  opencode: {
+    provider: "opencode",
+    settingsKey: "customOpencodeModels",
+    defaultSettingsKey: "customOpencodeModels",
+    title: "OpenCode",
+    description: "Save additional OpenCode model slugs for the picker and `/model` command.",
+    placeholder: "your-opencode-model-slug",
+    example: "opencode-pro",
+  },
+  geminiCli: {
+    provider: "geminiCli",
+    settingsKey: "customGeminiCliModels",
+    defaultSettingsKey: "customGeminiCliModels",
+    title: "Gemini CLI",
+    description: "Save additional Gemini CLI model slugs for the picker and `/model` command.",
+    placeholder: "your-gemini-model-slug",
+    example: "gemini-2.0-ultra",
+  },
+  amp: {
+    provider: "amp",
+    settingsKey: "customAmpModels",
+    defaultSettingsKey: "customAmpModels",
+    title: "Amp",
+    description: "Save additional Amp model slugs for the picker and `/model` command.",
+    placeholder: "your-amp-model-slug",
+    example: "amp-pro",
+  },
+  kilo: {
+    provider: "kilo",
+    settingsKey: "customKiloModels",
+    defaultSettingsKey: "customKiloModels",
+    title: "Kilo",
+    description: "Save additional Kilo model slugs for the picker and `/model` command.",
+    placeholder: "your-kilo-model-slug",
+    example: "kilo-advanced",
+  },
+};
+export const MODEL_PROVIDER_SETTINGS = Object.values(PROVIDER_CUSTOM_MODEL_CONFIG);
 
 export function normalizeCustomModelSlugs(
   models: Iterable<string | null | undefined>,
@@ -276,6 +374,28 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
   };
 }
 
+export function getDefaultCustomModelsForProvider(
+  defaults: Pick<AppSettings, CustomModelSettingsKey>,
+  provider: ProviderKind,
+): readonly string[] {
+  return defaults[PROVIDER_CUSTOM_MODEL_CONFIG[provider].defaultSettingsKey];
+}
+
+export function getCustomModelsByProvider(
+  settings: Pick<AppSettings, CustomModelSettingsKey>,
+): Record<ProviderKind, readonly string[]> {
+  return {
+    codex: getCustomModelsForProvider(settings, "codex"),
+    copilot: getCustomModelsForProvider(settings, "copilot"),
+    claudeAgent: getCustomModelsForProvider(settings, "claudeAgent"),
+    cursor: getCustomModelsForProvider(settings, "cursor"),
+    opencode: getCustomModelsForProvider(settings, "opencode"),
+    geminiCli: getCustomModelsForProvider(settings, "geminiCli"),
+    amp: getCustomModelsForProvider(settings, "amp"),
+    kilo: getCustomModelsForProvider(settings, "kilo"),
+  };
+}
+
 export function getAppModelOptions(
   provider: ProviderKind,
   customModels: readonly string[],
@@ -287,6 +407,7 @@ export function getAppModelOptions(
     isCustom: false,
   }));
   const seen = new Set(options.map((option) => option.slug));
+  const trimmedSelectedModel = selectedModel?.trim().toLowerCase();
 
   for (const slug of normalizeCustomModelSlugs(customModels, provider)) {
     if (seen.has(slug)) {
@@ -302,7 +423,14 @@ export function getAppModelOptions(
   }
 
   const normalizedSelectedModel = normalizeModelSlug(selectedModel, provider);
-  if (normalizedSelectedModel && !seen.has(normalizedSelectedModel)) {
+  const selectedModelMatchesExistingName =
+    typeof trimmedSelectedModel === "string" &&
+    options.some((option) => option.name.toLowerCase() === trimmedSelectedModel);
+  if (
+    normalizedSelectedModel &&
+    !seen.has(normalizedSelectedModel) &&
+    !selectedModelMatchesExistingName
+  ) {
     options.push({
       slug: normalizedSelectedModel,
       name: normalizedSelectedModel,
@@ -315,34 +443,28 @@ export function getAppModelOptions(
 
 export function resolveAppModelSelection(
   provider: ProviderKind,
-  customModels: readonly string[],
+  customModels: Record<ProviderKind, readonly string[]>,
   selectedModel: string | null | undefined,
 ): string {
-  const options = getAppModelOptions(provider, customModels, selectedModel);
-  const trimmedSelectedModel = selectedModel?.trim();
-  if (trimmedSelectedModel) {
-    const direct = options.find((option) => option.slug === trimmedSelectedModel);
-    if (direct) {
-      return direct.slug;
-    }
+  const customModelsForProvider = customModels[provider];
+  const options = getAppModelOptions(provider, customModelsForProvider, selectedModel);
+  return resolveSelectableModel(provider, selectedModel, options) ?? getDefaultModel(provider);
+}
 
-    const byName = options.find(
-      (option) => option.name.toLowerCase() === trimmedSelectedModel.toLowerCase(),
-    );
-    if (byName) {
-      return byName.slug;
-    }
-  }
-
-  const normalizedSelectedModel = normalizeModelSlug(selectedModel, provider);
-  if (!normalizedSelectedModel) {
-    return getDefaultModel(provider);
-  }
-
-  return (
-    options.find((option) => option.slug === normalizedSelectedModel)?.slug ??
-    getDefaultModel(provider)
-  );
+export function getCustomModelOptionsByProvider(
+  settings: Pick<AppSettings, CustomModelSettingsKey>,
+): Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>> {
+  const customModelsByProvider = getCustomModelsByProvider(settings);
+  return {
+    codex: getAppModelOptions("codex", customModelsByProvider.codex),
+    copilot: getAppModelOptions("copilot", customModelsByProvider.copilot),
+    claudeAgent: getAppModelOptions("claudeAgent", customModelsByProvider.claudeAgent),
+    cursor: getAppModelOptions("cursor", customModelsByProvider.cursor),
+    opencode: getAppModelOptions("opencode", customModelsByProvider.opencode),
+    geminiCli: getAppModelOptions("geminiCli", customModelsByProvider.geminiCli),
+    amp: getAppModelOptions("amp", customModelsByProvider.amp),
+    kilo: getAppModelOptions("kilo", customModelsByProvider.kilo),
+  };
 }
 
 export function resolveGitTextGenerationModelSelection(
@@ -353,18 +475,18 @@ export function resolveGitTextGenerationModelSelection(
   >,
   activeModel: string | null | undefined,
 ): string {
-  const customModels = getCustomModelsForProvider(settings, provider);
+  const customModelsByProvider = getCustomModelsByProvider(settings);
   const overrideModel = getGitTextGenerationModelOverride(settings, provider);
   if (overrideModel) {
-    return resolveAppModelSelection(provider, customModels, overrideModel);
+    return resolveAppModelSelection(provider, customModelsByProvider, overrideModel);
   }
   const normalizedActiveModel = normalizeModelSlug(activeModel, provider);
   if (normalizedActiveModel) {
-    return resolveAppModelSelection(provider, customModels, normalizedActiveModel);
+    return resolveAppModelSelection(provider, customModelsByProvider, normalizedActiveModel);
   }
   return resolveAppModelSelection(
     provider,
-    customModels,
+    customModelsByProvider,
     DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER[provider],
   );
 }
