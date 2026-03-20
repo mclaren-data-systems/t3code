@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { Option, Schema } from "effect";
 import {
   DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER,
@@ -454,6 +454,21 @@ export function useAppSettings() {
     AppSettingsSchema,
   );
 
+  // Apply legacy key migration that the schema decode path doesn't handle
+  // (e.g. gitTextGenerationModelByProvider.claudeCode → claudeAgent).
+  const migratedSettings = useMemo(() => {
+    const git = settings.gitTextGenerationModelByProvider;
+    if (git && typeof git === "object" && "claudeCode" in git) {
+      const record = { ...git } as Record<string, string>;
+      if (typeof record.claudeAgent !== "string" && typeof record.claudeCode === "string") {
+        record.claudeAgent = record.claudeCode;
+      }
+      delete record.claudeCode;
+      return { ...settings, gitTextGenerationModelByProvider: record };
+    }
+    return settings;
+  }, [settings]);
+
   const updateSettings = useCallback(
     (patch: Partial<AppSettings>) => {
       setSettings((prev) => normalizeAppSettings({ ...prev, ...patch }));
@@ -466,7 +481,7 @@ export function useAppSettings() {
   }, [setSettings]);
 
   return {
-    settings,
+    settings: migratedSettings,
     updateSettings,
     resetSettings,
     defaults: DEFAULT_APP_SETTINGS,
