@@ -1705,7 +1705,7 @@ export default function Sidebar() {
                     type="button"
                     aria-label="Add project"
                     aria-pressed={shouldShowProjectPathEntry}
-                    className="inline-flex size-5 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+                    className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
                     onClick={handleStartAddProject}
                   />
                 }
