@@ -77,7 +77,7 @@ describe("ProviderModelPicker", () => {
     }
   });
 
-  it("shows models directly when the provider is locked mid-thread", async () => {
+  it("disables non-locked providers when provider is locked mid-thread", async () => {
     const mounted = await mountPicker({
       provider: "claudeAgent",
       model: "claude-opus-4-6",
@@ -89,9 +89,9 @@ describe("ProviderModelPicker", () => {
 
       await vi.waitFor(() => {
         const text = document.body.textContent ?? "";
-        expect(text).toContain("Claude Sonnet 4.6");
-        expect(text).toContain("Claude Haiku 4.5");
-        expect(text).not.toContain("Codex");
+        // All providers still appear in the menu
+        expect(text).toContain("Claude");
+        expect(text).toContain("Codex");
       });
     } finally {
       await mounted.cleanup();
