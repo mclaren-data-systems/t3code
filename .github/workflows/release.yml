@@ -277,6 +277,7 @@ jobs:
   finalize:
     name: Finalize release
     needs: [preflight, release]
+    if: ${{ secrets.RELEASE_APP_ID != '' }}
     runs-on: ubuntu-24.04
     steps:
       - id: app_token
