@@ -401,16 +401,15 @@ function migratePersistedAppSettings(value: unknown): unknown {
     settings.providerLogoAppearance = "grayscale";
   }
 
-  // Migrate legacy "claudeCode" key to "claudeAgent" in gitTextGenerationModelByProvider
-  if (
-    settings.gitTextGenerationModelByProvider &&
-    typeof settings.gitTextGenerationModelByProvider === "object" &&
-    !Array.isArray(settings.gitTextGenerationModelByProvider)
-  ) {
-    const overrides = settings.gitTextGenerationModelByProvider as Record<string, unknown>;
-    if ("claudeCode" in overrides && !("claudeAgent" in overrides)) {
-      const { claudeCode, ...rest } = overrides;
-      settings.gitTextGenerationModelByProvider = { ...rest, claudeAgent: claudeCode };
+  // Migrate legacy "claudeCode" key to "claudeAgent" in record-typed settings
+  for (const key of ["gitTextGenerationModelByProvider", "providerAccentColors"] as const) {
+    const record = settings[key];
+    if (record && typeof record === "object" && !Array.isArray(record)) {
+      const obj = record as Record<string, unknown>;
+      if ("claudeCode" in obj && !("claudeAgent" in obj)) {
+        const { claudeCode, ...rest } = obj;
+        settings[key] = { ...rest, claudeAgent: claudeCode };
+      }
     }
   }
 
@@ -455,18 +454,22 @@ export function useAppSettings() {
   );
 
   // Apply legacy key migration that the schema decode path doesn't handle
-  // (e.g. gitTextGenerationModelByProvider.claudeCode → claudeAgent).
+  // Migrate legacy "claudeCode" keys to "claudeAgent" in record-typed settings
+  // (e.g. gitTextGenerationModelByProvider.claudeCode, providerAccentColors.claudeCode).
   const migratedSettings = useMemo(() => {
-    const git = settings.gitTextGenerationModelByProvider;
-    if (git && typeof git === "object" && "claudeCode" in git) {
-      const record = { ...git } as Record<string, string>;
-      if (typeof record.claudeAgent !== "string" && typeof record.claudeCode === "string") {
-        record.claudeAgent = record.claudeCode;
+    let patched = settings;
+    for (const key of ["gitTextGenerationModelByProvider", "providerAccentColors"] as const) {
+      const val = patched[key];
+      if (val && typeof val === "object" && "claudeCode" in val) {
+        const record = { ...val } as Record<string, string>;
+        if (typeof record.claudeAgent !== "string" && typeof record.claudeCode === "string") {
+          record.claudeAgent = record.claudeCode;
+        }
+        delete record.claudeCode;
+        patched = { ...patched, [key]: record };
       }
-      delete record.claudeCode;
-      return { ...settings, gitTextGenerationModelByProvider: record };
     }
-    return settings;
+    return patched;
   }, [settings]);
 
   const updateSettings = useCallback(
