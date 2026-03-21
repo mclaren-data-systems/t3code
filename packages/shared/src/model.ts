@@ -248,6 +248,11 @@ export interface CursorModelSelection {
   readonly thinking: boolean;
 }
 
+export interface SelectableModelOption {
+  slug: string;
+  name: string;
+}
+
 export function getModelOptions(provider: ProviderKind = "codex") {
   return MODEL_OPTIONS_BY_PROVIDER[provider];
 }
@@ -437,6 +442,39 @@ export function normalizeModelSlug(
     ? aliases[trimmed]
     : undefined;
   return typeof aliased === "string" ? aliased : (trimmed as ModelSlug);
+}
+
+export function resolveSelectableModel(
+  provider: ProviderKind,
+  value: string | null | undefined,
+  options: ReadonlyArray<SelectableModelOption>,
+): ModelSlug | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const direct = options.find((option) => option.slug === trimmed);
+  if (direct) {
+    return direct.slug;
+  }
+
+  const byName = options.find((option) => option.name.toLowerCase() === trimmed.toLowerCase());
+  if (byName) {
+    return byName.slug;
+  }
+
+  const normalized = normalizeModelSlug(trimmed, provider);
+  if (!normalized) {
+    return null;
+  }
+
+  const resolved = options.find((option) => option.slug === normalized);
+  return resolved ? resolved.slug : null;
 }
 
 export function resolveModelSlug(

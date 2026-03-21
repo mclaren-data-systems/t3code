@@ -2,6 +2,7 @@ import { type ModelSlug, type ProviderKind } from "@t3tools/contracts";
 import {
   normalizeModelSlug,
   parseCursorModelSelection,
+  resolveSelectableModel,
   resolveCursorPickerModelSlug,
 } from "@t3tools/shared/model";
 import { memo, useState } from "react";
@@ -255,6 +256,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   lockedProvider: ProviderKind | null;
   modelOptionsByProvider: Record<ProviderKind, ReadonlyArray<ModelOptionEntry>>;
   ultrathinkActive?: boolean;
+  activeProviderIconClassName?: string;
   compact?: boolean;
   disabled?: boolean;
   onProviderModelChange: (provider: ProviderKind, model: ModelSlug) => void;
@@ -269,7 +271,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const handleModelChange = (provider: ProviderKind, value: string) => {
     if (props.disabled) return;
     if (!value) return;
-    const resolvedModel = resolveModelForProviderPicker(
+    const resolvedModel = resolveSelectableModel(
       provider,
       value,
       props.modelOptionsByProvider[provider],
@@ -314,9 +316,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             className={cn(
               "size-4 shrink-0",
               providerIconClassName(activeProvider, "text-muted-foreground/70"),
-              activeProvider === "claudeAgent" && props.ultrathinkActive
-                ? "ultrathink-chroma"
-                : undefined,
+              props.activeProviderIconClassName,
             )}
           />
           <span className="min-w-0 flex-1 truncate">{selectedModelLabel}</span>

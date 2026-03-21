@@ -7,6 +7,7 @@ import {
 } from "@t3tools/contracts";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useCallback } from "react";
+import { inferProviderForModel } from "@t3tools/shared/model";
 import {
   type DraftThreadEnvMode,
   type DraftThreadState,
@@ -18,6 +19,8 @@ import { useStore } from "../store";
 export function useHandleNewThread() {
   const projects = useStore((store) => store.projects);
   const threads = useStore((store) => store.threads);
+  const stickyModel = useComposerDraftStore((store) => store.stickyModel);
+  const stickyModelOptions = useComposerDraftStore((store) => store.stickyModelOptions);
   const navigate = useNavigate();
   const routeThreadId = useParams({
     strict: false,
@@ -44,13 +47,13 @@ export function useHandleNewThread() {
     ): Promise<void> => {
       const {
         clearProjectDraftThreadId,
-        draftsByThreadId,
         getDraftThread,
         getDraftThreadByProjectId,
+        setModel,
+        setModelOptions,
+        setProvider,
         setDraftThreadContext,
-        setModel: setDraftModel,
         setProjectDraftThreadId,
-        setProvider: setDraftProvider,
       } = useComposerDraftStore.getState();
       const hasBranchOption = options?.branch !== undefined;
       const hasWorktreePathOption = options?.worktreePath !== undefined;
@@ -107,23 +110,21 @@ export function useHandleNewThread() {
           envMode: options?.envMode ?? "local",
           runtimeMode: DEFAULT_RUNTIME_MODE,
         });
-
-        // Seed provider/model from explicit options, or carry over from the
-        // active thread / draft so the user's current provider selection
-        // persists across new-thread creation.
-        const sourceThread = activeThread?.projectId === projectId ? activeThread : undefined;
-        const sameProjectDraft =
-          routeThreadId && latestActiveDraftThread?.projectId === projectId
-            ? draftsByThreadId[routeThreadId]
-            : undefined;
-        const seedProvider =
-          options?.provider ?? sourceThread?.provider ?? sameProjectDraft?.provider ?? null;
-        const seedModel = options?.model ?? sourceThread?.model ?? sameProjectDraft?.model ?? null;
-        if (seedProvider != null) {
-          setDraftProvider(threadId, seedProvider);
+        // Apply sticky model/options first, then explicit overrides.
+        if (stickyModel) {
+          setProvider(threadId, inferProviderForModel(stickyModel));
+          setModel(threadId, stickyModel);
         }
-        if (seedModel != null) {
-          setDraftModel(threadId, seedModel);
+        if (Object.keys(stickyModelOptions).length > 0) {
+          setModelOptions(threadId, stickyModelOptions);
+        }
+
+        // Explicit options override sticky settings.
+        if (options?.provider != null) {
+          setProvider(threadId, options.provider);
+        }
+        if (options?.model != null) {
+          setModel(threadId, options.model);
         }
 
         await navigate({
@@ -132,7 +133,7 @@ export function useHandleNewThread() {
         });
       })();
     },
-    [activeThread, navigate, routeThreadId],
+    [navigate, routeThreadId, stickyModel, stickyModelOptions],
   );
 
   return {

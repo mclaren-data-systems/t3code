@@ -6,11 +6,29 @@ import {
   DEFAULT_TIMESTAMP_FORMAT,
   getAppModelOptions,
   getAppSettingsSnapshot,
+  getCustomModelOptionsByProvider,
+  getCustomModelsByProvider,
+  getCustomModelsForProvider,
+  getDefaultCustomModelsForProvider,
+  MODEL_PROVIDER_SETTINGS,
   normalizeCustomModelSlugs,
+  patchCustomModels,
   patchGitTextGenerationModelOverrides,
   resolveAppModelSelection,
   resolveGitTextGenerationModelSelection,
 } from "./appSettings";
+
+/** Empty custom models for all providers — test helper */
+const EMPTY_CUSTOM_MODELS = {
+  codex: [] as readonly string[],
+  copilot: [] as readonly string[],
+  claudeAgent: [] as readonly string[],
+  cursor: [] as readonly string[],
+  opencode: [] as readonly string[],
+  geminiCli: [] as readonly string[],
+  amp: [] as readonly string[],
+  kilo: [] as readonly string[],
+} as const;
 
 const APP_SETTINGS_STORAGE_KEY = "t3code:app-settings:v1";
 
@@ -128,13 +146,35 @@ describe("getAppModelOptions", () => {
 
 describe("resolveAppModelSelection", () => {
   it("preserves saved custom model slugs instead of falling back to the default", () => {
-    expect(resolveAppModelSelection("codex", ["galapagos-alpha"], "galapagos-alpha")).toBe(
-      "galapagos-alpha",
-    );
+    expect(
+      resolveAppModelSelection(
+        "codex",
+        { ...EMPTY_CUSTOM_MODELS, codex: ["galapagos-alpha"] },
+        "galapagos-alpha",
+      ),
+    ).toBe("galapagos-alpha");
   });
 
   it("falls back to the provider default when no model is selected", () => {
-    expect(resolveAppModelSelection("codex", [], "")).toBe("gpt-5.4");
+    expect(resolveAppModelSelection("codex", EMPTY_CUSTOM_MODELS, "")).toBe("gpt-5.4");
+  });
+
+  it("resolves display names through the shared resolver", () => {
+    expect(resolveAppModelSelection("codex", EMPTY_CUSTOM_MODELS, "GPT-5.3 Codex")).toBe(
+      "gpt-5.3-codex",
+    );
+  });
+
+  it("resolves aliases through the shared resolver", () => {
+    expect(resolveAppModelSelection("claudeAgent", EMPTY_CUSTOM_MODELS, "sonnet")).toBe(
+      "claude-sonnet-4-6",
+    );
+  });
+
+  it("resolves transient selected custom models included in app model options", () => {
+    expect(resolveAppModelSelection("codex", EMPTY_CUSTOM_MODELS, "custom/selected-model")).toBe(
+      "custom/selected-model",
+    );
   });
 });
 
@@ -211,6 +251,115 @@ describe("provider-specific custom models", () => {
     const claudeOptions = getAppModelOptions("claudeAgent", ["claude/custom-opus"]);
 
     expect(claudeOptions.some((option) => option.slug === "claude/custom-opus")).toBe(true);
+  });
+});
+
+describe("provider-indexed custom model settings", () => {
+  const settings = {
+    customCodexModels: ["custom/codex-model"],
+    customClaudeModels: ["claude/custom-opus"],
+    customCopilotModels: [],
+    customCursorModels: [],
+    customOpencodeModels: [],
+    customGeminiCliModels: [],
+    customAmpModels: [],
+    customKiloModels: [],
+  } as const;
+
+  it("exports one provider config per provider", () => {
+    expect(MODEL_PROVIDER_SETTINGS.map((config) => config.provider)).toEqual([
+      "codex",
+      "copilot",
+      "claudeAgent",
+      "cursor",
+      "opencode",
+      "geminiCli",
+      "amp",
+      "kilo",
+    ]);
+  });
+
+  it("reads custom models for each provider", () => {
+    expect(getCustomModelsForProvider(settings, "codex")).toEqual(["custom/codex-model"]);
+    expect(getCustomModelsForProvider(settings, "claudeAgent")).toEqual(["claude/custom-opus"]);
+  });
+
+  it("reads default custom models for each provider", () => {
+    const defaults = {
+      customCodexModels: ["default/codex-model"],
+      customClaudeModels: ["claude/default-opus"],
+      customCopilotModels: [],
+      customCursorModels: [],
+      customOpencodeModels: [],
+      customGeminiCliModels: [],
+      customAmpModels: [],
+      customKiloModels: [],
+    } as const;
+
+    expect(getDefaultCustomModelsForProvider(defaults, "codex")).toEqual(["default/codex-model"]);
+    expect(getDefaultCustomModelsForProvider(defaults, "claudeAgent")).toEqual([
+      "claude/default-opus",
+    ]);
+  });
+
+  it("patches custom models for codex", () => {
+    expect(patchCustomModels("codex", ["custom/codex-model"])).toEqual({
+      customCodexModels: ["custom/codex-model"],
+    });
+  });
+
+  it("patches custom models for claude", () => {
+    expect(patchCustomModels("claudeAgent", ["claude/custom-opus"])).toEqual({
+      customClaudeModels: ["claude/custom-opus"],
+    });
+  });
+
+  it("builds a complete provider-indexed custom model record", () => {
+    expect(getCustomModelsByProvider(settings)).toEqual({
+      codex: ["custom/codex-model"],
+      copilot: [],
+      claudeAgent: ["claude/custom-opus"],
+      cursor: [],
+      opencode: [],
+      geminiCli: [],
+      amp: [],
+      kilo: [],
+    });
+  });
+
+  it("builds provider-indexed model options including custom models", () => {
+    const modelOptionsByProvider = getCustomModelOptionsByProvider(settings);
+
+    expect(
+      modelOptionsByProvider.codex.some((option) => option.slug === "custom/codex-model"),
+    ).toBe(true);
+    expect(
+      modelOptionsByProvider.claudeAgent.some((option) => option.slug === "claude/custom-opus"),
+    ).toBe(true);
+  });
+
+  it("normalizes and deduplicates custom model options per provider", () => {
+    const modelOptionsByProvider = getCustomModelOptionsByProvider({
+      customCodexModels: ["  custom/codex-model ", "gpt-5.4", "custom/codex-model"],
+      customClaudeModels: [" sonnet ", "claude/custom-opus", "claude/custom-opus"],
+      customCopilotModels: [],
+      customCursorModels: [],
+      customOpencodeModels: [],
+      customGeminiCliModels: [],
+      customAmpModels: [],
+      customKiloModels: [],
+    });
+
+    expect(
+      modelOptionsByProvider.codex.filter((option) => option.slug === "custom/codex-model"),
+    ).toHaveLength(1);
+    expect(modelOptionsByProvider.codex.some((option) => option.slug === "gpt-5.4")).toBe(true);
+    expect(
+      modelOptionsByProvider.claudeAgent.filter((option) => option.slug === "claude/custom-opus"),
+    ).toHaveLength(1);
+    expect(
+      modelOptionsByProvider.claudeAgent.some((option) => option.slug === "claude-sonnet-4-6"),
+    ).toBe(true);
   });
 });
 

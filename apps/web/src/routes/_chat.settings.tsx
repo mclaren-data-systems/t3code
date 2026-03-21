@@ -12,7 +12,9 @@ import {
   APP_PROVIDER_LOGO_APPEARANCE_OPTIONS,
   getAppModelOptions,
   getCustomModelsForProvider,
+  getDefaultCustomModelsForProvider,
   MAX_CUSTOM_MODEL_LENGTH,
+  MODEL_PROVIDER_SETTINGS,
   patchCustomModels,
   patchGitTextGenerationModelOverrides,
   useAppSettings,
@@ -54,84 +56,12 @@ const THEME_OPTIONS = [
   },
 ] as const;
 
-const MODEL_PROVIDER_SETTINGS: Array<{
-  provider: ProviderKind;
-  title: string;
-  description: string;
-  placeholder: string;
-  example: string;
-}> = [
-  {
-    provider: "codex",
-    title: "Codex",
-    description: "Save additional Codex model slugs for the picker and `/model` command.",
-    placeholder: "your-codex-model-slug",
-    example: "gpt-6.7-codex-ultra-preview",
-  },
-  {
-    provider: "copilot",
-    title: "GitHub Copilot",
-    description: "Save additional Copilot model slugs for the picker and `/model` command.",
-    placeholder: "your-copilot-model-slug",
-    example: "gpt-5.1-codex-max",
-  },
-  {
-    provider: "claudeAgent",
-    title: "Claude Code",
-    description: "Save additional Claude model slugs for the picker and `/model` command.",
-    placeholder: "your-claude-model-slug",
-    example: "claude-sonnet-5-0",
-  },
-  {
-    provider: "cursor",
-    title: "Cursor",
-    description: "Save additional Cursor model slugs for the picker and `/model` command.",
-    placeholder: "your-cursor-model-slug",
-    example: "openai/gpt-oss-120b",
-  },
-  {
-    provider: "opencode",
-    title: "OpenCode",
-    description: "Save additional OpenCode model slugs for the picker and `/model` command.",
-    placeholder: "your-opencode-model-slug",
-    example: "openai/gpt-5#high",
-  },
-  {
-    provider: "geminiCli",
-    title: "Gemini CLI",
-    description: "Save additional Gemini CLI model slugs for the picker and `/model` command.",
-    placeholder: "your-gemini-model-slug",
-    example: "gemini-3.1-pro",
-  },
-  {
-    provider: "amp",
-    title: "AMPcode",
-    description: "Save additional AMPcode model slugs for the picker and /model command.",
-    placeholder: "your-amp-model-slug",
-    example: "smart",
-  },
-  {
-    provider: "kilo",
-    title: "Kilo",
-    description: "Save additional Kilo model slugs for the picker and /model command.",
-    placeholder: "your-kilo-model-slug",
-    example: "openai/gpt-5#high",
-  },
-] as const;
-
 const TIMESTAMP_FORMAT_LABELS = {
   locale: "System default",
   "12-hour": "12-hour",
   "24-hour": "24-hour",
 } as const;
 const GIT_TEXT_GENERATION_INHERIT_VALUE = "__inherit__";
-
-function getDefaultCustomModelsForProvider(
-  defaults: ReturnType<typeof useAppSettings>["defaults"],
-  provider: ProviderKind,
-) {
-  return getCustomModelsForProvider(defaults, provider);
-}
 
 // ---------------------------------------------------------------------------
 // Log syntax highlighting

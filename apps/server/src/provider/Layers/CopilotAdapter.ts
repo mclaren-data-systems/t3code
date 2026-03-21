@@ -1416,7 +1416,7 @@ const makeCopilotAdapter = (options?: CopilotAdapterLiveOptions) =>
               : record.reasoningEffort;
         const attachments = yield* Effect.forEach(input.attachments ?? [], (attachment) => {
           const attachmentPath = resolveAttachmentPath({
-            stateDir: serverConfig.stateDir,
+            attachmentsDir: serverConfig.attachmentsDir,
             attachment,
           });
           if (!attachmentPath) {
