@@ -181,8 +181,9 @@ jobs:
 
             if (files.length >= 3000) {
               core.warning(
-                "The GitHub pull request files API may truncate results at 3,000 files; PR size may be undercounted.",
+                "The GitHub pull request files API may truncate results at 3,000 files; forcing size:XXL.",
               );
+              return "size:XXL";
             }
 
             let testChangedLines = 0;
