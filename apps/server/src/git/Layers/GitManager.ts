@@ -1221,6 +1221,7 @@ export const makeGitManager = Effect.gen(function* () {
             input.commitMessage,
             input.provider,
             input.model,
+            input.filePaths,
           );
           branchStep = result.branchStep;
           commitMessageForStep = result.resolvedCommitMessage;

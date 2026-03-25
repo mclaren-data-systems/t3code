@@ -540,7 +540,7 @@ function normalizeModelSelection(
     provider,
     provider === "codex" ? legacy?.legacyCodex : undefined,
   );
-  const options = provider === "codex" ? modelOptions?.codex : modelOptions?.claudeAgent;
+  const options = modelOptions?.[provider];
   return {
     provider,
     model,
@@ -1690,7 +1690,16 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
           }
           const base = existing ?? createEmptyThreadDraft();
           const nextMap = { ...base.modelSelectionByProvider };
-          for (const provider of ["codex", "claudeAgent"] as const) {
+          for (const provider of [
+            "codex",
+            "copilot",
+            "claudeAgent",
+            "cursor",
+            "opencode",
+            "geminiCli",
+            "amp",
+            "kilo",
+          ] as const satisfies readonly ProviderKind[]) {
             // Only touch providers explicitly present in the input
             if (!normalizedOpts || !(provider in normalizedOpts)) continue;
             const opts = normalizedOpts[provider];
@@ -1700,7 +1709,7 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
                 provider,
                 model: current?.model ?? getDefaultModel(provider),
                 options: opts,
-              };
+              } as ModelSelection;
             } else if (current?.options) {
               // Remove options but keep the selection
               const { options: _, ...rest } = current;

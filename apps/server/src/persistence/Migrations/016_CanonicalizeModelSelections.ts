@@ -17,6 +17,9 @@ export default Effect.gen(function* () {
         'provider',
         CASE
           WHEN lower(default_model) LIKE '%claude%' THEN 'claudeAgent'
+          WHEN lower(default_model) LIKE '%gemini%' THEN 'geminiCli'
+          WHEN lower(default_model) LIKE '%composer%' THEN 'cursor'
+          WHEN lower(default_model) LIKE '%kimi%' THEN 'cursor'
           ELSE 'codex'
         END,
         'model',
@@ -43,6 +46,9 @@ export default Effect.gen(function* () {
         ),
         CASE
           WHEN lower(model) LIKE '%claude%' THEN 'claudeAgent'
+          WHEN lower(model) LIKE '%gemini%' THEN 'geminiCli'
+          WHEN lower(model) LIKE '%composer%' THEN 'cursor'
+          WHEN lower(model) LIKE '%kimi%' THEN 'cursor'
           ELSE 'codex'
         END,
         'codex'
@@ -84,6 +90,12 @@ export default Effect.gen(function* () {
                 THEN json_extract(payload_json, '$.defaultProvider')
                 WHEN lower(json_extract(payload_json, '$.defaultModel')) LIKE '%claude%'
                 THEN 'claudeAgent'
+                WHEN lower(json_extract(payload_json, '$.defaultModel')) LIKE '%gemini%'
+                THEN 'geminiCli'
+                WHEN lower(json_extract(payload_json, '$.defaultModel')) LIKE '%composer%'
+                THEN 'cursor'
+                WHEN lower(json_extract(payload_json, '$.defaultModel')) LIKE '%kimi%'
+                THEN 'cursor'
                 ELSE 'codex'
               END,
               'model',
@@ -93,43 +105,33 @@ export default Effect.gen(function* () {
                 WHEN json_type(payload_json, '$.defaultModelOptions') IS NULL THEN '{}'
                 WHEN json_type(payload_json, '$.defaultModelOptions.codex') IS NOT NULL
                   OR json_type(payload_json, '$.defaultModelOptions.claudeAgent') IS NOT NULL
-                THEN CASE
-                  WHEN (
-                  CASE
-                    WHEN json_extract(payload_json, '$.defaultProvider') IS NOT NULL
-                    THEN json_extract(payload_json, '$.defaultProvider')
-                    WHEN lower(json_extract(payload_json, '$.defaultModel')) LIKE '%claude%'
-                    THEN 'claudeAgent'
-                    ELSE 'codex'
-                    END
-                  ) = 'claudeAgent'
-                  THEN CASE
-                    WHEN json_type(payload_json, '$.defaultModelOptions.claudeAgent') IS NOT NULL
-                    THEN json_object(
-                      'options',
-                      json(json_extract(payload_json, '$.defaultModelOptions.claudeAgent'))
-                    )
-                    WHEN json_type(payload_json, '$.defaultModelOptions.codex') IS NOT NULL
-                    THEN json_object(
-                      'options',
-                      json(json_extract(payload_json, '$.defaultModelOptions.codex'))
-                    )
-                    ELSE '{}'
-                  END
-                  ELSE CASE
-                    WHEN json_type(payload_json, '$.defaultModelOptions.codex') IS NOT NULL
-                    THEN json_object(
-                      'options',
-                      json(json_extract(payload_json, '$.defaultModelOptions.codex'))
-                    )
-                    WHEN json_type(payload_json, '$.defaultModelOptions.claudeAgent') IS NOT NULL
-                    THEN json_object(
-                      'options',
-                      json(json_extract(payload_json, '$.defaultModelOptions.claudeAgent'))
-                    )
-                    ELSE '{}'
-                  END
-                END
+                  OR json_type(payload_json, '$.defaultModelOptions.copilot') IS NOT NULL
+                  OR json_type(payload_json, '$.defaultModelOptions.cursor') IS NOT NULL
+                  OR json_type(payload_json, '$.defaultModelOptions.opencode') IS NOT NULL
+                  OR json_type(payload_json, '$.defaultModelOptions.geminiCli') IS NOT NULL
+                  OR json_type(payload_json, '$.defaultModelOptions.amp') IS NOT NULL
+                  OR json_type(payload_json, '$.defaultModelOptions.kilo') IS NOT NULL
+                THEN json_object(
+                  'options',
+                  json(COALESCE(
+                    json_extract(payload_json, '$.defaultModelOptions.' || (
+                      CASE
+                        WHEN json_extract(payload_json, '$.defaultProvider') IS NOT NULL
+                        THEN json_extract(payload_json, '$.defaultProvider')
+                        WHEN lower(json_extract(payload_json, '$.defaultModel')) LIKE '%claude%'
+                        THEN 'claudeAgent'
+                        WHEN lower(json_extract(payload_json, '$.defaultModel')) LIKE '%gemini%'
+                        THEN 'geminiCli'
+                        WHEN lower(json_extract(payload_json, '$.defaultModel')) LIKE '%composer%'
+                        THEN 'cursor'
+                        WHEN lower(json_extract(payload_json, '$.defaultModel')) LIKE '%kimi%'
+                        THEN 'cursor'
+                        ELSE 'codex'
+                      END
+                    )),
+                    '{}'
+                  ))
+                )
               ELSE json_object(
                 'options',
                 json(json_extract(payload_json, '$.defaultModelOptions'))
@@ -161,6 +163,12 @@ export default Effect.gen(function* () {
               THEN json_extract(payload_json, '$.provider')
               WHEN lower(json_extract(payload_json, '$.model')) LIKE '%claude%'
               THEN 'claudeAgent'
+              WHEN lower(json_extract(payload_json, '$.model')) LIKE '%gemini%'
+              THEN 'geminiCli'
+              WHEN lower(json_extract(payload_json, '$.model')) LIKE '%composer%'
+              THEN 'cursor'
+              WHEN lower(json_extract(payload_json, '$.model')) LIKE '%kimi%'
+              THEN 'cursor'
               ELSE 'codex'
             END,
             'model',
@@ -170,43 +178,33 @@ export default Effect.gen(function* () {
             WHEN json_type(payload_json, '$.modelOptions') IS NULL THEN '{}'
             WHEN json_type(payload_json, '$.modelOptions.codex') IS NOT NULL
               OR json_type(payload_json, '$.modelOptions.claudeAgent') IS NOT NULL
-            THEN CASE
-              WHEN (
-                CASE
-                  WHEN json_extract(payload_json, '$.provider') IS NOT NULL
-                  THEN json_extract(payload_json, '$.provider')
-                  WHEN lower(json_extract(payload_json, '$.model')) LIKE '%claude%'
-                  THEN 'claudeAgent'
-                  ELSE 'codex'
+              OR json_type(payload_json, '$.modelOptions.copilot') IS NOT NULL
+              OR json_type(payload_json, '$.modelOptions.cursor') IS NOT NULL
+              OR json_type(payload_json, '$.modelOptions.opencode') IS NOT NULL
+              OR json_type(payload_json, '$.modelOptions.geminiCli') IS NOT NULL
+              OR json_type(payload_json, '$.modelOptions.amp') IS NOT NULL
+              OR json_type(payload_json, '$.modelOptions.kilo') IS NOT NULL
+            THEN json_object(
+              'options',
+              json(COALESCE(
+                json_extract(payload_json, '$.modelOptions.' || (
+                  CASE
+                    WHEN json_extract(payload_json, '$.provider') IS NOT NULL
+                    THEN json_extract(payload_json, '$.provider')
+                    WHEN lower(json_extract(payload_json, '$.model')) LIKE '%claude%'
+                    THEN 'claudeAgent'
+                    WHEN lower(json_extract(payload_json, '$.model')) LIKE '%gemini%'
+                    THEN 'geminiCli'
+                    WHEN lower(json_extract(payload_json, '$.model')) LIKE '%composer%'
+                    THEN 'cursor'
+                    WHEN lower(json_extract(payload_json, '$.model')) LIKE '%kimi%'
+                    THEN 'cursor'
+                    ELSE 'codex'
                   END
-              ) = 'claudeAgent'
-              THEN CASE
-                WHEN json_type(payload_json, '$.modelOptions.claudeAgent') IS NOT NULL
-                THEN json_object(
-                  'options',
-                  json(json_extract(payload_json, '$.modelOptions.claudeAgent'))
-                )
-                WHEN json_type(payload_json, '$.modelOptions.codex') IS NOT NULL
-                THEN json_object(
-                  'options',
-                  json(json_extract(payload_json, '$.modelOptions.codex'))
-                )
-                ELSE '{}'
-              END
-              ELSE CASE
-                WHEN json_type(payload_json, '$.modelOptions.codex') IS NOT NULL
-                THEN json_object(
-                  'options',
-                  json(json_extract(payload_json, '$.modelOptions.codex'))
-                )
-                WHEN json_type(payload_json, '$.modelOptions.claudeAgent') IS NOT NULL
-                THEN json_object(
-                  'options',
-                  json(json_extract(payload_json, '$.modelOptions.claudeAgent'))
-                )
-                ELSE '{}'
-              END
-            END
+                )),
+                '{}'
+              ))
+            )
             ELSE json_object('options', json(json_extract(payload_json, '$.modelOptions')))
           END
         )

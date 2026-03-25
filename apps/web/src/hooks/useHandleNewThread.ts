@@ -67,6 +67,12 @@ export function useHandleNewThread() {
               ...(hasEnvModeOption ? { envMode: options?.envMode } : {}),
             });
           }
+          if (options?.provider != null && options?.model != null) {
+            setModelSelection(storedDraftThread.threadId, {
+              provider: options.provider,
+              model: options.model,
+            });
+          }
           setProjectDraftThreadId(projectId, storedDraftThread.threadId);
           if (routeThreadId === storedDraftThread.threadId) {
             return;
@@ -90,6 +96,12 @@ export function useHandleNewThread() {
             ...(hasBranchOption ? { branch: options?.branch ?? null } : {}),
             ...(hasWorktreePathOption ? { worktreePath: options?.worktreePath ?? null } : {}),
             ...(hasEnvModeOption ? { envMode: options?.envMode } : {}),
+          });
+        }
+        if (options?.provider != null && options?.model != null) {
+          setModelSelection(routeThreadId, {
+            provider: options.provider,
+            model: options.model,
           });
         }
         setProjectDraftThreadId(projectId, routeThreadId);

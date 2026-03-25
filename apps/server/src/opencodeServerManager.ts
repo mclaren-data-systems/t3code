@@ -216,16 +216,11 @@ export class OpenCodeServerManager extends EventEmitter<OpenCodeManagerEvents> {
     const turnModel = openCodeInput.modelSelection?.model;
     const opcodeOpts = openCodeInput.modelSelection?.options as OpencodeAdapterOptions | undefined;
     const agent =
-      opcodeOpts?.agent ??
-      (openCodeInput.interactionMode === "plan" ? "plan" : undefined);
+      opcodeOpts?.agent ?? (openCodeInput.interactionMode === "plan" ? "plan" : undefined);
     const parsedModel = parseOpencodeModel(turnModel);
     const providerId = opcodeOpts?.providerId ?? parsedModel?.providerId;
-    const modelId =
-      opcodeOpts?.modelId ?? parsedModel?.modelId ?? turnModel;
-    const variant =
-      opcodeOpts?.variant ??
-      opcodeOpts?.reasoningEffort ??
-      parsedModel?.variant;
+    const modelId = opcodeOpts?.modelId ?? parsedModel?.modelId ?? turnModel;
+    const variant = opcodeOpts?.variant ?? opcodeOpts?.reasoningEffort ?? parsedModel?.variant;
     const startedAt = nowIso();
 
     context.activeTurnId = turnId;

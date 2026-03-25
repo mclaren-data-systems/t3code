@@ -490,17 +490,15 @@ function mapProjectsFromReadModel(
       id: project.id,
       name: project.title,
       cwd: project.workspaceRoot,
-      defaultModelSelection:
-        existing?.defaultModelSelection ??
-        (project.defaultModelSelection
-          ? {
-              ...project.defaultModelSelection,
-              model: resolveModelSlugForProvider(
-                project.defaultModelSelection.provider,
-                project.defaultModelSelection.model,
-              ),
-            }
-          : null),
+      defaultModelSelection: project.defaultModelSelection
+        ? {
+            ...project.defaultModelSelection,
+            model: resolveModelSlugForProvider(
+              project.defaultModelSelection.provider,
+              project.defaultModelSelection.model,
+            ),
+          }
+        : null,
       expanded:
         existing?.expanded ??
         (persistedExpandedProjectCwds.size > 0

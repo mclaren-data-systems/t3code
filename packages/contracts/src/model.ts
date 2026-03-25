@@ -516,7 +516,9 @@ export const MODEL_CAPABILITIES_INDEX = Object.fromEntries(
     provider,
     Object.fromEntries(
       (models as readonly ModelDefinition[])
-        .filter((m): m is ModelDefinition & { capabilities: ModelCapabilities } => m.capabilities != null)
+        .filter(
+          (m): m is ModelDefinition & { capabilities: ModelCapabilities } => m.capabilities != null,
+        )
         .map((m) => [m.slug, m.capabilities]),
     ),
   ]),

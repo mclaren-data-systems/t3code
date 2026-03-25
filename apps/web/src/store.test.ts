@@ -46,7 +46,7 @@ function makeState(thread: Thread): AppState {
         cwd: "/tmp/project",
         defaultModelSelection: {
           provider: "codex",
-          model: "gpt-5-codex",
+          model: "gpt-5.3-codex",
         },
         expanded: true,
         scripts: [],
@@ -140,7 +140,6 @@ function makeReadModelProject(
     ...overrides,
   };
 }
-
 
 describe("store pure functions", () => {
   it("markThreadUnread moves lastVisitedAt before completion for a completed thread", () => {

@@ -210,17 +210,11 @@ export class KiloServerManager extends EventEmitter<KiloManagerEvents> {
     const turnId = createTurnId();
     const turnModel = kiloInput.modelSelection?.model;
     const kiloOpts = kiloInput.modelSelection?.options as KiloAdapterOptions | undefined;
-    const agent =
-      kiloOpts?.agent ??
-      (kiloInput.interactionMode === "plan" ? "plan" : undefined);
+    const agent = kiloOpts?.agent ?? (kiloInput.interactionMode === "plan" ? "plan" : undefined);
     const parsedModel = parseKiloModel(turnModel);
     const providerId = kiloOpts?.providerId ?? parsedModel?.providerId;
-    const modelId =
-      kiloOpts?.modelId ?? parsedModel?.modelId ?? turnModel;
-    const variant =
-      kiloOpts?.variant ??
-      kiloOpts?.reasoningEffort ??
-      parsedModel?.variant;
+    const modelId = kiloOpts?.modelId ?? parsedModel?.modelId ?? turnModel;
+    const variant = kiloOpts?.variant ?? kiloOpts?.reasoningEffort ?? parsedModel?.variant;
     const startedAt = nowIso();
 
     context.activeTurnId = turnId;

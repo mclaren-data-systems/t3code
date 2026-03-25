@@ -435,7 +435,11 @@ export default function CommandPalette({
           group: "threads",
           title: thread.title,
           subtitle: threadSubtitle(thread, projectNameById.get(thread.projectId)),
-          keywords: [thread.modelSelection.model, projectNameById.get(thread.projectId) ?? "", thread.id],
+          keywords: [
+            thread.modelSelection.model,
+            projectNameById.get(thread.projectId) ?? "",
+            thread.id,
+          ],
           icon: <MessageSquareIcon className="size-4" />,
           onSelect: () =>
             navigate({

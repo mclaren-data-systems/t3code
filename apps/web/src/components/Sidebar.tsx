@@ -1721,15 +1721,10 @@ export default function Sidebar() {
                   render={
                     <span
                       className={`inline-flex shrink-0 items-center justify-center ${
-                        isHighlighted
-                          ? "text-foreground/55"
-                          : "text-muted-foreground/50"
+                        isHighlighted ? "text-foreground/55" : "text-muted-foreground/50"
                       } ${appSettings.grayscaleProviderLogos ? "grayscale" : ""}`}
                     >
-                      <ProviderLogo
-                        provider={provider}
-                        className="size-3"
-                      />
+                      <ProviderLogo provider={provider} className="size-3" />
                     </span>
                   }
                 />

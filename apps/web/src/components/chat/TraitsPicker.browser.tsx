@@ -37,7 +37,16 @@ function ClaudeTraitsPickerHarness(props: {
     selectedProvider: "claudeAgent",
     threadModelSelection: props.fallbackModelSelection,
     projectModelSelection: null,
-    customModelsByProvider: { codex: [], copilot: [], claudeAgent: [], cursor: [], opencode: [], geminiCli: [], amp: [], kilo: [] },
+    customModelsByProvider: {
+      codex: [],
+      copilot: [],
+      claudeAgent: [],
+      cursor: [],
+      opencode: [],
+      geminiCli: [],
+      amp: [],
+      kilo: [],
+    },
   });
   const handlePromptChange = useCallback(
     (nextPrompt: string) => {

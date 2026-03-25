@@ -1403,10 +1403,7 @@ function SettingsRouteView() {
                 }
               />
 
-              <SettingsRow
-                title="Logs"
-                description="Application log files for debugging."
-              >
+              <SettingsRow title="Logs" description="Application log files for debugging.">
                 <div className="mt-4 border-t border-border pt-4 space-y-3">
                   {logDir ? (
                     <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2">
