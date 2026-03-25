@@ -179,32 +179,39 @@ jobs:
               (response) => response.data,
             );
 
-            if (files.length >= 3000) {
+            const isFileListTruncated = files.length >= 3000;
+            if (isFileListTruncated) {
               core.warning(
-                "The GitHub pull request files API may truncate results at 3,000 files; PR size may be undercounted.",
+                "The GitHub pull request files API may truncate results at 3,000 files; forcing size:XXL.",
               );
             }
 
             let testChangedLines = 0;
             let nonTestChangedLines = 0;
 
-            for (const file of files) {
-              const changedLinesForFile = (file.additions ?? 0) + (file.deletions ?? 0);
+            if (!isFileListTruncated) {
+              for (const file of files) {
+                const changedLinesForFile = (file.additions ?? 0) + (file.deletions ?? 0);
 
-              if (changedLinesForFile === 0) {
-                continue;
+                if (changedLinesForFile === 0) {
+                  continue;
+                }
+
+                if (isTestFile(file.filename)) {
+                  testChangedLines += changedLinesForFile;
+                  continue;
+                }
+
+                nonTestChangedLines += changedLinesForFile;
               }
-
-              if (isTestFile(file.filename)) {
-                testChangedLines += changedLinesForFile;
-                continue;
-              }
-
-              nonTestChangedLines += changedLinesForFile;
             }
 
-            const changedLines = nonTestChangedLines === 0 ? testChangedLines : nonTestChangedLines;
-            const nextLabelName = resolveSizeLabel(changedLines);
+            const changedLines = isFileListTruncated
+              ? 1000
+              : (nonTestChangedLines === 0 ? testChangedLines : nonTestChangedLines);
+            const nextLabelName = isFileListTruncated
+              ? "size:XXL"
+              : resolveSizeLabel(changedLines);
 
             const { data: currentLabels } = await github.rest.issues.listLabelsOnIssue({
               owner: context.repo.owner,

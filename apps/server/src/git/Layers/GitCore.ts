@@ -549,7 +549,20 @@ export const makeGitCore = (options?: { executeOverride?: GitCoreShape["execute"
           allowNonZeroExit: true,
           timeoutMs: Duration.toMillis(STATUS_UPSTREAM_REFRESH_TIMEOUT),
         },
-      ).pipe(Effect.asVoid);
+      ).pipe(
+        Effect.flatMap((result) =>
+          result.code === 0
+            ? Effect.void
+            : Effect.fail(
+                createGitCommandError(
+                  "GitCore.fetchUpstreamRefForStatus",
+                  cwd,
+                  ["fetch", "--quiet", "--no-tags", upstream.remoteName, refspec],
+                  `upstream fetch exited with code ${result.code}`,
+                ),
+              ),
+        ),
+      );
     };
 
     const statusUpstreamRefreshCache = yield* Cache.makeWith({
@@ -629,7 +642,7 @@ export const makeGitCore = (options?: { executeOverride?: GitCoreShape["execute"
 
     const listRemoteNames = (cwd: string): Effect.Effect<ReadonlyArray<string>, GitCommandError> =>
       runGitStdout("GitCore.listRemoteNames", cwd, ["remote"]).pipe(
-        Effect.map((stdout) => parseRemoteNames(stdout).toReversed()),
+        Effect.map((stdout) => parseRemoteNames(stdout)),
       );
 
     const resolvePrimaryRemoteName = (cwd: string): Effect.Effect<string, GitCommandError> =>
@@ -638,9 +651,10 @@ export const makeGitCore = (options?: { executeOverride?: GitCoreShape["execute"
           return "origin";
         }
         const remotes = yield* listRemoteNames(cwd);
-        const [firstRemote] = remotes;
-        if (firstRemote) {
-          return firstRemote;
+        // Prefer "upstream" when "origin" is absent, then fall back to first listed remote.
+        const preferred = remotes.find((r) => r === "upstream") ?? remotes[0];
+        if (preferred) {
+          return preferred;
         }
         return yield* createGitCommandError(
           "GitCore.resolvePrimaryRemoteName",
@@ -943,16 +957,19 @@ export const makeGitCore = (options?: { executeOverride?: GitCoreShape["execute"
 
     const prepareCommitContext: GitCoreShape["prepareCommitContext"] = (cwd, filePaths) =>
       Effect.gen(function* () {
-        if (filePaths && filePaths.length > 0) {
+        if (filePaths !== undefined && filePaths !== null) {
           yield* runGit("GitCore.prepareCommitContext.reset", cwd, ["reset"]).pipe(
             Effect.catch(() => Effect.void),
           );
-          yield* runGit("GitCore.prepareCommitContext.addSelected", cwd, [
-            "add",
-            "-A",
-            "--",
-            ...filePaths,
-          ]);
+          if (filePaths.length > 0) {
+            yield* runGit("GitCore.prepareCommitContext.addSelected", cwd, [
+              "add",
+              "-A",
+              "--",
+              ...filePaths,
+            ]);
+          }
+          // filePaths is an explicit empty array — leave the index empty.
         } else {
           yield* runGit("GitCore.prepareCommitContext.addAll", cwd, ["add", "-A"]);
         }
