@@ -56,7 +56,7 @@ export default Effect.gen(function* () {
       'model',
       model
     )
-    WHERE model_selection_json IS NULL
+    WHERE model_selection_json IS NULL AND model IS NOT NULL
   `;
 
   yield* sql`

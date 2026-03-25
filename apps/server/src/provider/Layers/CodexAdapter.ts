@@ -1352,6 +1352,13 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
         );
       }
 
+      if (input.modelSelection && input.modelSelection.provider !== "codex") {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[CodexAdapter] startSession received modelSelection for provider '${input.modelSelection.provider}'; ignoring model selection`,
+        );
+      }
+
       const managerInput: CodexAppServerStartSessionInput = {
         threadId: input.threadId,
         provider: "codex",
@@ -1414,6 +1421,12 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
             }),
           { concurrency: 1 },
         );
+
+        if (input.modelSelection && input.modelSelection.provider !== "codex") {
+          yield* Effect.logWarning(
+            `CodexAdapter.sendTurn received modelSelection for provider '${input.modelSelection.provider}'; ignoring model selection`,
+          );
+        }
 
         return yield* Effect.tryPromise({
           try: () => {

@@ -440,7 +440,6 @@ function SettingsRouteView() {
   )!;
   const selectedCustomModelInput = customModelInputByProvider[selectedCustomModelProvider];
   const selectedCustomModelError = customModelErrorByProvider[selectedCustomModelProvider] ?? null;
-  const totalCustomModels = settings.customCodexModels.length + settings.customClaudeModels.length;
   const savedCustomModelRows = MODEL_PROVIDER_SETTINGS.flatMap((providerSettings) =>
     getCustomModelsForProvider(settings, providerSettings.provider).map((slug) => ({
       key: `${providerSettings.provider}:${slug}`,
@@ -449,6 +448,7 @@ function SettingsRouteView() {
       slug,
     })),
   );
+  const totalCustomModels = savedCustomModelRows.length;
   const visibleCustomModelRows = showAllCustomModels
     ? savedCustomModelRows
     : savedCustomModelRows.slice(0, 5);
@@ -467,9 +467,7 @@ function SettingsRouteView() {
     ...(settings.confirmThreadDelete !== defaults.confirmThreadDelete
       ? ["Delete confirmation"]
       : []),
-    ...(settings.customCodexModels.length > 0 || settings.customClaudeModels.length > 0
-      ? ["Custom models"]
-      : []),
+    ...(totalCustomModels > 0 ? ["Custom models"] : []),
     ...(isInstallSettingsDirty ? ["Provider installs"] : []),
   ];
 
@@ -1113,6 +1111,12 @@ function SettingsRouteView() {
                         updateSettings({
                           customCodexModels: defaults.customCodexModels,
                           customClaudeModels: defaults.customClaudeModels,
+                          customCopilotModels: defaults.customCopilotModels,
+                          customCursorModels: defaults.customCursorModels,
+                          customOpencodeModels: defaults.customOpencodeModels,
+                          customGeminiCliModels: defaults.customGeminiCliModels,
+                          customAmpModels: defaults.customAmpModels,
+                          customKiloModels: defaults.customKiloModels,
                         });
                         setCustomModelErrorByProvider({});
                         setShowAllCustomModels(false);

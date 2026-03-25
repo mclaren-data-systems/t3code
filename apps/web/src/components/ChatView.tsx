@@ -660,13 +660,17 @@ export default function ChatView({ threadId }: ChatViewProps) {
       selectedCursorModelCapabilities.supportsFast ||
       selectedCursorModelCapabilities.supportsThinking),
   );
-  const selectedModelSelection = useMemo<ModelSelection>(
+  const selectedModelSelection = useMemo<ModelSelection | undefined>(
     () =>
-      ({
-        provider: selectedProvider,
-        model: selectedModel,
-        ...(selectedModelOptionsForDispatch ? { options: selectedModelOptionsForDispatch } : {}),
-      }) as ModelSelection,
+      selectedModel
+        ? ({
+            provider: selectedProvider,
+            model: selectedModel,
+            ...(selectedModelOptionsForDispatch
+              ? { options: selectedModelOptionsForDispatch }
+              : {}),
+          } as ModelSelection)
+        : undefined,
     [selectedModel, selectedModelOptionsForDispatch, selectedProvider],
   );
   const selectedModelForPicker =
@@ -2646,7 +2650,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           selectedModel ||
           activeProject.defaultModelSelection?.model ||
           DEFAULT_MODEL_BY_PROVIDER.codex,
-        ...(selectedModelSelection.options ? { options: selectedModelSelection.options } : {}),
+        ...(selectedModelSelection?.options ? { options: selectedModelSelection.options } : {}),
       } as ModelSelection;
 
       if (isLocalDraftThread) {
@@ -2705,7 +2709,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         await persistThreadSettingsForNextTurn({
           threadId: threadIdForSend,
           createdAt: messageCreatedAt,
-          ...(selectedModel ? { modelSelection: selectedModelSelection } : {}),
+          ...(selectedModelSelection ? { modelSelection: selectedModelSelection } : {}),
           runtimeMode,
           interactionMode,
         });
@@ -2723,7 +2727,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           text: outgoingMessageText,
           attachments: turnAttachments,
         },
-        modelSelection: selectedModelSelection,
+        ...(selectedModelSelection ? { modelSelection: selectedModelSelection } : {}),
         ...(providerOptionsForDispatch ? { providerOptions: providerOptionsForDispatch } : {}),
         assistantDeliveryMode: settings.enableAssistantStreaming ? "streaming" : "buffered",
         runtimeMode,
@@ -2986,7 +2990,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         await persistThreadSettingsForNextTurn({
           threadId: threadIdForSend,
           createdAt: messageCreatedAt,
-          modelSelection: selectedModelSelection,
+          ...(selectedModelSelection ? { modelSelection: selectedModelSelection } : {}),
           runtimeMode,
           interactionMode: nextInteractionMode,
         });
@@ -3088,7 +3092,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       text: implementationPrompt,
     });
     const nextThreadTitle = truncateTitle(buildPlanImplementationThreadTitle(planMarkdown));
-    const nextThreadModelSelection: ModelSelection = selectedModelSelection;
+    const nextThreadModelSelection = selectedModelSelection;
 
     sendInFlightRef.current = true;
     beginSendPhase("sending-turn");
@@ -3104,7 +3108,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
         threadId: nextThreadId,
         projectId: activeProject.id,
         title: nextThreadTitle,
-        modelSelection: nextThreadModelSelection,
+        modelSelection: (nextThreadModelSelection ?? {
+          provider: selectedProvider,
+          model: activeProject.defaultModelSelection?.model || DEFAULT_MODEL_BY_PROVIDER.codex,
+        }) as ModelSelection,
         runtimeMode,
         interactionMode: "default",
         branch: activeThread.branch,
@@ -3122,7 +3129,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
             text: outgoingImplementationPrompt,
             attachments: [],
           },
-          modelSelection: selectedModelSelection,
+          ...(selectedModelSelection ? { modelSelection: selectedModelSelection } : {}),
           ...(providerOptionsForDispatch ? { providerOptions: providerOptionsForDispatch } : {}),
           assistantDeliveryMode: settings.enableAssistantStreaming ? "streaming" : "buffered",
           runtimeMode,

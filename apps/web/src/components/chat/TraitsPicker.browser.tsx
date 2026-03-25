@@ -137,6 +137,7 @@ async function mountClaudePicker(props?: {
 describe("TraitsPicker (Claude)", () => {
   afterEach(() => {
     document.body.innerHTML = "";
+    localStorage.removeItem(COMPOSER_DRAFT_STORAGE_KEY);
     useComposerDraftStore.setState({
       draftsByThreadId: {},
       draftThreadsByThreadId: {},
@@ -185,7 +186,7 @@ describe("TraitsPicker (Claude)", () => {
     });
   });
 
-  it("shows a th  inking on/off dropdown for Haiku", async () => {
+  it("shows a thinking on/off dropdown for Haiku", async () => {
     await using _ = await mountClaudePicker({
       model: "claude-haiku-4-5",
       options: { thinking: true },
