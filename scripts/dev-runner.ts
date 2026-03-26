@@ -171,6 +171,7 @@ export function createDevRunnerEnv({
       delete output.T3CODE_MODE;
       delete output.T3CODE_NO_BROWSER;
       delete output.T3CODE_HOST;
+      delete output.T3CODE_BOOTSTRAP_FD;
     }
 
     if (!isDesktopMode && host !== undefined) {

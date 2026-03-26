@@ -21,7 +21,7 @@ const GET_WS_URL_CHANNEL = "desktop:get-ws-url";
 contextBridge.exposeInMainWorld("desktopBridge", {
   getWsUrl: () => {
     const result = ipcRenderer.sendSync(GET_WS_URL_CHANNEL);
-    return typeof result === "string" ? result : null;
+    return typeof result === "string" && result !== "" ? result : null;
   },
   pickFolder: () => ipcRenderer.invoke(PICK_FOLDER_CHANNEL),
   confirm: (message) => ipcRenderer.invoke(CONFIRM_CHANNEL, message),

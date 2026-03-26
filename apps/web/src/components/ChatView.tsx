@@ -129,10 +129,7 @@ import { SidebarTrigger } from "./ui/sidebar";
 import { newCommandId, newMessageId, newThreadId } from "~/lib/utils";
 import { readNativeApi } from "~/nativeApi";
 import { getProviderStartOptions, useAppSettings } from "../appSettings";
-import {
-  getCustomModelsByProvider,
-  resolveAppModelSelection,
-} from "../modelSelection";
+import { getCustomModelsByProvider, resolveAppModelSelection } from "../modelSelection";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import {
   type ComposerImageAttachment,

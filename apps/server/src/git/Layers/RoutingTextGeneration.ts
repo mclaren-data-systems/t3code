@@ -1,11 +1,14 @@
 /**
- * RoutingTextGeneration – Dispatches text generation requests to either the
- * Codex CLI or Claude CLI implementation based on the provider in each
- * request input.
+ * RoutingTextGeneration – Dispatches text generation requests to the
+ * appropriate CLI implementation based on the provider in each request input.
  *
- * When `modelSelection.provider` is `"claudeAgent"` the request is forwarded to
- * the Claude layer; for any other value (including the default `undefined`) it
- * falls through to the Codex layer.
+ * Currently supported providers:
+ *  - `"claudeAgent"` → Claude CLI layer
+ *  - `"codex"`       → Codex CLI layer (also the default fallback)
+ *
+ * Providers without a dedicated CLI text-generation layer (copilot, cursor,
+ * opencode, geminiCli, amp, kilo) fall back to Codex.  When a dedicated
+ * layer is added for one of those providers, add a route here.
  *
  * @module RoutingTextGeneration
  */
@@ -17,8 +20,11 @@ import { CodexTextGenerationLive } from "./CodexTextGeneration.ts";
 import { ClaudeTextGenerationLive } from "./ClaudeTextGeneration.ts";
 
 // ---------------------------------------------------------------------------
-// Internal service tags so both concrete layers can coexist.
+// Supported git text-generation providers.  Providers not in this set fall
+// back to codex (the most broadly compatible CLI implementation).
 // ---------------------------------------------------------------------------
+
+const GIT_TEXT_GEN_PROVIDERS = new Set<ProviderKind>(["codex", "claudeAgent"]);
 
 class CodexTextGen extends ServiceMap.Service<CodexTextGen, TextGenerationShape>()(
   "t3/git/Layers/RoutingTextGeneration/CodexTextGen",
@@ -36,8 +42,11 @@ const makeRoutingTextGeneration = Effect.gen(function* () {
   const codex = yield* CodexTextGen;
   const claude = yield* ClaudeTextGen;
 
-  const route = (provider?: ProviderKind): TextGenerationShape =>
-    provider === "claudeAgent" ? claude : codex;
+  const route = (provider?: ProviderKind): TextGenerationShape => {
+    if (!provider || !GIT_TEXT_GEN_PROVIDERS.has(provider)) return codex;
+    if (provider === "claudeAgent") return claude;
+    return codex;
+  };
 
   return {
     generateCommitMessage: (input) =>

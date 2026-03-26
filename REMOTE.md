@@ -23,7 +23,7 @@ The T3 Code CLI accepts the following configuration options, available either as
 
 - Always set `--auth-token` before exposing the server outside localhost.
   - When you control the process launcher, prefer sending the auth token in a JSON envelope via `--bootstrap-fd <fd>`.
-    With `--bootstrap-fd <fd>`, the launcher starts the server first, then sends a one-shot JSON envelope over the inherited file descriptor. This allows the auth token to be delivered without putting it in process environment or command line arguments.
+    With `--bootstrap-fd <fd>`, the launcher starts the server first, then sends a one-shot JSON envelope over the inherited file descriptor. This allows the auth token to be delivered without putting it in process environment or command-line arguments.
 - Treat the token like a password.
 - Prefer binding to trusted interfaces (LAN IP or Tailnet IP) instead of opening all interfaces unless needed.
 
