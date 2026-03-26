@@ -359,7 +359,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             const renderSubProviderGroup = (group: GroupedModelEntry) => (
               <MenuSub key={group.subProvider}>
                 <MenuSubTrigger>{group.subProvider}</MenuSubTrigger>
-                <MenuSubPopup className="[--available-height:min(24rem,70vh)]">
+                <MenuSubPopup className="[--available-height:min(24rem,70vh)]" sideOffset={4}>
                   <MenuGroup>
                     <MenuRadioGroup
                       value={props.provider === option.value ? props.model : ""}
@@ -399,7 +399,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                   />
                   {option.label}
                 </MenuSubTrigger>
-                <MenuSubPopup className="[--available-height:min(24rem,70vh)]">
+                <MenuSubPopup className="[--available-height:min(24rem,70vh)]" sideOffset={4}>
                   {groups.length === 0 ? (
                     <MenuItem disabled>
                       <span className="text-muted-foreground/60 text-xs">No models discovered</span>
@@ -414,7 +414,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                             <MenuSubTrigger>
                               <span className="text-muted-foreground/70">All Providers</span>
                             </MenuSubTrigger>
-                            <MenuSubPopup className="[--available-height:min(24rem,70vh)]">
+                            <MenuSubPopup className="[--available-height:min(24rem,70vh)]" sideOffset={4}>
                               {disconnectedGroups.map(renderSubProviderGroup)}
                             </MenuSubPopup>
                           </MenuSub>
@@ -442,7 +442,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                 />
                 {option.label}
               </MenuSubTrigger>
-              <MenuSubPopup className="[--available-height:min(24rem,70vh)]">
+              <MenuSubPopup className="[--available-height:min(24rem,70vh)]" sideOffset={4}>
                 <MenuGroup>
                   <MenuRadioGroup
                     value={props.provider === option.value ? props.model : ""}
