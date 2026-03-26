@@ -6,9 +6,10 @@ import {
   resolveCursorPickerModelSlug,
 } from "@t3tools/shared/model";
 import { memo, useState } from "react";
+import type { VariantProps } from "class-variance-authority";
 import { PROVIDER_OPTIONS, type ProviderPickerKind } from "../../session-logic";
 import { ChevronDownIcon } from "lucide-react";
-import { Button } from "../ui/button";
+import { Button, buttonVariants } from "../ui/button";
 import {
   Menu,
   MenuGroup,
@@ -178,14 +179,6 @@ function groupModelsBySubProvider(
   return result;
 }
 
-function isAvailableProviderOption(option: (typeof PROVIDER_OPTIONS)[number]): option is {
-  value: ProviderKind;
-  label: string;
-  available: true;
-} {
-  return option.available;
-}
-
 function resolveModelForProviderPicker(
   provider: ProviderKind,
   value: string,
@@ -259,6 +252,8 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   activeProviderIconClassName?: string;
   compact?: boolean;
   disabled?: boolean;
+  triggerVariant?: VariantProps<typeof buttonVariants>["variant"];
+  triggerClassName?: string;
   onProviderModelChange: (provider: ProviderKind, model: ModelSlug) => void;
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -268,18 +263,6 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const selectedModelLabel = selectedModelOption?.name ?? props.model;
   const selectedPricingTier = selectedModelOption?.pricingTier;
   const ProviderIcon = PROVIDER_ICON_BY_PROVIDER[activeProvider];
-  const handleModelChange = (provider: ProviderKind, value: string) => {
-    if (props.disabled) return;
-    if (!value) return;
-    const resolvedModel = resolveSelectableModel(
-      provider,
-      value,
-      props.modelOptionsByProvider[provider],
-    );
-    if (!resolvedModel) return;
-    props.onProviderModelChange(provider, resolvedModel);
-    setIsMenuOpen(false);
-  };
 
   return (
     <Menu
@@ -296,10 +279,11 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         render={
           <Button
             size="sm"
-            variant="ghost"
+            variant={props.triggerVariant ?? "ghost"}
             className={cn(
               "min-w-0 justify-start overflow-hidden whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 [&_svg]:mx-0",
               props.compact ? "max-w-42 shrink-0" : "max-w-48 shrink sm:max-w-56 sm:px-3",
+              props.triggerClassName,
             )}
             disabled={props.disabled}
           />
@@ -359,7 +343,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             const renderSubProviderGroup = (group: GroupedModelEntry) => (
               <MenuSub key={group.subProvider}>
                 <MenuSubTrigger>{group.subProvider}</MenuSubTrigger>
-                <MenuSubPopup className="[--available-height:min(24rem,70vh)]">
+                <MenuSubPopup className="[--available-height:min(24rem,70vh)]" sideOffset={4}>
                   <MenuGroup>
                     <MenuRadioGroup
                       value={props.provider === option.value ? props.model : ""}
@@ -399,7 +383,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                   />
                   {option.label}
                 </MenuSubTrigger>
-                <MenuSubPopup className="[--available-height:min(24rem,70vh)]">
+                <MenuSubPopup className="[--available-height:min(24rem,70vh)]" sideOffset={4}>
                   {groups.length === 0 ? (
                     <MenuItem disabled>
                       <span className="text-muted-foreground/60 text-xs">No models discovered</span>
@@ -414,7 +398,10 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                             <MenuSubTrigger>
                               <span className="text-muted-foreground/70">All Providers</span>
                             </MenuSubTrigger>
-                            <MenuSubPopup className="[--available-height:min(24rem,70vh)]">
+                            <MenuSubPopup
+                              className="[--available-height:min(24rem,70vh)]"
+                              sideOffset={4}
+                            >
                               {disconnectedGroups.map(renderSubProviderGroup)}
                             </MenuSubPopup>
                           </MenuSub>
@@ -442,7 +429,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                 />
                 {option.label}
               </MenuSubTrigger>
-              <MenuSubPopup className="[--available-height:min(24rem,70vh)]">
+              <MenuSubPopup className="[--available-height:min(24rem,70vh)]" sideOffset={4}>
                 <MenuGroup>
                   <MenuRadioGroup
                     value={props.provider === option.value ? props.model : ""}
