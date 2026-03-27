@@ -1479,7 +1479,7 @@ describe("ProviderRuntimeIngestion", () => {
   });
 
   it("completes streaming assistant messages even when read model lookup lags completion", async () => {
-    const harness = await createHarness();
+    const harness = await createHarness({ serverSettings: { enableAssistantStreaming: true } });
     const now = new Date().toISOString();
 
     await Effect.runPromise(
@@ -1570,7 +1570,7 @@ describe("ProviderRuntimeIngestion", () => {
   });
 
   it("splits streaming assistant text into separate messages around tool activity", async () => {
-    const harness = await createHarness();
+    const harness = await createHarness({ serverSettings: { enableAssistantStreaming: true } });
     const turnStartedAt = "2026-03-09T10:00:00.000Z";
     const beforeToolAt = "2026-03-09T10:00:01.000Z";
     const toolAt = "2026-03-09T10:00:02.000Z";
