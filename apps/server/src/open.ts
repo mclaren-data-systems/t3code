@@ -40,11 +40,8 @@ interface CommandAvailabilityOptions {
 
 const LINE_COLUMN_SUFFIX_PATTERN = /:\d+(?::\d+)?$/;
 
-/** Editors that accept `--goto file:line:column` for jump-to-line support. */
-const GOTO_FLAG_EDITORS = new Set<EditorId>(["cursor", "windsurf", "vscode", "positron"]);
-
-function shouldUseGotoFlag(editorId: EditorId, target: string): boolean {
-  return GOTO_FLAG_EDITORS.has(editorId) && LINE_COLUMN_SUFFIX_PATTERN.test(target);
+function shouldUseGotoFlag(editor: (typeof EDITORS)[number], target: string): boolean {
+  return editor.supportsGoto && LINE_COLUMN_SUFFIX_PATTERN.test(target);
 }
 
 /** Editors that are terminals requiring --working-directory instead of a positional path arg. */
@@ -77,6 +74,8 @@ const MAC_APP_NAMES: Partial<Record<EditorId, string>> = {
   cursor: "Cursor",
   windsurf: "Windsurf",
   vscode: "Visual Studio Code",
+  "vscode-insiders": "Visual Studio Code - Insiders",
+  vscodium: "VSCodium",
   zed: "Zed",
   positron: "Positron",
   sublime: "Sublime Text",
@@ -270,7 +269,7 @@ export const resolveEditorLaunch = Effect.fnUntraced(function* (
   }
 
   if (editorDef.command) {
-    if (shouldUseGotoFlag(editorDef.id, input.cwd)) {
+    if (shouldUseGotoFlag(editorDef, input.cwd)) {
       if (platform === "darwin" && !isCommandAvailable(editorDef.command)) {
         const macApp = MAC_APP_NAMES[editorDef.id];
         if (macApp && isMacAppInstalled(macApp)) {
@@ -281,10 +280,6 @@ export const resolveEditorLaunch = Effect.fnUntraced(function* (
     }
     if (WORKING_DIRECTORY_EDITORS.has(editorDef.id)) {
       const workingDirectory = resolveWorkingDirectoryTarget(input.cwd);
-      // On macOS, use `open -na <App>` so the running .app instance opens a
-      // new window/tab with the given working directory.  The `-n` flag is
-      // required: without it `open -a` merely activates the existing instance
-      // and the `--args` are silently ignored.
       if (platform === "darwin") {
         const macApp = MAC_APP_NAMES[editorDef.id];
         if (macApp) {
@@ -296,9 +291,6 @@ export const resolveEditorLaunch = Effect.fnUntraced(function* (
       }
       return { command: editorDef.command, args: [`--working-directory=${workingDirectory}`] };
     }
-    // On macOS, fall back to `open -a <App>` when the CLI tool is not in
-    // PATH but the .app bundle is installed (e.g. app installed via DMG
-    // without shell integration).
     if (platform === "darwin" && !isCommandAvailable(editorDef.command)) {
       const macApp = MAC_APP_NAMES[editorDef.id];
       if (macApp && isMacAppInstalled(macApp)) {
