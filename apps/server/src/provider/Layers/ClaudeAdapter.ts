@@ -2755,7 +2755,14 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
               }),
           ),
         );
-        const claudeBinaryPath = claudeSettings.binaryPath;
+        if (!claudeSettings.enabled) {
+          return yield* new ProviderAdapterValidationError({
+            provider: PROVIDER,
+            operation: "startSession",
+            issue: "Claude provider is disabled in server settings.",
+          });
+        }
+        const claudeBinaryPath = claudeSettings.binaryPath.trim() || "claude";
         const modelSelection =
           input.modelSelection?.provider === "claudeAgent" ? input.modelSelection : undefined;
         const caps = getClaudeModelCapabilities(modelSelection?.model);

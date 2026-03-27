@@ -203,7 +203,7 @@ const runClaudeCommand = (args: ReadonlyArray<string>) =>
       Effect.flatMap((service) => service.getSettings),
       Effect.map((settings) => settings.providers.claudeAgent),
     );
-    const command = ChildProcess.make(claudeSettings.binaryPath, [...args], {
+    const command = ChildProcess.make(claudeSettings.binaryPath.trim() || "claude", [...args], {
       shell: process.platform === "win32",
     });
 

@@ -127,7 +127,7 @@ import {
 import { SidebarTrigger } from "./ui/sidebar";
 import { newCommandId, newMessageId, newThreadId } from "~/lib/utils";
 import { readNativeApi } from "~/nativeApi";
-import { getProviderStartOptions, useAppSettings } from "../appSettings";
+import { useAppSettings } from "../appSettings";
 import { useSettings } from "../hooks/useSettings";
 import {
   getProviderModelCapabilities,
@@ -713,10 +713,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const kiloModelsQuery = useQuery(providerListModelsQueryOptions("kilo"));
   const geminiCliModelsQuery = useQuery(providerListModelsQueryOptions("geminiCli"));
   const ampModelsQuery = useQuery(providerListModelsQueryOptions("amp"));
-  const providerOptionsForDispatch = useMemo(
-    () => getProviderStartOptions(appSettings),
-    [appSettings],
-  );
   const modelOptionsByProvider = useMemo(
     () =>
       mergeDiscoveredModels(getCustomModelOptionsByProvider(appSettings), {
@@ -2799,7 +2795,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
           attachments: turnAttachments,
         },
         ...(selectedModelSelection ? { modelSelection: selectedModelSelection } : {}),
-        ...(providerOptionsForDispatch ? { providerOptions: providerOptionsForDispatch } : {}),
         runtimeMode,
         interactionMode,
         createdAt: messageCreatedAt,
@@ -3199,7 +3194,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
             attachments: [],
           },
           ...(selectedModelSelection ? { modelSelection: selectedModelSelection } : {}),
-          ...(providerOptionsForDispatch ? { providerOptions: providerOptionsForDispatch } : {}),
           runtimeMode,
           interactionMode: "default",
           createdAt,

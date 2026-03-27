@@ -68,6 +68,10 @@ export function resolveGitTextGenerationModelSelection(
 export function normalizeGitTextGenerationModelByProvider(
   overrides: Record<string, string>,
 ): Record<string, string> {
+  // Migrate legacy "claudeCode" key to current "claudeAgent" before filtering.
+  if ("claudeCode" in overrides && !("claudeAgent" in overrides)) {
+    overrides = { ...overrides, claudeAgent: overrides.claudeCode };
+  }
   const normalizedOverrides: Partial<Record<ProviderKind, string>> = {};
   for (const provider of PROVIDER_KINDS) {
     const normalized = normalizeModelSlug(overrides[provider], provider);
