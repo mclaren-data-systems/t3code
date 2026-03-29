@@ -24,6 +24,7 @@ import { fetchKiloModels } from "../../kiloServerManager";
 import { fetchOpenCodeModels } from "../../opencodeServerManager";
 import { ServerSettingsService } from "../../serverSettings";
 import { fetchCopilotModels } from "./CopilotAdapter";
+import { resolveBundledCopilotCliPath } from "./copilotCliPath";
 import { ClaudeProviderLive } from "./ClaudeProvider";
 import { CodexProviderLive } from "./CodexProvider";
 import { fetchCursorModels } from "./CursorAdapter";
@@ -232,27 +233,33 @@ function buildReadySnapshot(input: {
 const runBinaryBackedSnapshot = (
   provider: ProviderWithBinary,
   settings: ProviderSettingsShape,
-  fetchDiscoveredModels?:
-    | ((binaryPath: string | undefined) => Promise<ReadonlyArray<{ slug: string; name: string }>>)
-    | undefined,
+  options?: {
+    readonly fetchDiscoveredModels?:
+      | ((binaryPath: string | undefined) => Promise<ReadonlyArray<{ slug: string; name: string }>>)
+      | undefined;
+    readonly resolveProbeBinaryPath?:
+      | ((binaryPath: string | undefined) => string | undefined)
+      | undefined;
+  },
 ) =>
   Effect.gen(function* () {
-    const binaryPath = trimToUndefined(settings.binaryPath);
-    const discoveredModels =
-      binaryPath && fetchDiscoveredModels
-        ? yield* Effect.tryPromise({
-            try: () => fetchDiscoveredModels(binaryPath),
-            catch: wrapProbeError,
-          }).pipe(
-            Effect.catchCause((cause) => {
-              const error = unwrapProbeError(Cause.squash(cause));
-              if (isCommandMissingCause(error)) {
-                return Effect.succeed<ReadonlyArray<{ slug: string; name: string }>>([]);
-              }
-              return Effect.failCause(cause);
-            }),
-          )
-        : [];
+    const configuredBinaryPath = trimToUndefined(settings.binaryPath);
+    const binaryPath =
+      options?.resolveProbeBinaryPath?.(configuredBinaryPath) ?? configuredBinaryPath;
+    const discoveredModels = options?.fetchDiscoveredModels
+      ? yield* Effect.tryPromise({
+          try: () => options.fetchDiscoveredModels?.(binaryPath) ?? Promise.resolve([]),
+          catch: wrapProbeError,
+        }).pipe(
+          Effect.catchCause((cause) => {
+            const error = unwrapProbeError(Cause.squash(cause));
+            if (isCommandMissingCause(error)) {
+              return Effect.succeed<ReadonlyArray<{ slug: string; name: string }>>([]);
+            }
+            return Effect.failCause(cause);
+          }),
+        )
+      : [];
 
     const baseModels =
       discoveredModels.length > 0
@@ -264,23 +271,13 @@ const runBinaryBackedSnapshot = (
       return buildDisabledSnapshot(provider, settings, models);
     }
 
-    if (!binaryPath && !fetchDiscoveredModels) {
+    if (!binaryPath && !options?.fetchDiscoveredModels) {
       return buildWarningSnapshot({
         provider,
         settings,
         models,
         installed: true,
         message: `${PROVIDER_LABELS[provider]} runtime is enabled, but installation status is not probed yet.`,
-      });
-    }
-
-    if (!binaryPath && fetchDiscoveredModels) {
-      return buildWarningSnapshot({
-        provider,
-        settings,
-        models,
-        installed: true,
-        message: `${PROVIDER_LABELS[provider]} is enabled, but no binary path is configured for probing.`,
       });
     }
 
@@ -348,26 +345,29 @@ const loadProviderSnapshot = (deps: ProviderRegistryDeps, provider: ProviderKind
       case "claudeAgent":
         return yield* deps.claudeProvider.getSnapshot;
       case "copilot":
-        return yield* runBinaryBackedSnapshot("copilot", settings.providers.copilot, (binaryPath) =>
-          fetchCopilotModels(binaryPath).then((models) =>
-            (models ?? []).map((model) => ({ slug: model.slug, name: model.name })),
-          ),
-        );
+        return yield* runBinaryBackedSnapshot("copilot", settings.providers.copilot, {
+          fetchDiscoveredModels: (binaryPath) =>
+            fetchCopilotModels(binaryPath).then((models) =>
+              (models ?? []).map((model) => ({ slug: model.slug, name: model.name })),
+            ),
+          resolveProbeBinaryPath: (binaryPath) =>
+            binaryPath ?? resolveBundledCopilotCliPath() ?? "copilot",
+        });
       case "cursor":
-        return yield* runBinaryBackedSnapshot("cursor", settings.providers.cursor, (binaryPath) =>
-          fetchCursorModels(binaryPath ? { binaryPath } : {}).then((models) => [...models]),
-        );
+        return yield* runBinaryBackedSnapshot("cursor", settings.providers.cursor, {
+          fetchDiscoveredModels: (binaryPath) =>
+            fetchCursorModels(binaryPath ? { binaryPath } : {}).then((models) => [...models]),
+        });
       case "opencode":
-        return yield* runBinaryBackedSnapshot(
-          "opencode",
-          settings.providers.opencode,
-          (binaryPath) =>
+        return yield* runBinaryBackedSnapshot("opencode", settings.providers.opencode, {
+          fetchDiscoveredModels: (binaryPath) =>
             fetchOpenCodeModels(binaryPath ? { binaryPath } : {}).then((models) => [...models]),
-        );
+        });
       case "kilo":
-        return yield* runBinaryBackedSnapshot("kilo", settings.providers.kilo, (binaryPath) =>
-          fetchKiloModels(binaryPath ? { binaryPath } : {}).then((models) => [...models]),
-        );
+        return yield* runBinaryBackedSnapshot("kilo", settings.providers.kilo, {
+          fetchDiscoveredModels: (binaryPath) =>
+            fetchKiloModels(binaryPath ? { binaryPath } : {}).then((models) => [...models]),
+        });
       case "geminiCli":
         void fetchGeminiCliUsage();
         return yield* runBinaryBackedSnapshot("geminiCli", settings.providers.geminiCli);
