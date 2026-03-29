@@ -20,7 +20,7 @@ import * as Stream from "effect/Stream";
 import * as Reactivity from "effect/unstable/reactivity/Reactivity";
 import * as Client from "effect/unstable/sql/SqlClient";
 import type { Connection } from "effect/unstable/sql/SqlConnection";
-import { SqlError } from "effect/unstable/sql/SqlError";
+import { classifySqliteError, SqlError } from "effect/unstable/sql/SqlError";
 import * as Statement from "effect/unstable/sql/Statement";
 
 const ATTR_DB_SYSTEM_NAME = "db.system.name";
@@ -51,7 +51,7 @@ export interface SqliteMemoryClientConfig extends Omit<
 > {}
 
 const makeSqlError = (cause: unknown, message: string) =>
-  new SqlError({ cause, message } as unknown as ConstructorParameters<typeof SqlError>[0]);
+  new SqlError({ reason: classifySqliteError(cause, { message }) } as unknown as ConstructorParameters<typeof SqlError>[0]);
 
 /**
  * Verify that the current Node.js version includes the `node:sqlite` APIs
