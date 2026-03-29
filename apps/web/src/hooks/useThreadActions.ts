@@ -107,12 +107,6 @@ export function useThreadActions() {
           .catch(() => undefined);
       }
 
-      try {
-        await api.terminal.close({ threadId, deleteHistory: true });
-      } catch {
-        // Terminal may already be closed.
-      }
-
       const deletedThreadIds = opts.deletedThreadIds ?? new Set<ThreadId>();
       const shouldNavigateToFallback = routeThreadId === threadId;
       const fallbackThreadId = getFallbackThreadIdAfterDelete({
@@ -126,6 +120,11 @@ export function useThreadActions() {
         commandId: newCommandId(),
         threadId,
       });
+      try {
+        await api.terminal.close({ threadId, deleteHistory: true });
+      } catch {
+        // Terminal may already be closed.
+      }
       clearComposerDraftForThread(threadId);
       clearProjectDraftThreadById(thread.projectId, thread.id);
       clearTerminalState(threadId);

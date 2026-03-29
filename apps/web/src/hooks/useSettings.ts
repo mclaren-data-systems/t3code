@@ -200,6 +200,27 @@ export function buildLegacyServerSettingsMigrationPatch(legacySettings: Record<s
     );
   }
 
+  if (Predicate.isString(legacySettings.copilotCliPath)) {
+    patch.providers ??= {};
+    patch.providers.copilot ??= {};
+    patch.providers.copilot.binaryPath = legacySettings.copilotCliPath;
+  }
+
+  if (Predicate.isString(legacySettings.copilotConfigDir)) {
+    patch.providers ??= {};
+    patch.providers.copilot ??= {};
+    patch.providers.copilot.configDir = legacySettings.copilotConfigDir;
+  }
+
+  if (Array.isArray(legacySettings.customCopilotModels)) {
+    patch.providers ??= {};
+    patch.providers.copilot ??= {};
+    patch.providers.copilot.customModels = normalizeCustomModelSlugs(
+      legacySettings.customCopilotModels,
+      "copilot",
+    );
+  }
+
   return patch;
 }
 

@@ -86,6 +86,7 @@ type ProviderSettingsShape = {
   readonly enabled: boolean;
   readonly customModels: ReadonlyArray<string>;
   readonly binaryPath?: string;
+  readonly configDir?: string;
 };
 class ProviderSnapshotProbeError extends Error {
   override readonly cause: unknown;
@@ -243,6 +244,16 @@ const runBinaryBackedSnapshot = (
   },
 ) =>
   Effect.gen(function* () {
+    const fallbackModels = providerModelsFromSettings(
+      BUILT_IN_MODELS_BY_PROVIDER[provider],
+      provider,
+      settings.customModels,
+    );
+
+    if (!settings.enabled) {
+      return buildDisabledSnapshot(provider, settings, fallbackModels);
+    }
+
     const configuredBinaryPath = trimToUndefined(settings.binaryPath);
     const binaryPath =
       options?.resolveProbeBinaryPath?.(configuredBinaryPath) ?? configuredBinaryPath;
@@ -267,10 +278,6 @@ const runBinaryBackedSnapshot = (
         : BUILT_IN_MODELS_BY_PROVIDER[provider];
     const models = providerModelsFromSettings(baseModels, provider, settings.customModels);
 
-    if (!settings.enabled) {
-      return buildDisabledSnapshot(provider, settings, models);
-    }
-
     if (!binaryPath && !options?.fetchDiscoveredModels) {
       return buildWarningSnapshot({
         provider,
@@ -287,11 +294,6 @@ const runBinaryBackedSnapshot = (
           catch: wrapProbeError,
         }).pipe(
           Effect.map((result) => parseGenericCliVersion(`${result.stdout}\n${result.stderr}`)),
-          Effect.catchCause((cause) =>
-            isCommandMissingCause(unwrapProbeError(Cause.squash(cause)))
-              ? Effect.succeed<string | null>(null)
-              : Effect.failCause(cause),
-          ),
         )
       : null;
 
@@ -335,15 +337,23 @@ const runBinaryBackedSnapshot = (
     }),
   );
 
-const loadProviderSnapshot = (deps: ProviderRegistryDeps, provider: ProviderKind) =>
+const loadProviderSnapshot = (
+  deps: ProviderRegistryDeps,
+  provider: ProviderKind,
+  options?: { readonly forceRefreshManagedProviders?: boolean },
+) =>
   Effect.gen(function* () {
     const settings = yield* deps.getSettings;
 
     switch (provider) {
       case "codex":
-        return yield* deps.codexProvider.getSnapshot;
+        return yield* options?.forceRefreshManagedProviders
+          ? deps.codexProvider.refresh
+          : deps.codexProvider.getSnapshot;
       case "claudeAgent":
-        return yield* deps.claudeProvider.getSnapshot;
+        return yield* options?.forceRefreshManagedProviders
+          ? deps.claudeProvider.refresh
+          : deps.claudeProvider.getSnapshot;
       case "copilot":
         return yield* runBinaryBackedSnapshot("copilot", settings.providers.copilot, {
           fetchDiscoveredModels: (binaryPath) =>
@@ -369,16 +379,24 @@ const loadProviderSnapshot = (deps: ProviderRegistryDeps, provider: ProviderKind
             fetchKiloModels(binaryPath ? { binaryPath } : {}).then((models) => [...models]),
         });
       case "geminiCli":
-        void fetchGeminiCliUsage();
+        if (settings.providers.geminiCli.enabled) {
+          void fetchGeminiCliUsage();
+        }
         return yield* runBinaryBackedSnapshot("geminiCli", settings.providers.geminiCli);
       case "amp":
-        void fetchAmpUsage();
+        if (settings.providers.amp.enabled) {
+          void fetchAmpUsage();
+        }
         return yield* runBinaryBackedSnapshot("amp", settings.providers.amp);
     }
   });
 
-const loadProviders = (deps: ProviderRegistryDeps, providers: ReadonlyArray<ProviderKind>) =>
-  Effect.forEach(providers, (provider) => loadProviderSnapshot(deps, provider), {
+const loadProviders = (
+  deps: ProviderRegistryDeps,
+  providers: ReadonlyArray<ProviderKind>,
+  options?: { readonly forceRefreshManagedProviders?: boolean },
+) =>
+  Effect.forEach(providers, (provider) => loadProviderSnapshot(deps, provider, options), {
     concurrency: "unbounded",
   });
 
@@ -406,6 +424,23 @@ export const ProviderRegistryLive = Layer.effect(
       yield* loadProviders(deps, ALL_PROVIDERS),
     );
 
+    const applyManagedProviderSnapshot = (snapshot: ServerProvider) =>
+      Effect.gen(function* () {
+        const previousProviders = yield* Ref.get(providersRef);
+        const mergedProviders = ALL_PROVIDERS.map(
+          (provider) =>
+            (provider === snapshot.provider
+              ? snapshot
+              : previousProviders.find((candidate) => candidate.provider === provider)) ??
+            undefined,
+        ).filter((provider): provider is ServerProvider => provider !== undefined);
+        yield* Ref.set(providersRef, mergedProviders);
+
+        if (haveProvidersChanged(previousProviders, mergedProviders)) {
+          yield* PubSub.publish(changesPubSub, mergedProviders);
+        }
+      });
+
     const syncProviders = (
       providers: ReadonlyArray<ProviderKind> = ALL_PROVIDERS,
       options?: { readonly publish?: boolean },
@@ -415,7 +450,9 @@ export const ProviderRegistryLive = Layer.effect(
         const previousByProvider = new Map(
           previousProviders.map((provider) => [provider.provider, provider]),
         );
-        const nextSnapshots = yield* loadProviders(deps, providers);
+        const nextSnapshots = yield* loadProviders(deps, providers, {
+          forceRefreshManagedProviders: true,
+        });
         const mergedProviders = ALL_PROVIDERS.map(
           (provider) =>
             nextSnapshots.find((snapshot) => snapshot.provider === provider) ??
@@ -436,12 +473,18 @@ export const ProviderRegistryLive = Layer.effect(
     yield* Stream.runForEach(serverSettings.streamChanges, () => syncProviders()).pipe(
       Effect.forkScoped,
     );
+    yield* Stream.runForEach(codexProvider.streamChanges, applyManagedProviderSnapshot).pipe(
+      Effect.forkScoped,
+    );
+    yield* Stream.runForEach(claudeProvider.streamChanges, applyManagedProviderSnapshot).pipe(
+      Effect.forkScoped,
+    );
     yield* Effect.forever(
       Effect.sleep("60 seconds").pipe(Effect.flatMap(() => syncProviders())),
     ).pipe(Effect.forkScoped);
 
     return {
-      getProviders: syncProviders(ALL_PROVIDERS, { publish: false }).pipe(
+      getProviders: Ref.get(providersRef).pipe(
         Effect.tapError(Effect.logError),
         Effect.orElseSucceed(() => []),
       ),

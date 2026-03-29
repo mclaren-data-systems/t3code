@@ -384,7 +384,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
         assert.strictEqual(haveProvidersChanged(providers, [...providers]), false);
       });
 
-      it.effect("reruns codex health when codex provider settings change", () =>
+      it.effect("refreshes codex health when codex provider settings change", () =>
         Effect.gen(function* () {
           const serverSettings = yield* makeMutableServerSettingsService();
           const scope = yield* Scope.make();
@@ -431,15 +431,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
               },
             });
 
-            for (let attempt = 0; attempt < 20; attempt += 1) {
-              const updated = yield* registry.getProviders;
-              if (updated.find((status) => status.provider === "codex")?.status === "error") {
-                return;
-              }
-              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 0)));
-            }
-
-            const updated = yield* registry.getProviders;
+            const updated = yield* registry.refresh("codex");
             assert.strictEqual(
               updated.find((status) => status.provider === "codex")?.status,
               "error",
@@ -531,6 +523,45 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
             copilot?.message,
             "Copilot is enabled, but no binary path is configured for probing.",
           );
+        }),
+      );
+
+      it.effect("serves cached provider snapshots from getProviders without re-probing", () =>
+        Effect.gen(function* () {
+          let probeCount = 0;
+          const providerRegistryLayer = ProviderRegistryLive.pipe(
+            Layer.provideMerge(ServerSettingsService.layerTest()),
+            Layer.provideMerge(
+              mockCommandSpawnerLayer((command, args) => {
+                probeCount += 1;
+                const joined = args.join(" ");
+                if (joined === "--version") {
+                  if (command === "codex") {
+                    return { stdout: "codex 1.0.0\n", stderr: "", code: 0 };
+                  }
+                  if (command === "claude") {
+                    return { stdout: "claude 1.0.0\n", stderr: "", code: 0 };
+                  }
+                  return { stdout: "", stderr: "spawn ENOENT", code: 1 };
+                }
+                if (joined === "login status") {
+                  return { stdout: "Logged in\n", stderr: "", code: 0 };
+                }
+                if (joined === "auth status") {
+                  return { stdout: "Authenticated\n", stderr: "", code: 0 };
+                }
+                throw new Error(`Unexpected command: ${command} ${joined}`);
+              }),
+            ),
+          );
+
+          yield* Effect.gen(function* () {
+            const registry = yield* ProviderRegistry;
+            const initialProbeCount = probeCount;
+            yield* registry.getProviders;
+            yield* registry.getProviders;
+            assert.strictEqual(probeCount, initialProbeCount);
+          }).pipe(Effect.provide(providerRegistryLayer));
         }),
       );
 

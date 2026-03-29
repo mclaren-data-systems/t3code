@@ -57,7 +57,7 @@ jobs:
   sync-label-definitions:
     name: Sync PR size label definitions
     needs: prepare-config
-    if: github.event_name != 'pull_request_target'
+    if: github.event_name == 'pull_request_target'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -113,7 +113,7 @@ jobs:
             }
   label:
     name: Label PR size
-    needs: prepare-config
+    needs: [prepare-config, sync-label-definitions]
     if: github.event_name == 'pull_request_target'
     runs-on: ubuntu-24.04
     permissions:
@@ -209,8 +209,8 @@ jobs:
             }).trim();
 
             if (resolvedHeadSha !== headSha) {
-              core.warning(
-                `Fetched head SHA ${resolvedHeadSha} does not match pull request head SHA ${headSha}; using fetched ref for sizing.`,
+              throw new Error(
+                `Fetched head SHA ${resolvedHeadSha} does not match pull request head SHA ${headSha}; retry once refs/pull/${issueNumber}/head catches up.`,
               );
             }
 

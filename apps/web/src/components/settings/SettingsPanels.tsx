@@ -92,25 +92,80 @@ type InstallProviderSettings = {
   homePathKey?: "codexHomePath";
   homePlaceholder?: string;
   homeDescription?: ReactNode;
+  configDirKey?: "configDir";
+  configDirPlaceholder?: string;
+  configDirDescription?: ReactNode;
 };
 
-const PROVIDER_SETTINGS: readonly InstallProviderSettings[] = [
-  {
-    provider: "codex",
-    title: "Codex",
+const PROVIDER_ORDER = [
+  "codex",
+  "copilot",
+  "claudeAgent",
+  "cursor",
+  "opencode",
+  "geminiCli",
+  "amp",
+  "kilo",
+] as const satisfies ReadonlyArray<ProviderKind>;
+
+const PROVIDER_SETTINGS_OVERRIDES: Partial<
+  Record<ProviderKind, Omit<InstallProviderSettings, "provider" | "title">>
+> = {
+  codex: {
     binaryPlaceholder: "Codex binary path",
     binaryDescription: "Path to the Codex binary",
     homePathKey: "codexHomePath",
     homePlaceholder: "CODEX_HOME",
     homeDescription: "Optional custom Codex home and config directory.",
   },
-  {
-    provider: "claudeAgent",
-    title: "Claude",
+  copilot: {
+    binaryPlaceholder: "Copilot CLI path",
+    binaryDescription: "Path to the GitHub Copilot CLI binary",
+    configDirKey: "configDir",
+    configDirPlaceholder: "Copilot config directory",
+    configDirDescription: "Optional custom GitHub Copilot config directory.",
+  },
+  claudeAgent: {
     binaryPlaceholder: "Claude binary path",
     binaryDescription: "Path to the Claude binary",
   },
-] as const;
+};
+
+function getInstallProviderSettings(provider: ProviderKind): InstallProviderSettings {
+  const title = PROVIDER_DISPLAY_NAMES[provider] ?? provider;
+  const override = PROVIDER_SETTINGS_OVERRIDES[provider];
+  return {
+    provider,
+    title,
+    binaryPlaceholder: override?.binaryPlaceholder ?? `${title} binary path`,
+    binaryDescription: override?.binaryDescription ?? `Path to the ${title} binary`,
+    ...(override?.homePathKey ? { homePathKey: override.homePathKey } : {}),
+    ...(override?.homePlaceholder ? { homePlaceholder: override.homePlaceholder } : {}),
+    ...(override?.homeDescription ? { homeDescription: override.homeDescription } : {}),
+    ...(override?.configDirKey ? { configDirKey: override.configDirKey } : {}),
+    ...(override?.configDirPlaceholder
+      ? { configDirPlaceholder: override.configDirPlaceholder }
+      : {}),
+    ...(override?.configDirDescription
+      ? { configDirDescription: override.configDirDescription }
+      : {}),
+  };
+}
+
+function getProviderSettingsForDisplay(
+  serverProviders: ReadonlyArray<ServerProvider>,
+): ReadonlyArray<InstallProviderSettings> {
+  const orderedProviders =
+    serverProviders.length > 0
+      ? [
+          ...serverProviders.map((provider) => provider.provider),
+          ...PROVIDER_ORDER.filter(
+            (provider) => !serverProviders.some((entry) => entry.provider === provider),
+          ),
+        ]
+      : [...PROVIDER_ORDER];
+  return orderedProviders.map(getInstallProviderSettings);
+}
 
 const PROVIDER_STATUS_STYLES = {
   disabled: {
@@ -440,9 +495,9 @@ export function useSettingsRestore(onRestored?: () => void) {
     settings.textGenerationModelSelection ?? null,
     DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection ?? null,
   );
-  const areProviderSettingsDirty = PROVIDER_SETTINGS.some((providerSettings) => {
-    const currentSettings = settings.providers[providerSettings.provider];
-    const defaultSettings = DEFAULT_UNIFIED_SETTINGS.providers[providerSettings.provider];
+  const areProviderSettingsDirty = PROVIDER_ORDER.some((provider) => {
+    const currentSettings = settings.providers[provider];
+    const defaultSettings = DEFAULT_UNIFIED_SETTINGS.providers[provider];
     return !Equal.equals(currentSettings, defaultSettings);
   });
 
@@ -513,24 +568,17 @@ export function GeneralSettingsPanel() {
   const [openKeybindingsError, setOpenKeybindingsError] = useState<string | null>(null);
   const [openProviderDetails, setOpenProviderDetails] = useState<
     Partial<Record<ProviderKind, boolean>>
-  >({
-    codex: Boolean(
-      settings.providers.codex.binaryPath !== DEFAULT_UNIFIED_SETTINGS.providers.codex.binaryPath ||
-      settings.providers.codex.homePath !== DEFAULT_UNIFIED_SETTINGS.providers.codex.homePath ||
-      settings.providers.codex.customModels.length > 0,
+  >(() =>
+    Object.fromEntries(
+      PROVIDER_ORDER.map((provider) => [
+        provider,
+        !Equal.equals(settings.providers[provider], DEFAULT_UNIFIED_SETTINGS.providers[provider]),
+      ]),
     ),
-    claudeAgent: Boolean(
-      settings.providers.claudeAgent.binaryPath !==
-        DEFAULT_UNIFIED_SETTINGS.providers.claudeAgent.binaryPath ||
-      settings.providers.claudeAgent.customModels.length > 0,
-    ),
-  });
+  );
   const [customModelInputByProvider, setCustomModelInputByProvider] = useState<
     Partial<Record<ProviderKind, string>>
-  >({
-    codex: "",
-    claudeAgent: "",
-  });
+  >(() => Object.fromEntries(PROVIDER_ORDER.map((provider) => [provider, ""])));
   const [customModelErrorByProvider, setCustomModelErrorByProvider] = useState<
     Partial<Record<ProviderKind, string | null>>
   >({});
@@ -557,6 +605,10 @@ export function GeneralSettingsPanel() {
   const keybindingsConfigPath = serverConfigQuery.data?.keybindingsConfigPath ?? null;
   const availableEditors = serverConfigQuery.data?.availableEditors;
   const serverProviders = serverConfigQuery.data?.providers ?? EMPTY_SERVER_PROVIDERS;
+  const providerSettings = useMemo(
+    () => getProviderSettingsForDisplay(serverProviders),
+    [serverProviders],
+  );
   const codexHomePath = settings.providers.codex.homePath;
 
   const textGenerationModelSelection = resolveAppModelSelectionState(settings, serverProviders);
@@ -668,26 +720,29 @@ export function GeneralSettingsPanel() {
 
   const removeCustomModel = useCallback(
     (provider: ProviderKind, slug: string) => {
-      updateSettings({
-        providers: {
-          ...settings.providers,
-          [provider]: {
-            ...settings.providers[provider],
-            customModels: settings.providers[provider].customModels.filter(
-              (model) => model !== slug,
-            ),
-          },
+      const nextProviders = {
+        ...settings.providers,
+        [provider]: {
+          ...settings.providers[provider],
+          customModels: settings.providers[provider].customModels.filter((model) => model !== slug),
         },
+      };
+      updateSettings({
+        providers: nextProviders,
+        textGenerationModelSelection: resolveAppModelSelectionState(
+          { ...settings, providers: nextProviders },
+          serverProviders,
+        ),
       });
       setCustomModelErrorByProvider((existing) => ({
         ...existing,
         [provider]: null,
       }));
     },
-    [settings, updateSettings],
+    [serverProviders, settings, updateSettings],
   );
 
-  const providerCards = PROVIDER_SETTINGS.map((providerSettings) => {
+  const providerCards = providerSettings.map((providerSettings) => {
     const liveProvider = serverProviders.find(
       (candidate) => candidate.provider === providerSettings.provider,
     );
@@ -712,7 +767,11 @@ export function GeneralSettingsPanel() {
       homePathKey: providerSettings.homePathKey,
       homePlaceholder: providerSettings.homePlaceholder,
       homeDescription: providerSettings.homeDescription,
+      configDirKey: providerSettings.configDirKey,
+      configDirPlaceholder: providerSettings.configDirPlaceholder,
+      configDirDescription: providerSettings.configDirDescription,
       binaryPathValue: providerConfig.binaryPath,
+      configDirValue: "configDir" in providerConfig ? providerConfig.configDir : "",
       isDirty: !Equal.equals(providerConfig, defaultProviderConfig),
       liveProvider,
       models,
@@ -1226,6 +1285,42 @@ export function GeneralSettingsPanel() {
                       </div>
                     ) : null}
 
+                    {providerCard.configDirKey ? (
+                      <div className="border-t border-border/60 px-4 py-3 sm:px-5">
+                        <label
+                          htmlFor={`provider-install-${providerCard.provider}-config-dir`}
+                          className="block"
+                        >
+                          <span className="text-xs font-medium text-foreground">
+                            {providerDisplayName} config directory
+                          </span>
+                          <Input
+                            id={`provider-install-${providerCard.provider}-config-dir`}
+                            className="mt-1.5"
+                            value={providerCard.configDirValue}
+                            onChange={(event) =>
+                              updateSettings({
+                                providers: {
+                                  ...settings.providers,
+                                  [providerCard.provider]: {
+                                    ...settings.providers[providerCard.provider],
+                                    configDir: event.target.value,
+                                  },
+                                },
+                              })
+                            }
+                            placeholder={providerCard.configDirPlaceholder}
+                            spellCheck={false}
+                          />
+                          {providerCard.configDirDescription ? (
+                            <span className="mt-1 block text-xs text-muted-foreground">
+                              {providerCard.configDirDescription}
+                            </span>
+                          ) : null}
+                        </label>
+                      </div>
+                    ) : null}
+
                     <div className="border-t border-border/60 px-4 py-3 sm:px-5">
                       <div className="text-xs font-medium text-foreground">Models</div>
                       <div className="mt-1 text-xs text-muted-foreground">
@@ -1453,7 +1548,15 @@ export function ArchivedThreadsPanel() {
       }
 
       if (clicked === "delete") {
-        await confirmAndDeleteThread(threadId);
+        try {
+          await confirmAndDeleteThread(threadId);
+        } catch (error) {
+          toastManager.add({
+            type: "error",
+            title: "Failed to delete thread",
+            description: error instanceof Error ? error.message : "An error occurred.",
+          });
+        }
       }
     },
     [confirmAndDeleteThread, unarchiveThread],
@@ -1500,24 +1603,45 @@ export function ArchivedThreadsPanel() {
                     {formatRelativeTimeLabel(thread.createdAt)}
                   </p>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 shrink-0 cursor-pointer gap-1.5 px-2.5"
-                  onClick={() =>
-                    void unarchiveThread(thread.id).catch((error) => {
-                      toastManager.add({
-                        type: "error",
-                        title: "Failed to unarchive thread",
-                        description: error instanceof Error ? error.message : "An error occurred.",
-                      });
-                    })
-                  }
-                >
-                  <ArchiveX className="size-3.5" />
-                  <span>Unarchive</span>
-                </Button>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 cursor-pointer gap-1.5 px-2.5"
+                    onClick={() =>
+                      void unarchiveThread(thread.id).catch((error) => {
+                        toastManager.add({
+                          type: "error",
+                          title: "Failed to unarchive thread",
+                          description:
+                            error instanceof Error ? error.message : "An error occurred.",
+                        });
+                      })
+                    }
+                  >
+                    <ArchiveX className="size-3.5" />
+                    <span>Unarchive</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="destructive-outline"
+                    size="sm"
+                    className="h-7 cursor-pointer gap-1.5 px-2.5"
+                    onClick={() =>
+                      void confirmAndDeleteThread(thread.id).catch((error) => {
+                        toastManager.add({
+                          type: "error",
+                          title: "Failed to delete thread",
+                          description:
+                            error instanceof Error ? error.message : "An error occurred.",
+                        });
+                      })
+                    }
+                  >
+                    <span>Delete</span>
+                  </Button>
+                </div>
               </div>
             ))}
           </SettingsSection>

@@ -82,6 +82,8 @@ const MIRRORED_SERVER_KEYS = new Set<keyof AppSettings>([
   "claudeBinaryPath",
   "codexBinaryPath",
   "codexHomePath",
+  "copilotCliPath",
+  "copilotConfigDir",
   "defaultThreadEnvMode",
   "enableAssistantStreaming",
   "customCodexModels",
@@ -279,6 +281,8 @@ function withUnifiedCompatSettings(
     claudeBinaryPath: unifiedSettings.providers.claudeAgent.binaryPath,
     codexBinaryPath: unifiedSettings.providers.codex.binaryPath,
     codexHomePath: unifiedSettings.providers.codex.homePath,
+    copilotCliPath: unifiedSettings.providers.copilot.binaryPath,
+    copilotConfigDir: unifiedSettings.providers.copilot.configDir,
     defaultThreadEnvMode: unifiedSettings.defaultThreadEnvMode,
     confirmThreadDelete: unifiedSettings.confirmThreadDelete,
     diffWordWrap: unifiedSettings.diffWordWrap,
@@ -304,6 +308,7 @@ function toUnifiedPatch(patch: Partial<AppSettings>): Partial<UnifiedSettings> {
       {
         binaryPath?: string;
         homePath?: string;
+        configDir?: string;
         customModels?: ReadonlyArray<string>;
       }
     >
@@ -317,6 +322,12 @@ function toUnifiedPatch(patch: Partial<AppSettings>): Partial<UnifiedSettings> {
   if (patch.claudeBinaryPath !== undefined) {
     providersPatch.claudeAgent = {
       binaryPath: patch.claudeBinaryPath,
+    };
+  }
+  if (patch.copilotCliPath !== undefined || patch.copilotConfigDir !== undefined) {
+    providersPatch.copilot = {
+      ...(patch.copilotCliPath !== undefined ? { binaryPath: patch.copilotCliPath } : {}),
+      ...(patch.copilotConfigDir !== undefined ? { configDir: patch.copilotConfigDir } : {}),
     };
   }
   const providerModelEntries = Object.entries(APP_SETTINGS_PROVIDER_CUSTOM_MODEL_KEYS) as Array<
@@ -445,14 +456,18 @@ export function useAppSettings() {
         return;
       }
 
-      setLocalSettings((prev) => normalizeAppSettings({ ...prev, ...localPatch }));
+      setLocalSettings((prev) =>
+        normalizeAppSettings(
+          AppSettingsSchema.makeUnsafe(stripMirroredKeys({ ...prev, ...localPatch })),
+        ),
+      );
     },
     [setLocalSettings, updateUnifiedSettings],
   );
 
   const resetSettings = useCallback(() => {
     resetUnifiedSettings();
-    setLocalSettings(DEFAULT_APP_SETTINGS);
+    setLocalSettings(AppSettingsSchema.makeUnsafe(stripMirroredKeys(DEFAULT_APP_SETTINGS)));
   }, [resetUnifiedSettings, setLocalSettings]);
 
   return {

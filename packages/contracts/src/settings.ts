@@ -81,6 +81,7 @@ export const GenericProviderSettings = Schema.Struct({
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
   customModels: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(() => [])),
   binaryPath: TrimmedString.pipe(Schema.withDecodingDefault(() => "")),
+  configDir: TrimmedString.pipe(Schema.withDecodingDefault(() => "")),
 });
 export type GenericProviderSettings = typeof GenericProviderSettings.Type;
 
@@ -219,6 +220,8 @@ const ClaudeSettingsPatch = Schema.Struct({
 
 const GenericProviderSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
+  binaryPath: Schema.optionalKey(Schema.String),
+  configDir: Schema.optionalKey(Schema.String),
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
