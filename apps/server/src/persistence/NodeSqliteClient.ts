@@ -51,7 +51,9 @@ export interface SqliteMemoryClientConfig extends Omit<
 > {}
 
 const makeSqlError = (cause: unknown, message: string) =>
-  new SqlError({ reason: classifySqliteError(cause, { message }) } as unknown as ConstructorParameters<typeof SqlError>[0]);
+  new SqlError({
+    reason: classifySqliteError(cause, { message }),
+  } as unknown as ConstructorParameters<typeof SqlError>[0]);
 
 /**
  * Verify that the current Node.js version includes the `node:sqlite` APIs
