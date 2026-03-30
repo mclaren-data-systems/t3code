@@ -37,20 +37,20 @@ export const makeKeyedCoalescingWorker = <K, V, E, R>(options: {
       options.process(key, value).pipe(
         Effect.flatMap(() =>
           TxRef.modify(stateRef, (state) => {
-            const nextValue = state.latestByKey.get(key);
-            if (nextValue === undefined) {
-              const activeKeys = new Set(state.activeKeys);
-              activeKeys.delete(key);
-              return [null, { ...state, activeKeys }] as const;
+            const activeKeys = new Set(state.activeKeys);
+            activeKeys.delete(key);
+
+            if (state.latestByKey.has(key)) {
+              const queuedKeys = new Set(state.queuedKeys);
+              queuedKeys.add(key);
+              return [true, { ...state, activeKeys, queuedKeys }] as const;
             }
 
-            const latestByKey = new Map(state.latestByKey);
-            latestByKey.delete(key);
-            return [nextValue, { ...state, latestByKey }] as const;
+            return [false, { ...state, activeKeys }] as const;
           }).pipe(Effect.tx),
         ),
-        Effect.flatMap((nextValue) =>
-          nextValue === null ? Effect.void : processKey(key, nextValue),
+        Effect.flatMap((shouldRequeue) =>
+          shouldRequeue ? TxQueue.offer(queue, key) : Effect.void,
         ),
       );
 

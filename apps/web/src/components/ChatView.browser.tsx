@@ -578,6 +578,9 @@ const worker = setupWorker(
   wsLink.addEventListener("connection", ({ client }) => {
     wsClient = client;
     pushSequence = 1;
+    client.addEventListener("close", () => {
+      if (wsClient === client) wsClient = null;
+    });
     client.send(
       JSON.stringify({
         type: "push",
@@ -938,6 +941,8 @@ describe("ChatView timeline estimator parity (full app)", () => {
   });
 
   beforeEach(async () => {
+    wsClient = null;
+    pushSequence = 1;
     await setViewport(DEFAULT_VIEWPORT);
     localStorage.clear();
     document.body.innerHTML = "";
@@ -958,6 +963,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
   });
 
   afterEach(() => {
+    wsClient = null;
     customWsRpcResolver = null;
     document.body.innerHTML = "";
   });

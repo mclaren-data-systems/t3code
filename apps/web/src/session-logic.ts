@@ -897,7 +897,11 @@ export function deriveCompletionDividerBeforeEntryId(
 
   const turnStartedAt = Date.parse(latestTurn.startedAt);
   const turnCompletedAt = Date.parse(latestTurn.completedAt);
-  if (Number.isNaN(turnStartedAt) || Number.isNaN(turnCompletedAt)) {
+  if (
+    Number.isNaN(turnStartedAt) ||
+    Number.isNaN(turnCompletedAt) ||
+    turnCompletedAt < turnStartedAt
+  ) {
     return null;
   }
 

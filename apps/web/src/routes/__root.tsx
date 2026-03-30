@@ -320,6 +320,13 @@ function EventRouter() {
         applyEventBatch([event]);
         return;
       }
+      if (action === "defer") {
+        const currentState = recovery.getState();
+        if (!currentState.bootstrapped && !currentState.inFlight) {
+          void bootstrapFromSnapshot();
+        }
+        return;
+      }
       if (action === "recover") {
         void recoverFromSequenceGap();
       }

@@ -416,7 +416,8 @@ function toSortableTimestamp(iso: string | undefined): number | null {
 
 function getLatestUserMessageTimestamp(thread: SidebarThreadSortInput): number {
   if (thread.latestUserMessageAt) {
-    return toSortableTimestamp(thread.latestUserMessageAt) ?? Number.NEGATIVE_INFINITY;
+    const parsed = toSortableTimestamp(thread.latestUserMessageAt);
+    if (parsed !== null) return parsed;
   }
 
   let latestUserMessageTimestamp: number | null = null;

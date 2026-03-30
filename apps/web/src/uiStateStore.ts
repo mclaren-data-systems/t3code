@@ -19,6 +19,7 @@ const LEGACY_PERSISTED_STATE_KEYS = [
 interface PersistedUiState {
   expandedProjectCwds?: string[];
   projectOrderCwds?: string[];
+  threadLastVisitedAtById?: Record<string, string>;
 }
 
 export interface UiProjectState {
@@ -49,7 +50,9 @@ const initialState: UiState = {
 };
 
 const persistedExpandedProjectCwds = new Set<string>();
+let hasPersistedExpandedProjectCwds = false;
 const persistedProjectOrderCwds: string[] = [];
+let hasPersistedProjectOrderCwds = false;
 const currentProjectCwdById = new Map<ProjectId, string>();
 let legacyKeysCleanedUp = false;
 
@@ -66,29 +69,42 @@ function readPersistedState(): UiState {
           continue;
         }
         hydratePersistedProjectState(JSON.parse(legacyRaw) as PersistedUiState);
-        return initialState;
+        return { ...initialState, threadLastVisitedAtById: persistedThreadLastVisitedAtById };
       }
       return initialState;
     }
     hydratePersistedProjectState(JSON.parse(raw) as PersistedUiState);
-    return initialState;
+    return { ...initialState, threadLastVisitedAtById: persistedThreadLastVisitedAtById };
   } catch {
     return initialState;
   }
 }
 
+let persistedThreadLastVisitedAtById: Record<string, string> = {};
+
 function hydratePersistedProjectState(parsed: PersistedUiState): void {
   persistedExpandedProjectCwds.clear();
+  hasPersistedExpandedProjectCwds = Array.isArray(parsed.expandedProjectCwds);
   persistedProjectOrderCwds.length = 0;
-  for (const cwd of parsed.expandedProjectCwds ?? []) {
-    if (typeof cwd === "string" && cwd.length > 0) {
-      persistedExpandedProjectCwds.add(cwd);
+  hasPersistedProjectOrderCwds = Array.isArray(parsed.projectOrderCwds);
+  if (hasPersistedExpandedProjectCwds) {
+    for (const cwd of parsed.expandedProjectCwds!) {
+      if (typeof cwd === "string" && cwd.length > 0) {
+        persistedExpandedProjectCwds.add(cwd);
+      }
     }
   }
-  for (const cwd of parsed.projectOrderCwds ?? []) {
-    if (typeof cwd === "string" && cwd.length > 0 && !persistedProjectOrderCwds.includes(cwd)) {
-      persistedProjectOrderCwds.push(cwd);
+  if (hasPersistedProjectOrderCwds) {
+    for (const cwd of parsed.projectOrderCwds!) {
+      if (typeof cwd === "string" && cwd.length > 0 && !persistedProjectOrderCwds.includes(cwd)) {
+        persistedProjectOrderCwds.push(cwd);
+      }
     }
+  }
+  if (parsed.threadLastVisitedAtById && typeof parsed.threadLastVisitedAtById === "object") {
+    persistedThreadLastVisitedAtById = { ...parsed.threadLastVisitedAtById };
+  } else {
+    persistedThreadLastVisitedAtById = {};
   }
 }
 
@@ -112,6 +128,7 @@ function persistState(state: UiState): void {
       JSON.stringify({
         expandedProjectCwds,
         projectOrderCwds,
+        threadLastVisitedAtById: state.threadLastVisitedAtById,
       } satisfies PersistedUiState),
     );
     if (!legacyKeysCleanedUp) {
@@ -170,9 +187,7 @@ export function syncProjects(state: UiState, projects: readonly SyncProjectInput
     const expanded =
       previousExpandedById[project.id] ??
       (previousProjectIdForCwd ? previousExpandedById[previousProjectIdForCwd] : undefined) ??
-      (persistedExpandedProjectCwds.size > 0
-        ? persistedExpandedProjectCwds.has(project.cwd)
-        : true);
+      (hasPersistedExpandedProjectCwds ? persistedExpandedProjectCwds.has(project.cwd) : true);
     nextExpandedById[project.id] = expanded;
     return {
       id: project.id,

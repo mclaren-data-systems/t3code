@@ -76,7 +76,7 @@ function makeEvent<T extends OrchestrationEvent["type"]>(
   return {
     sequence,
     eventId: EventId.makeUnsafe(`event-${sequence}`),
-    aggregateKind: "thread",
+    aggregateKind: type.startsWith("project.") ? "project" : "thread",
     aggregateId:
       "threadId" in payload
         ? payload.threadId

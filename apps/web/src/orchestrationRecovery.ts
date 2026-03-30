@@ -89,8 +89,8 @@ export function createOrchestrationRecoveryCoordinator() {
     },
 
     completeSnapshotRecovery(snapshotSequence: number): boolean {
-      state.latestSequence = Math.max(state.latestSequence, snapshotSequence);
-      state.highestObservedSequence = Math.max(state.highestObservedSequence, state.latestSequence);
+      state.latestSequence = snapshotSequence;
+      state.highestObservedSequence = Math.max(state.highestObservedSequence, snapshotSequence);
       state.bootstrapped = true;
       state.inFlight = null;
       return shouldReplayAfterRecovery();

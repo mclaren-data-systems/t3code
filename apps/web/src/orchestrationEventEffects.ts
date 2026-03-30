@@ -30,17 +30,19 @@ export function deriveOrchestrationBatchEffects(
       }
 
       case "thread.created": {
+        const current = threadLifecycleEffects.get(event.payload.threadId);
         threadLifecycleEffects.set(event.payload.threadId, {
           clearPromotedDraft: true,
-          clearDeletedThread: false,
-          removeTerminalState: false,
+          clearDeletedThread: current?.clearDeletedThread ?? false,
+          removeTerminalState: current?.removeTerminalState ?? false,
         });
         break;
       }
 
       case "thread.deleted": {
+        const current = threadLifecycleEffects.get(event.payload.threadId);
         threadLifecycleEffects.set(event.payload.threadId, {
-          clearPromotedDraft: false,
+          clearPromotedDraft: current?.clearPromotedDraft ?? false,
           clearDeletedThread: true,
           removeTerminalState: true,
         });

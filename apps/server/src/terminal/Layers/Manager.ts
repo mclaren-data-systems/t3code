@@ -118,6 +118,7 @@ type DrainProcessEventAction =
       terminalId: string;
       history: string | null;
       data: string;
+      updatedAt: string;
     }
   | {
       type: "exit";
@@ -126,6 +127,7 @@ type DrainProcessEventAction =
       terminalId: string;
       exitCode: number | null;
       exitSignal: number | null;
+      updatedAt: string;
     };
 
 interface TerminalManagerState {
@@ -1142,6 +1144,7 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
               terminalId: session.terminalId,
               history: sanitized.visibleText.length > 0 ? session.history : null,
               data: nextEvent.data,
+              updatedAt: session.updatedAt,
             } as const;
           }
 
@@ -1170,6 +1173,7 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
             terminalId: session.terminalId,
             exitCode: session.exitCode,
             exitSignal: session.exitSignal,
+            updatedAt: session.updatedAt,
           } as const;
         });
 
@@ -1178,6 +1182,8 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
         }
 
         if (action.type === "output") {
+          if (session.updatedAt !== action.updatedAt) continue;
+
           if (action.history !== null) {
             yield* queuePersist(action.threadId, action.terminalId, action.history);
           }
@@ -1191,6 +1197,8 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
           });
           continue;
         }
+
+        if (session.updatedAt !== action.updatedAt) return;
 
         yield* clearKillFiber(action.process);
         yield* publishEvent({
@@ -1627,16 +1635,10 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
             );
           } else if (liveSession.status === "exited" || liveSession.status === "error") {
             liveSession.runtimeEnv = nextRuntimeEnv;
-            liveSession.history = "";
             liveSession.pendingHistoryControlSequence = "";
             liveSession.pendingProcessEvents = [];
             liveSession.pendingProcessEventIndex = 0;
             liveSession.processEventDrainRunning = false;
-            yield* persistHistory(
-              liveSession.threadId,
-              liveSession.terminalId,
-              liveSession.history,
-            );
           }
 
           if (!liveSession.process) {
