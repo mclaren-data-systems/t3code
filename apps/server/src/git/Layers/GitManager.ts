@@ -520,8 +520,6 @@ export const makeGitManager = Effect.fn("makeGitManager")(function* () {
 
   const tempDir = process.env.TMPDIR ?? process.env.TEMP ?? process.env.TMP ?? "/tmp";
 
-  const readConfigValueNullable = (cwd: string, key: string) => gitCore.readConfigValue(cwd, key);
-
   const resolveRemoteRepositoryContext = Effect.fn("resolveRemoteRepositoryContext")(function* (
     cwd: string,
     remoteName: string | null,
@@ -533,7 +531,7 @@ export const makeGitManager = Effect.fn("makeGitManager")(function* () {
       };
     }
 
-    const remoteUrl = yield* readConfigValueNullable(cwd, `remote.${remoteName}.url`);
+    const remoteUrl = yield* gitCore.readConfigValue(cwd, `remote.${remoteName}.url`);
     const repositoryNameWithOwner = parseGitHubRepositoryNameWithOwnerFromRemoteUrl(remoteUrl);
     return {
       repositoryNameWithOwner,
@@ -545,7 +543,7 @@ export const makeGitManager = Effect.fn("makeGitManager")(function* () {
     cwd: string,
     details: { branch: string; upstreamRef: string | null },
   ) {
-    const remoteName = yield* readConfigValueNullable(cwd, `branch.${details.branch}.remote`);
+    const remoteName = yield* gitCore.readConfigValue(cwd, `branch.${details.branch}.remote`);
     const remotePrefix = remoteName ? `${remoteName}/` : null;
     const headBranchFromUpstream =
       details.upstreamRef && remotePrefix && details.upstreamRef.startsWith(remotePrefix)
@@ -701,7 +699,7 @@ export const makeGitManager = Effect.fn("makeGitManager")(function* () {
     upstreamRef: string | null,
     headContext: Pick<BranchHeadContext, "isCrossRepository">,
   ) {
-    const configured = yield* readConfigValueNullable(cwd, `branch.${branch}.gh-merge-base`);
+    const configured = yield* gitCore.readConfigValue(cwd, `branch.${branch}.gh-merge-base`);
     if (configured) return configured;
 
     if (upstreamRef && !headContext.isCrossRepository) {

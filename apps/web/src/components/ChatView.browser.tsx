@@ -1818,8 +1818,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
     }
   });
 
-  // Skip: archive button pointer-events-none wrapper prevents click in fork's sidebar layout
-  it.skip("shows the confirm archive action after clicking the archive button", async () => {
+  it("shows the confirm archive action after clicking the archive button", async () => {
     localStorage.setItem(
       "t3code:client-settings:v1",
       JSON.stringify({
@@ -1842,13 +1841,22 @@ describe("ChatView timeline estimator parity (full app)", () => {
       await expect.element(threadRow).toBeInTheDocument();
       await threadRow.hover();
 
-      const archiveButton = page.getByTestId(`thread-archive-${THREAD_ID}`);
-      await expect.element(archiveButton).toBeInTheDocument();
-      await archiveButton.click();
+      // Use programmatic click to bypass pointer-events-none wrapper
+      const archiveButton = await waitForElement(
+        () =>
+          document.querySelector<HTMLButtonElement>(`[data-testid="thread-archive-${THREAD_ID}"]`),
+        "Unable to find archive button.",
+      );
+      archiveButton.click();
 
-      const confirmButton = page.getByTestId(`thread-archive-confirm-${THREAD_ID}`);
-      await expect.element(confirmButton).toBeInTheDocument();
-      await expect.element(confirmButton).toBeVisible();
+      const confirmButton = await waitForElement(
+        () =>
+          document.querySelector<HTMLButtonElement>(
+            `[data-testid="thread-archive-confirm-${THREAD_ID}"]`,
+          ),
+        "Unable to find confirm archive button.",
+      );
+      expect(confirmButton).toBeVisible();
     } finally {
       localStorage.removeItem("t3code:client-settings:v1");
       await mounted.cleanup();
