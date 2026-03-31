@@ -552,6 +552,12 @@ function resolveWsRpc(body: WsRequestEnvelope["body"]): unknown {
       pr: null,
     };
   }
+  if (tag === WS_METHODS.providerListModels) {
+    return { models: [] };
+  }
+  if (tag === WS_METHODS.providerGetUsage) {
+    return { quotaSnapshots: [] };
+  }
   if (tag === WS_METHODS.projectsSearchEntries) {
     return {
       entries: [],
