@@ -1635,10 +1635,16 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
             );
           } else if (liveSession.status === "exited" || liveSession.status === "error") {
             liveSession.runtimeEnv = nextRuntimeEnv;
+            liveSession.history = "";
             liveSession.pendingHistoryControlSequence = "";
             liveSession.pendingProcessEvents = [];
             liveSession.pendingProcessEventIndex = 0;
             liveSession.processEventDrainRunning = false;
+            yield* persistHistory(
+              liveSession.threadId,
+              liveSession.terminalId,
+              liveSession.history,
+            );
           }
 
           if (!liveSession.process) {
