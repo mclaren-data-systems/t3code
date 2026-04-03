@@ -1,7 +1,7 @@
 import { ServiceMap } from "effect";
 import type { Effect } from "effect";
 
-import type { TextGenerationError } from "../Errors.ts";
+import type { TextGenerationError } from "@t3tools/contracts";
 import type {
   CommitMessageGenerationInput,
   CommitMessageGenerationResult,

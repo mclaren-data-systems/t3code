@@ -45,7 +45,6 @@ export function useThreadActions() {
         type: "thread.archive",
         commandId: newCommandId(),
         threadId,
-        createdAt: new Date().toISOString(),
       });
 
       if (routeThreadId === threadId) {
@@ -62,7 +61,6 @@ export function useThreadActions() {
       type: "thread.unarchive",
       commandId: newCommandId(),
       threadId,
-      createdAt: new Date().toISOString(),
     });
   }, []);
 

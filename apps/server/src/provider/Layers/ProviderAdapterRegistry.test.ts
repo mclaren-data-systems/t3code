@@ -196,11 +196,11 @@ layer("ProviderAdapterRegistryLive", (it) => {
       const providers = yield* registry.listProviders();
       assert.deepEqual(providers, [
         "codex",
-        "copilot",
         "claudeAgent",
+        "copilot",
         "cursor",
-        "opencode",
         "geminiCli",
+        "opencode",
         "amp",
         "kilo",
       ]);

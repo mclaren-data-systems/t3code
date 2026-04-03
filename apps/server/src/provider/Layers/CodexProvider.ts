@@ -23,13 +23,13 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import {
   buildServerProvider,
-  collectStreamAsString,
   DEFAULT_TIMEOUT_MS,
   detailFromResult,
   extractAuthBoolean,
   isCommandMissingCause,
   parseGenericCliVersion,
   providerModelsFromSettings,
+  collectStreamAsString,
   type CommandResult,
 } from "../providerSnapshot";
 import { makeManagedServerProvider } from "../makeManagedServerProvider";
@@ -46,7 +46,8 @@ import {
 } from "../codexAccount";
 import { probeCodexAccount } from "../codexAppServer";
 import { CodexProvider } from "../Services/CodexProvider";
-import { ServerSettingsError, ServerSettingsService } from "../../serverSettings";
+import { ServerSettingsService } from "../../serverSettings";
+import { ServerSettingsError } from "@t3tools/contracts";
 
 const PROVIDER = "codex" as const;
 const OPENAI_AUTH_PROVIDERS = new Set(["openai"]);
@@ -468,13 +469,21 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
     Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
     Effect.result,
   );
+  const account = resolveAccount
+    ? yield* resolveAccount({
+        binaryPath: codexSettings.binaryPath,
+        homePath: codexSettings.homePath,
+      })
+    : undefined;
+  const resolvedModels = adjustCodexModelsForAccount(models, account);
+
   if (Result.isFailure(authProbe)) {
     const error = authProbe.failure;
     return buildServerProvider({
       provider: PROVIDER,
       enabled: codexSettings.enabled,
       checkedAt,
-      models,
+      models: resolvedModels,
       probe: {
         installed: true,
         version: parsedVersion,
@@ -493,7 +502,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
       provider: PROVIDER,
       enabled: codexSettings.enabled,
       checkedAt,
-      models,
+      models: resolvedModels,
       probe: {
         installed: true,
         version: parsedVersion,
@@ -503,14 +512,6 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
       },
     });
   }
-
-  const account = resolveAccount
-    ? yield* resolveAccount({
-        binaryPath: codexSettings.binaryPath,
-        homePath: codexSettings.homePath,
-      })
-    : undefined;
-  const resolvedModels = adjustCodexModelsForAccount(models, account);
 
   const parsed = parseAuthStatusFromOutput(authProbe.success.value);
   const authType = codexAuthSubType(account);

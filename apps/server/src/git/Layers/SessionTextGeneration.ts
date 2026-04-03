@@ -6,7 +6,7 @@ import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@t3tools/shar
 import { resolveModelSlugForProvider } from "@t3tools/shared/model";
 
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
-import { TextGenerationError } from "../Errors.ts";
+import { TextGenerationError } from "@t3tools/contracts";
 import {
   type BranchNameGenerationInput,
   type BranchNameGenerationResult,

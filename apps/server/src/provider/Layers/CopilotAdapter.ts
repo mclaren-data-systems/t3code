@@ -15,13 +15,13 @@ import {
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
-import {
-  CopilotClient,
-  type CopilotClientOptions,
-  type ModelInfo,
-  type PermissionRequest,
-  type PermissionRequestResult,
-  type SessionEvent,
+import type {
+  CopilotClient as CopilotClientType,
+  CopilotClientOptions,
+  ModelInfo,
+  PermissionRequest,
+  PermissionRequestResult,
+  SessionEvent,
 } from "@github/copilot-sdk";
 import { Effect, Layer, Queue, Stream } from "effect";
 
@@ -137,11 +137,11 @@ interface CopilotClientHandle {
   start(): Promise<void>;
   listModels(): Promise<ModelInfo[]>;
   createSession(
-    config: Parameters<CopilotClient["createSession"]>[0],
+    config: Parameters<CopilotClientType["createSession"]>[0],
   ): Promise<CopilotSessionHandle>;
   resumeSession(
     sessionId: string,
-    config: Parameters<CopilotClient["resumeSession"]>[1],
+    config: Parameters<CopilotClientType["resumeSession"]>[1],
   ): Promise<CopilotSessionHandle>;
   stop(): Promise<Error[]>;
 }
@@ -1311,6 +1311,7 @@ const makeCopilotAdapter = (options?: CopilotAdapterLiveOptions) =>
           ...(input.cwd ? { cwd: input.cwd } : {}),
           logLevel: "error",
         };
+        const { CopilotClient } = yield* Effect.promise(() => import("@github/copilot-sdk"));
         const client = options?.clientFactory?.(clientOptions) ?? new CopilotClient(clientOptions);
         const pendingApprovalResolvers = new Map<string, PendingApprovalRequest>();
         const pendingUserInputResolvers = new Map<string, PendingUserInputRequest>();

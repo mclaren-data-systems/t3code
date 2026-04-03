@@ -36,7 +36,8 @@ import { useStore } from "../store";
 import { type Project, type ProjectScript, type Thread } from "../types";
 import { CommandDialog, CommandDialogPopup, CommandFooter } from "./ui/command";
 import { ScrollArea } from "./ui/scroll-area";
-import { cn, formatRelativeTime } from "~/lib/utils";
+import { cn } from "~/lib/utils";
+import { formatRelativeTimeLabel } from "../timestampFormat";
 
 type PaletteGroupId = "actions" | "scripts" | "projects" | "threads";
 
@@ -92,7 +93,7 @@ function threadSubtitle(thread: Thread, projectName: string | undefined): string
   } else if (thread.session?.status === "connecting") {
     parts.push("connecting");
   }
-  parts.push(formatRelativeTime(thread.createdAt));
+  parts.push(formatRelativeTimeLabel(thread.createdAt));
   return parts.join(" · ");
 }
 

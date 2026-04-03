@@ -1,7 +1,7 @@
-import {
-  CopilotClient,
-  type CopilotClientOptions,
-  type PermissionRequestResult,
+import type {
+  CopilotClient as CopilotClientType,
+  CopilotClientOptions,
+  PermissionRequestResult,
 } from "@github/copilot-sdk";
 import { DEFAULT_MODEL_BY_PROVIDER } from "@t3tools/contracts";
 import { sanitizeFeatureBranchName } from "@t3tools/shared/git";
@@ -11,7 +11,7 @@ import {
   normalizeCopilotCliPathOverride,
   resolveBundledCopilotCliPath,
 } from "../../provider/Layers/copilotCliPath.ts";
-import { TextGenerationError } from "../Errors.ts";
+import { TextGenerationError } from "@t3tools/contracts";
 import {
   CopilotTextGeneration,
   type CopilotTextGenerationShape,
@@ -39,7 +39,7 @@ const PrContentResponseSchema = Schema.Struct({
 
 interface CopilotClientHandle {
   createSession(
-    config: Parameters<CopilotClient["createSession"]>[0],
+    config: Parameters<CopilotClientType["createSession"]>[0],
   ): Promise<CopilotSessionHandle>;
   stop(): Promise<ReadonlyArray<Error>>;
 }
@@ -167,6 +167,7 @@ export const makeCopilotTextGenerationLive = (options?: CopilotTextGenerationLiv
             ...(cliPath ? { cliPath } : {}),
             logLevel: "error",
           };
+          const { CopilotClient } = yield* Effect.promise(() => import("@github/copilot-sdk"));
           const client =
             options?.clientFactory?.(clientOptions) ?? new CopilotClient(clientOptions);
           let session: CopilotSessionHandle | undefined;

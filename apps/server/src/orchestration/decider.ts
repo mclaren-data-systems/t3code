@@ -10,11 +10,12 @@ import {
   requireProject,
   requireProjectAbsent,
   requireThread,
+  requireThreadArchived,
   requireThreadAbsent,
+  requireThreadNotArchived,
 } from "./commandInvariants.ts";
 
 const nowIso = () => new Date().toISOString();
-
 const defaultMetadata: Omit<OrchestrationEvent, "sequence" | "type" | "payload"> = {
   eventId: crypto.randomUUID() as OrchestrationEvent["eventId"],
   aggregateKind: "thread",
@@ -191,12 +192,12 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
     }
 
     case "thread.archive": {
-      yield* requireThread({
+      yield* requireThreadNotArchived({
         readModel,
         command,
         threadId: command.threadId,
       });
-      const occurredAt = command.createdAt;
+      const occurredAt = nowIso();
       return {
         ...withEventBase({
           aggregateKind: "thread",
@@ -214,12 +215,12 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
     }
 
     case "thread.unarchive": {
-      yield* requireThread({
+      yield* requireThreadArchived({
         readModel,
         command,
         threadId: command.threadId,
       });
-      const occurredAt = command.createdAt;
+      const occurredAt = nowIso();
       return {
         ...withEventBase({
           aggregateKind: "thread",
@@ -374,6 +375,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           ...(command.modelSelection !== undefined
             ? { modelSelection: command.modelSelection }
             : {}),
+          ...(command.titleSeed !== undefined ? { titleSeed: command.titleSeed } : {}),
           runtimeMode: targetThread.runtimeMode,
           interactionMode: targetThread.interactionMode,
           ...(sourceProposedPlan !== undefined ? { sourceProposedPlan } : {}),
@@ -518,7 +520,6 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         payload: {
           threadId: command.threadId,
           session: command.session,
-          ...(command.turnUsage ? { turnUsage: command.turnUsage } : {}),
         },
       };
     }

@@ -1,6 +1,5 @@
 import type {
   GitCheckoutInput,
-  GitActionProgressEvent,
   GitCreateBranchInput,
   GitPreparePullRequestThreadInput,
   GitPreparePullRequestThreadResult,
@@ -14,8 +13,6 @@ import type {
   GitPullResult,
   GitRemoveWorktreeInput,
   GitResolvePullRequestResult,
-  GitRunStackedActionInput,
-  GitRunStackedActionResult,
   GitStatusInput,
   GitStatusResult,
 } from "./git";
@@ -46,11 +43,7 @@ import type {
   TerminalSessionSnapshot,
   TerminalWriteInput,
 } from "./terminal";
-import type {
-  ServerRemoveKeybindingInput,
-  ServerRemoveKeybindingResult,
-  ServerUpsertKeybindingInput,
-} from "./server";
+import type { ServerUpsertKeybindingInput } from "./server";
 import type {
   ClientOrchestrationCommand,
   OrchestrationGetFullThreadDiffInput,
@@ -175,8 +168,6 @@ export interface NativeApi {
     // Stacked action API
     pull: (input: GitPullInput) => Promise<GitPullResult>;
     status: (input: GitStatusInput) => Promise<GitStatusResult>;
-    runStackedAction: (input: GitRunStackedActionInput) => Promise<GitRunStackedActionResult>;
-    onActionProgress: (callback: (event: GitActionProgressEvent) => void) => () => void;
   };
   contextMenu: {
     show: <T extends string>(
@@ -192,7 +183,6 @@ export interface NativeApi {
     getConfig: () => Promise<ServerConfig>;
     refreshProviders: () => Promise<ServerProviderUpdatedPayload>;
     upsertKeybinding: (input: ServerUpsertKeybindingInput) => Promise<ServerUpsertKeybindingResult>;
-    removeKeybinding: (input: ServerRemoveKeybindingInput) => Promise<ServerRemoveKeybindingResult>;
     getSettings: () => Promise<ServerSettings>;
     updateSettings: (patch: ServerSettingsPatch) => Promise<ServerSettings>;
   };

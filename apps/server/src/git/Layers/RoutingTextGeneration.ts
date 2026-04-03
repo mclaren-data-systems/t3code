@@ -16,15 +16,20 @@ import { Effect, Layer, ServiceMap } from "effect";
 
 import type { ProviderKind } from "@t3tools/contracts";
 import { TextGeneration, type TextGenerationShape } from "../Services/TextGeneration.ts";
+import {
+  CopilotTextGeneration,
+  type CopilotTextGenerationShape,
+} from "../Services/CopilotTextGeneration.ts";
 import { CodexTextGenerationLive } from "./CodexTextGeneration.ts";
 import { ClaudeTextGenerationLive } from "./ClaudeTextGeneration.ts";
+import { makeCopilotTextGenerationLive } from "./CopilotTextGeneration.ts";
 
 // ---------------------------------------------------------------------------
 // Supported git text-generation providers.  Providers not in this set fall
 // back to codex (the most broadly compatible CLI implementation).
 // ---------------------------------------------------------------------------
 
-const GIT_TEXT_GEN_PROVIDERS = new Set<ProviderKind>(["codex", "claudeAgent"]);
+const GIT_TEXT_GEN_PROVIDERS = new Set<ProviderKind>(["codex", "claudeAgent", "copilot"]);
 
 class CodexTextGen extends ServiceMap.Service<CodexTextGen, TextGenerationShape>()(
   "t3/git/Layers/RoutingTextGeneration/CodexTextGen",
@@ -34,6 +39,10 @@ class ClaudeTextGen extends ServiceMap.Service<ClaudeTextGen, TextGenerationShap
   "t3/git/Layers/RoutingTextGeneration/ClaudeTextGen",
 ) {}
 
+class CopilotTextGen extends ServiceMap.Service<CopilotTextGen, CopilotTextGenerationShape>()(
+  "t3/git/Layers/RoutingTextGeneration/CopilotTextGen",
+) {}
+
 // ---------------------------------------------------------------------------
 // Routing implementation
 // ---------------------------------------------------------------------------
@@ -41,10 +50,20 @@ class ClaudeTextGen extends ServiceMap.Service<ClaudeTextGen, TextGenerationShap
 const makeRoutingTextGeneration = Effect.gen(function* () {
   const codex = yield* CodexTextGen;
   const claude = yield* ClaudeTextGen;
+  const copilot = yield* CopilotTextGen;
 
   const route = (provider?: ProviderKind): TextGenerationShape => {
     if (!provider || !GIT_TEXT_GEN_PROVIDERS.has(provider)) return codex;
     if (provider === "claudeAgent") return claude;
+    if (provider === "copilot") {
+      return {
+        generateCommitMessage: copilot.generateCommitMessage,
+        generatePrContent: copilot.generatePrContent,
+        // Copilot text generation doesn't support these yet; fall back to codex.
+        generateBranchName: codex.generateBranchName,
+        generateThreadTitle: codex.generateThreadTitle,
+      };
+    }
     return codex;
   };
 
@@ -73,7 +92,19 @@ const InternalClaudeLayer = Layer.effect(
   }),
 ).pipe(Layer.provide(ClaudeTextGenerationLive));
 
+const InternalCopilotLayer = Layer.effect(
+  CopilotTextGen,
+  Effect.gen(function* () {
+    const svc = yield* CopilotTextGeneration;
+    return svc;
+  }),
+).pipe(Layer.provide(makeCopilotTextGenerationLive()));
+
 export const RoutingTextGenerationLive = Layer.effect(
   TextGeneration,
   makeRoutingTextGeneration,
-).pipe(Layer.provide(InternalCodexLayer), Layer.provide(InternalClaudeLayer));
+).pipe(
+  Layer.provide(InternalCodexLayer),
+  Layer.provide(InternalClaudeLayer),
+  Layer.provide(InternalCopilotLayer),
+);
