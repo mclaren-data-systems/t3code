@@ -654,6 +654,15 @@ function TerminalViewport({
         }
         lastAppliedTerminalEventIdRef.current = bufferedEntries.at(-1)?.id ?? 0;
         terminalHydratedRef.current = true;
+        // Catch-up: apply any events that arrived during hydration
+        const catchUpEntries = selectTerminalEventEntries(
+          useTerminalStateStore.getState().terminalEventEntriesByKey,
+          threadId,
+          terminalId,
+        );
+        if (catchUpEntries.length > 0) {
+          applyPendingTerminalEvents(catchUpEntries);
+        }
         if (autoFocus) {
           window.requestAnimationFrame(() => {
             activeTerminal.focus();

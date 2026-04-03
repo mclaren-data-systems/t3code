@@ -299,7 +299,7 @@ export const resolveEditorLaunch = Effect.fn("resolveEditorLaunch")(function* (
 ): Effect.fn.Return<EditorLaunch, OpenError> {
   yield* Effect.annotateCurrentSpan({
     "open.editor": input.editor,
-    "open.cwd": input.cwd,
+    "open.target.hasPosition": /:\d+/.test(input.cwd),
     "open.platform": platform,
   });
   const editorDef = EDITORS.find((editor) => editor.id === input.editor);
@@ -326,7 +326,7 @@ export const resolveEditorLaunch = Effect.fn("resolveEditorLaunch")(function* (
 
     // On macOS, fall back to `open -a` when the CLI tool isn't in PATH
     // but the .app bundle is installed.
-    if (platform === "darwin" && !isCommandAvailable(editorDef.command)) {
+    if (platform === "darwin" && !isCommandAvailable(editorDef.command, { platform })) {
       const macApp = MAC_APP_NAMES[editorDef.id];
       if (macApp && isMacAppInstalled(macApp)) {
         return { command: "open", args: ["-a", macApp, "--args", ...args] };

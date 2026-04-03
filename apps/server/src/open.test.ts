@@ -110,7 +110,7 @@ it.layer(NodeServices.layer)("resolveEditorLaunch", (it) => {
 
       const ideaLaunch = yield* resolveEditorLaunch(
         { cwd: "/tmp/workspace", editor: "idea" },
-        "darwin",
+        "linux",
       );
       assert.deepEqual(ideaLaunch, {
         command: "idea",
@@ -272,7 +272,7 @@ it.layer(NodeServices.layer)("resolveEditorLaunch", (it) => {
 
       const ideaLineOnly = yield* resolveEditorLaunch(
         { cwd: "/tmp/workspace/AGENTS.md:48", editor: "idea" },
-        "darwin",
+        "linux",
       );
       assert.deepEqual(ideaLineOnly, {
         command: "idea",
@@ -281,7 +281,7 @@ it.layer(NodeServices.layer)("resolveEditorLaunch", (it) => {
 
       const ideaLineAndColumn = yield* resolveEditorLaunch(
         { cwd: "/tmp/workspace/src/open.ts:71:5", editor: "idea" },
-        "darwin",
+        "linux",
       );
       assert.deepEqual(ideaLineAndColumn, {
         command: "idea",

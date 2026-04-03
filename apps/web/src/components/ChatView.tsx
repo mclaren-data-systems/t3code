@@ -852,7 +852,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     () => deriveLatestContextWindowSnapshot(activeThread?.activities ?? []),
     [activeThread?.activities],
   );
-  useEffect(() => {
+  useLayoutEffect(() => {
     setMountedTerminalThreadIds((currentThreadIds) => {
       const nextThreadIds = reconcileMountedTerminalThreadIds({
         currentThreadIds,

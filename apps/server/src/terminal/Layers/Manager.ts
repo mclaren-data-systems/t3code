@@ -1312,7 +1312,7 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
         "terminal.thread_id": session.threadId,
         "terminal.id": session.terminalId,
         "terminal.event_type": eventType,
-        "terminal.cwd": input.cwd,
+        "terminal.cwd_basename": path.basename(input.cwd),
       });
 
       yield* modifyManagerState((state) => {

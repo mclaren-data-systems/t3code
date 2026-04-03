@@ -502,7 +502,7 @@ function EventRouter() {
     });
     const unsubTerminalEvent = api.terminal.onEvent((event) => {
       const thread = useStore.getState().threads.find((entry) => entry.id === event.threadId);
-      if (thread && thread.archivedAt !== null) {
+      if (!thread || thread.archivedAt !== null) {
         return;
       }
       useTerminalStateStore.getState().recordTerminalEvent(event);

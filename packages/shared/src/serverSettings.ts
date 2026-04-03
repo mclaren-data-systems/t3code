@@ -1,8 +1,18 @@
-import { ServerSettings } from "@t3tools/contracts";
 import { Schema } from "effect";
 import { fromLenientJson } from "./schemaJson";
 
-const ServerSettingsJson = fromLenientJson(ServerSettings);
+/** Narrow schema that only decodes the observability subtree, avoiding
+ *  validation failures from unrelated ServerSettings fields. */
+const ObservabilitySubtreeJson = fromLenientJson(
+  Schema.Struct({
+    observability: Schema.optional(
+      Schema.Struct({
+        otlpTracesUrl: Schema.optional(Schema.String),
+        otlpMetricsUrl: Schema.optional(Schema.String),
+      }),
+    ),
+  }),
+);
 
 export interface PersistedServerObservabilitySettings {
   readonly otlpTracesUrl: string | undefined;
@@ -17,10 +27,12 @@ export function normalizePersistedServerSettingString(
 }
 
 export function extractPersistedServerObservabilitySettings(input: {
-  readonly observability?: {
-    readonly otlpTracesUrl?: string;
-    readonly otlpMetricsUrl?: string;
-  };
+  readonly observability?:
+    | {
+        readonly otlpTracesUrl?: string | undefined;
+        readonly otlpMetricsUrl?: string | undefined;
+      }
+    | undefined;
 }): PersistedServerObservabilitySettings {
   return {
     otlpTracesUrl: normalizePersistedServerSettingString(input.observability?.otlpTracesUrl),
@@ -32,7 +44,7 @@ export function parsePersistedServerObservabilitySettings(
   raw: string,
 ): PersistedServerObservabilitySettings {
   try {
-    const decoded = Schema.decodeUnknownSync(ServerSettingsJson)(raw);
+    const decoded = Schema.decodeUnknownSync(ObservabilitySubtreeJson)(raw);
     return extractPersistedServerObservabilitySettings(decoded);
   } catch {
     return { otlpTracesUrl: undefined, otlpMetricsUrl: undefined };
