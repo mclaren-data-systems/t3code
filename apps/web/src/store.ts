@@ -491,8 +491,18 @@ function toLegacySessionStatus(
 }
 
 function toLegacyProvider(providerName: string | null): ProviderKind {
-  if (providerName === "codex" || providerName === "claudeAgent") {
-    return providerName;
+  const validProviders: readonly ProviderKind[] = [
+    "codex",
+    "copilot",
+    "claudeAgent",
+    "cursor",
+    "opencode",
+    "geminiCli",
+    "amp",
+    "kilo",
+  ];
+  if (providerName != null && validProviders.includes(providerName as ProviderKind)) {
+    return providerName as ProviderKind;
   }
   return "codex";
 }

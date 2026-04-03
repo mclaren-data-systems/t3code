@@ -81,6 +81,8 @@ const makeProviderSessionDirectory = Effect.gen(function* () {
                   runtimePayload: value.runtimePayload,
                 }),
               ),
+              // Gracefully treat unknown persisted providers as "no binding"
+              Effect.orElseSucceed(() => Option.none<ProviderRuntimeBinding>()),
             ),
         }),
       ),
