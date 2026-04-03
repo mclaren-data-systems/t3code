@@ -68,6 +68,19 @@ export function getCustomModelOptionsByProvider(
   } as const;
 }
 
+export function resolveAppModelSelection(
+  provider: ProviderKind,
+  settings: UnifiedSettings,
+  _providers: ReadonlyArray<ServerProvider>,
+  model: string | null | undefined,
+): string {
+  const modelOptions = getCustomModelOptionsByProvider(settings, _providers, provider, model);
+  return (
+    resolveSelectableModel(provider, model, modelOptions[provider]) ??
+    getDefaultServerModel(_providers, provider)
+  );
+}
+
 export function resolveAppModelSelectionState(
   settings: UnifiedSettings,
   providers: ReadonlyArray<ServerProvider>,

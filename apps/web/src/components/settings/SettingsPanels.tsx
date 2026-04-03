@@ -12,6 +12,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  type ModelSelection,
   PROVIDER_DISPLAY_NAMES,
   type ProviderKind,
   type ServerProvider,
@@ -382,8 +383,7 @@ function AboutVersionSection() {
           toastManager.add({
             type: "error",
             title: "Could not check for updates",
-            description:
-              result.message ?? "Automatic updates are not available in this build.",
+            description: result.message ?? "Automatic updates are not available in this build.",
           });
         }
       })
@@ -991,10 +991,8 @@ export function GeneralSettingsPanel() {
                 provider={textGenProvider}
                 model={textGenModel}
                 lockedProvider={null}
-                providers={serverProviders}
-              modelOptionsByProvider={gitModelOptionsByProvider}
-              allowPromptInjectedEffort={false}
-              triggerVariant="outline"
+                modelOptionsByProvider={gitModelOptionsByProvider}
+                triggerVariant="outline"
                 triggerClassName="min-w-0 max-w-none shrink-0 text-foreground/90 hover:text-foreground"
                 onProviderModelChange={(provider, model) => {
                   updateSettings({
@@ -1030,7 +1028,7 @@ export function GeneralSettingsPanel() {
                           provider: textGenProvider,
                           model: textGenModel,
                           ...(nextOptions ? { options: nextOptions } : {}),
-                        },
+                        } as ModelSelection,
                       },
                       serverProviders,
                     ),

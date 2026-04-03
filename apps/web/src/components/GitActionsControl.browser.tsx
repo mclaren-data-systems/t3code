@@ -168,7 +168,12 @@ function Harness() {
       <button type="button" onClick={() => setActiveThreadId(THREAD_B)}>
         Switch thread
       </button>
-      <GitActionsControl gitCwd={GIT_CWD} activeThreadId={activeThreadId} />
+      <GitActionsControl
+        gitCwd={GIT_CWD}
+        activeThreadId={activeThreadId}
+        provider="codex"
+        model="o3-pro"
+      />
     </>
   );
 }

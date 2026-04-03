@@ -135,6 +135,10 @@ function makeDesktopBridge(overrides: Partial<DesktopBridge> = {}): DesktopBridg
       throw new Error("installUpdate not implemented in test");
     },
     onUpdateState: () => () => undefined,
+    getLogDir: async () => "/tmp/logs",
+    listLogFiles: async () => [],
+    readLogFile: async () => "",
+    openLogDir: async () => undefined,
     ...overrides,
   };
 }

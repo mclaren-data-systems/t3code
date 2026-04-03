@@ -80,12 +80,10 @@ function updateProject(
   return changed ? next : projects;
 }
 
-function normalizeModelSelection<T extends { provider: string; model: string }>(
-  selection: T,
-): T {
+function normalizeModelSelection<T extends { provider: string; model: string }>(selection: T): T {
   return {
     ...selection,
-    model: resolveModelSlugForProvider(selection.provider, selection.model),
+    model: resolveModelSlugForProvider(selection.provider as ProviderKind, selection.model),
   };
 }
 
@@ -217,12 +215,12 @@ function buildSidebarThreadSummary(thread: Thread): SidebarThreadSummary {
     interactionMode: thread.interactionMode,
     session: thread.session,
     createdAt: thread.createdAt,
-    archivedAt: thread.archivedAt,
+    archivedAt: thread.archivedAt ?? null,
     updatedAt: thread.updatedAt,
     latestTurn: thread.latestTurn,
     branch: thread.branch,
     worktreePath: thread.worktreePath,
-    latestUserMessageAt: getLatestUserMessageAt(thread.messages) ?? undefined,
+    latestUserMessageAt: getLatestUserMessageAt(thread.messages) ?? null,
     hasPendingApprovals: derivePendingApprovals(thread.activities).length > 0,
     hasPendingUserInput: derivePendingUserInputs(thread.activities).length > 0,
     hasActionableProposedPlan: hasActionableProposedPlan(

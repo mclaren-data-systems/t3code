@@ -9,6 +9,11 @@
 - The ONLY interaction with upstream is `git fetch upstream` to pull changes. Everything else targets `origin` (the fork).
 - When merging upstream changes, create a PR on `aaditagrawal/t3code` targeting the fork's `main` branch.
 
+## Fork-First Policy
+
+- The fork's `README.md` takes priority over upstream's. On merge conflicts, keep ours.
+- Do NOT commit scratch/analysis markdown files (e.g. `CONFLICT_ANALYSIS.md`, plan dumps) into the repo.
+
 ## Task Completion Requirements
 
 - All of `bun fmt`, `bun lint`, and `bun typecheck` must pass before considering tasks completed.

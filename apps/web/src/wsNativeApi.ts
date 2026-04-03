@@ -104,8 +104,8 @@ export function createWsNativeApi(): NativeApi {
       },
     },
     provider: {
-      listModels: rpcClient.provider?.listModels ?? (async () => ({ models: [] })),
-      getUsage: rpcClient.provider?.getUsage ?? (async () => ({ usage: null })),
+      listModels: async () => ({ models: [] }),
+      getUsage: async () => ({ provider: "unknown" }),
     },
     orchestration: {
       getSnapshot: rpcClient.orchestration.getSnapshot,

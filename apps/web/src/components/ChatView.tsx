@@ -824,11 +824,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const selectedPromptEffort = composerProviderState.promptEffort;
   const selectedModelOptionsForDispatch = composerProviderState.modelOptionsForDispatch;
   const selectedModelSelection = useMemo<ModelSelection>(
-    () => ({
-      provider: selectedProvider,
-      model: selectedModel,
-      ...(selectedModelOptionsForDispatch ? { options: selectedModelOptionsForDispatch } : {}),
-    }),
+    () =>
+      ({
+        provider: selectedProvider,
+        model: selectedModel,
+        ...(selectedModelOptionsForDispatch ? { options: selectedModelOptionsForDispatch } : {}),
+      }) as ModelSelection,
     [selectedModel, selectedModelOptionsForDispatch, selectedProvider],
   );
   const selectedModelForPicker = selectedModel;
@@ -1209,6 +1210,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
       codex: providerStatuses.find((provider) => provider.provider === "codex")?.models ?? [],
       claudeAgent:
         providerStatuses.find((provider) => provider.provider === "claudeAgent")?.models ?? [],
+      copilot: providerStatuses.find((provider) => provider.provider === "copilot")?.models ?? [],
+      cursor: providerStatuses.find((provider) => provider.provider === "cursor")?.models ?? [],
+      opencode: providerStatuses.find((provider) => provider.provider === "opencode")?.models ?? [],
+      geminiCli:
+        providerStatuses.find((provider) => provider.provider === "geminiCli")?.models ?? [],
+      amp: providerStatuses.find((provider) => provider.provider === "amp")?.models ?? [],
+      kilo: providerStatuses.find((provider) => provider.provider === "kilo")?.models ?? [],
     }),
     [providerStatuses],
   );
@@ -2833,7 +2841,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           activeProject.defaultModelSelection?.model ||
           DEFAULT_MODEL_BY_PROVIDER.codex,
         ...(selectedModelSelection.options ? { options: selectedModelSelection.options } : {}),
-      };
+      } as ModelSelection;
 
       if (isLocalDraftThread) {
         await api.orchestration.dispatchCommand({
@@ -3775,6 +3783,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
           terminalToggleShortcutLabel={terminalToggleShortcutLabel}
           diffToggleShortcutLabel={diffPanelShortcutLabel}
           gitCwd={gitCwd}
+          gitProvider={selectedProvider}
+          gitModel={selectedModel}
           diffOpen={diffOpen}
           onRunProjectScript={(script) => {
             void runProjectScript(script);
@@ -4066,9 +4076,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
                           provider={selectedProvider}
                           model={selectedModelForPickerWithCustomFallback}
                           lockedProvider={lockedProvider}
-                          providers={providerStatuses}
                           modelOptionsByProvider={modelOptionsByProvider}
-                          {...(composerProviderState.modelPickerIconClassName
+                          {...(composerProviderState.modelPickerIconClassName != null
                             ? {
                                 activeProviderIconClassName:
                                   composerProviderState.modelPickerIconClassName,

@@ -472,7 +472,9 @@ export function projectEvent(
                       state:
                         session.status === "error" ? ("error" as const) : ("completed" as const),
                       completedAt: event.occurredAt,
-                      ...("turnUsage" in payload && (payload as Record<string, unknown>).turnUsage ? { usage: (payload as Record<string, unknown>).turnUsage } : {}),
+                      ...("turnUsage" in payload && (payload as Record<string, unknown>).turnUsage
+                        ? { usage: (payload as Record<string, unknown>).turnUsage }
+                        : {}),
                     }
                   : thread.latestTurn,
             updatedAt: event.occurredAt,
