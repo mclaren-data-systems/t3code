@@ -1645,10 +1645,16 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
           const targetRows = input.rows ?? liveSession.rows;
           const runtimeEnvChanged = !Equal.equals(currentRuntimeEnv, nextRuntimeEnv);
 
+          const nextWorktreePath =
+            input.worktreePath === undefined
+              ? liveSession.worktreePath
+              : (input.worktreePath ?? null);
+          const worktreePathChanged = liveSession.worktreePath !== nextWorktreePath;
+
           if (liveSession.cwd !== input.cwd || runtimeEnvChanged) {
             yield* stopProcess(liveSession);
             liveSession.cwd = input.cwd;
-            liveSession.worktreePath = input.worktreePath ?? null;
+            liveSession.worktreePath = nextWorktreePath;
             liveSession.runtimeEnv = nextRuntimeEnv;
             liveSession.history = "";
             liveSession.pendingHistoryControlSequence = "";
@@ -1662,7 +1668,7 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
             );
           } else if (liveSession.status === "exited" || liveSession.status === "error") {
             liveSession.runtimeEnv = nextRuntimeEnv;
-            liveSession.worktreePath = input.worktreePath ?? null;
+            liveSession.worktreePath = nextWorktreePath;
             liveSession.history = "";
             liveSession.pendingHistoryControlSequence = "";
             liveSession.pendingProcessEvents = [];
@@ -1673,6 +1679,9 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
               liveSession.terminalId,
               liveSession.history,
             );
+          } else if (worktreePathChanged) {
+            liveSession.worktreePath = nextWorktreePath;
+            liveSession.updatedAt = new Date().toISOString();
           }
 
           if (!liveSession.process) {
@@ -1805,7 +1814,10 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
             session = existingSession.value;
             yield* stopProcess(session);
             session.cwd = input.cwd;
-            session.worktreePath = input.worktreePath ?? null;
+            session.worktreePath =
+              input.worktreePath === undefined
+                ? session.worktreePath
+                : (input.worktreePath ?? null);
             session.runtimeEnv = normalizedRuntimeEnv(input.env);
           }
 
@@ -1825,7 +1837,7 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
               threadId: input.threadId,
               terminalId,
               cwd: input.cwd,
-              ...(input.worktreePath !== undefined ? { worktreePath: input.worktreePath } : {}),
+              worktreePath: session.worktreePath,
               cols,
               rows,
               ...(input.env ? { env: input.env } : {}),

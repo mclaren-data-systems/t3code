@@ -2534,13 +2534,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
 
   useEffect(() => {
     if (!activeThreadId) {
-      setTerminalLaunchContext(null);
-      storeClearTerminalLaunchContext(threadId);
       return;
     }
     setTerminalLaunchContext((current) => {
       if (!current) return current;
       if (current.threadId === activeThreadId) return current;
+      storeClearTerminalLaunchContext(threadId);
       return null;
     });
   }, [activeThreadId, storeClearTerminalLaunchContext, threadId]);
