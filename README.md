@@ -83,7 +83,7 @@ bun run dev
 ## Supported agents
 
 - [Codex CLI](https://github.com/openai/codex) (requires v0.37.0 or later)
-- [Claude Code](https://github.com/anthropics/claude-code) — **not yet working in the desktop app**
+- [Claude Code](https://github.com/anthropics/claude-code)
 - [Cursor](https://cursor.sh)
 - [Copilot](https://github.com/features/copilot)
 - [Gemini CLI](https://github.com/google-gemini/gemini-cli)
