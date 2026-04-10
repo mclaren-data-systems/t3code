@@ -114,6 +114,14 @@ vi.mock("~/environmentApi", () => ({
 
 vi.mock("~/localApi", () => ({
   readLocalApi: readLocalApiMock,
+  ensureLocalApi: vi.fn(() => {
+    const api = readLocalApiMock();
+    if (!api) {
+      throw new Error("Local API not available in browser test");
+    }
+    return api;
+  }),
+  __resetLocalApiForTests: vi.fn(async () => undefined),
 }));
 
 import { TerminalViewport } from "./ThreadTerminalDrawer";

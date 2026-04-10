@@ -10,6 +10,25 @@ const ENVIRONMENT_ID = "environment-local" as never;
 const GIT_CWD = "/repo/project";
 const BRANCH_NAME = "feature/toast-scope";
 
+function makeThreadShell(threadId: ThreadId) {
+  return {
+    id: threadId,
+    environmentId: ENVIRONMENT_ID,
+    codexThreadId: null,
+    projectId: "project-1" as never,
+    title: "Thread",
+    modelSelection: { provider: "codex" as const, model: "o3-pro" },
+    runtimeMode: "full-access" as const,
+    interactionMode: "default" as const,
+    error: null,
+    createdAt: "2026-04-09T00:00:00.000Z",
+    archivedAt: null,
+    updatedAt: "2026-04-09T00:00:00.000Z",
+    branch: BRANCH_NAME,
+    worktreePath: null,
+  };
+}
+
 function createDeferredPromise<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -127,6 +146,10 @@ vi.mock("~/lib/utils", async () => {
 
 vi.mock("~/localApi", () => ({
   readLocalApi: vi.fn(() => null),
+  ensureLocalApi: vi.fn(() => {
+    throw new Error("Local API not available in browser test");
+  }),
+  __resetLocalApiForTests: vi.fn(async () => undefined),
 }));
 
 vi.mock("~/store", () => ({
@@ -149,8 +172,8 @@ vi.mock("~/store", () => ({
       environmentStateById: {
         [ENVIRONMENT_ID]: {
           threadShellById: {
-            [THREAD_A]: { id: THREAD_A, branch: BRANCH_NAME, worktreePath: null },
-            [THREAD_B]: { id: THREAD_B, branch: BRANCH_NAME, worktreePath: null },
+            [THREAD_A]: makeThreadShell(THREAD_A),
+            [THREAD_B]: makeThreadShell(THREAD_B),
           },
           threadSessionById: {},
           threadTurnStateById: {},
