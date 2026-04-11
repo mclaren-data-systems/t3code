@@ -8,6 +8,8 @@ interface CommandPathOptions {
 
 export type CommandAvailabilityOptions = CommandPathOptions;
 
+const DEFAULT_WINDOWS_PATH_EXTENSIONS = [".COM", ".EXE", ".BAT", ".CMD"] as const;
+
 function stripWrappingQuotes(value: string): string {
   return value.replace(/^"+|"+$/g, "");
 }
@@ -18,7 +20,7 @@ function resolvePathEnvironmentVariable(env: NodeJS.ProcessEnv): string {
 
 function resolveWindowsPathExtensions(env: NodeJS.ProcessEnv): ReadonlyArray<string> {
   const rawValue = env.PATHEXT;
-  const fallback = [".COM", ".EXE", ".BAT", ".CMD"];
+  const fallback = [...DEFAULT_WINDOWS_PATH_EXTENSIONS];
   if (!rawValue) return fallback;
 
   const parsed = rawValue
@@ -42,15 +44,26 @@ function resolveCommandCandidates(
   const extension = extname(command);
   const normalizedExtension = extension.toUpperCase();
 
-  if (extension.length > 0 && windowsPathExtensions.includes(normalizedExtension)) {
-    const commandWithoutExtension = command.slice(0, -extension.length);
-    return Array.from(
-      new Set([
-        command,
-        `${commandWithoutExtension}${normalizedExtension}`,
-        `${commandWithoutExtension}${normalizedExtension.toLowerCase()}`,
-      ]),
-    );
+  if (extension.length > 0) {
+    if (windowsPathExtensions.includes(normalizedExtension)) {
+      const commandWithoutExtension = command.slice(0, -extension.length);
+      return Array.from(
+        new Set([
+          command,
+          `${commandWithoutExtension}${normalizedExtension}`,
+          `${commandWithoutExtension}${normalizedExtension.toLowerCase()}`,
+        ]),
+      );
+    }
+    if (command.includes("/") || command.includes("\\")) {
+      return [command];
+    }
+    const candidates = [command];
+    for (const windowsPathExtension of windowsPathExtensions) {
+      candidates.push(`${command}${windowsPathExtension}`);
+      candidates.push(`${command}${windowsPathExtension.toLowerCase()}`);
+    }
+    return Array.from(new Set(candidates));
   }
 
   const candidates: string[] = [];
@@ -72,7 +85,9 @@ function isExecutableFile(
     if (platform === "win32") {
       const extension = extname(filePath);
       if (extension.length === 0) return false;
-      return windowsPathExtensions.includes(extension.toUpperCase());
+      return new Set([...DEFAULT_WINDOWS_PATH_EXTENSIONS, ...windowsPathExtensions]).has(
+        extension.toUpperCase(),
+      );
     }
     accessSync(filePath, constants.X_OK);
     return true;

@@ -67,4 +67,27 @@ describe("resolveModelOptionsByProvider", () => {
       "1x",
     );
   });
+
+  it("retains copilot fallback models when discovery only returns a partial snapshot", () => {
+    const baseCopilotModels = MODEL_OPTIONS_BY_PROVIDER.copilot.map((option) => option.slug);
+    const firstFallbackSlug = baseCopilotModels[0];
+    const secondFallbackSlug = baseCopilotModels.find((slug) => slug !== firstFallbackSlug);
+
+    expect(firstFallbackSlug).toBeTruthy();
+    expect(secondFallbackSlug).toBeTruthy();
+
+    const modelOptions = resolveModelOptionsByProvider({
+      ...EMPTY_CUSTOM_MODELS,
+      discovered: {
+        copilot: [{ slug: firstFallbackSlug!, name: "Refreshed Copilot Model", pricingTier: "1x" }],
+      },
+    });
+
+    expect(modelOptions.copilot.find((option) => option.slug === firstFallbackSlug)).toMatchObject({
+      slug: firstFallbackSlug,
+      name: "Refreshed Copilot Model",
+      pricingTier: "1x",
+    });
+    expect(modelOptions.copilot.some((option) => option.slug === secondFallbackSlug)).toBe(true);
+  });
 });

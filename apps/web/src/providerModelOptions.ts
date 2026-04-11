@@ -63,10 +63,13 @@ export function mergeDiscoveredModels(
         const tier = baseTiers.get(m.slug);
         return tier ? { ...m, pricingTier: tier } : m;
       });
-      const customOnly = (base[provider] ?? []).filter(
-        (m) => m.isCustom && !dedupedModels.some((d) => d.slug === m.slug),
-      );
-      result[provider] = [...enriched, ...customOnly];
+      const enrichedBySlug = new Map(enriched.map((m) => [m.slug, m]));
+      const merged = (base[provider] ?? []).map((m) => {
+        const discoveredModel = enrichedBySlug.get(m.slug);
+        return discoveredModel ? Object.assign({}, m, discoveredModel) : m;
+      });
+      const additions = enriched.filter((m) => !existing.has(m.slug));
+      result[provider] = [...additions, ...merged];
       continue;
     }
     const discoveredBySlug = new Map(dedupedModels.map((m) => [m.slug, m]));

@@ -26,7 +26,7 @@ We welcome pull requests! To help us review your PR effectively, please:
 2.  **Test your changes:** Ensure that your changes don't break existing functionality. Add new tests if possible.
 3.  **Document your changes:** Update documentation (like the README) if your changes introduce new features or change existing ones.
 4.  **Describe your PR:** Use the pull request template to describe what changed and why.
-5.  **Target the fork explicitly:** When using GitHub CLI, run `gh pr create --repo aaditagrawal/t3code`.
+5.  **Target the fork explicitly:** When using GitHub CLI, run `gh pr create --repo aaditagrawal/t3code --base main`.
 
 ## Development Setup
 

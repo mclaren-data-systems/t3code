@@ -13,7 +13,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type ModelSelection,
-  PROVIDER_DISPLAY_NAMES,
   type ScopedThreadRef,
   type ProviderKind,
   type ServerProvider,
@@ -166,8 +165,6 @@ const PROVIDER_SETTINGS: readonly InstallProviderSettings[] = [
     customModelExample: "kilo-advanced",
   },
 ] as const;
-
-const PROVIDER_LABEL_BY_PROVIDER = PROVIDER_DISPLAY_NAMES;
 
 const PROVIDER_STATUS_STYLES = {
   disabled: {
@@ -1212,8 +1209,7 @@ export function GeneralSettingsPanel() {
         {providerCards.map((providerCard) => {
           const customModelInput = customModelInputByProvider[providerCard.provider];
           const customModelError = customModelErrorByProvider[providerCard.provider] ?? null;
-          const providerDisplayName =
-            PROVIDER_LABEL_BY_PROVIDER[providerCard.provider] ?? providerCard.title;
+          const providerDisplayName = providerCard.title;
 
           return (
             <div key={providerCard.provider} className="border-t border-border first:border-t-0">
