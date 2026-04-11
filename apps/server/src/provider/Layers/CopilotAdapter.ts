@@ -725,8 +725,7 @@ const makeCopilotAdapter = (options?: CopilotAdapterLiveOptions) =>
               ...base(),
               type: "task.completed",
               payload: {
-                taskId:
-                  toRuntimeTaskId(record.threadId) ?? RuntimeTaskId.make(record.threadId),
+                taskId: toRuntimeTaskId(record.threadId) ?? RuntimeTaskId.make(record.threadId),
                 status: "completed",
                 ...(trimToUndefined(event.data.summary) ? { summary: event.data.summary } : {}),
               },
@@ -906,8 +905,7 @@ const makeCopilotAdapter = (options?: CopilotAdapterLiveOptions) =>
               ...base(),
               type: "task.progress",
               payload: {
-                taskId:
-                  toRuntimeTaskId(event.data.name) ?? RuntimeTaskId.make(event.data.name),
+                taskId: toRuntimeTaskId(event.data.name) ?? RuntimeTaskId.make(event.data.name),
                 description: `Invoked skill ${event.data.name}`,
               },
             },

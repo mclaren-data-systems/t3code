@@ -27,7 +27,11 @@ import {
   type ProviderServiceShape,
 } from "../../provider/Services/ProviderService.ts";
 import { GitCore, type GitCoreShape } from "../../git/Services/GitCore.ts";
-import { TextGeneration, type TextGenerationShape, type ThreadTitleGenerationResult } from "../../git/Services/TextGeneration.ts";
+import {
+  TextGeneration,
+  type TextGenerationShape,
+  type ThreadTitleGenerationResult,
+} from "../../git/Services/TextGeneration.ts";
 import { RepositoryIdentityResolverLive } from "../../project/Layers/RepositoryIdentityResolver.ts";
 import { OrchestrationEngineLive } from "./OrchestrationEngine.ts";
 import { OrchestrationProjectionPipelineLive } from "./ProjectionPipeline.ts";
@@ -235,7 +239,10 @@ describe("ProviderCommandReactor", () => {
       Layer.provideMerge(Layer.succeed(ProviderService, service)),
       Layer.provideMerge(Layer.succeed(GitCore, { renameBranch } as unknown as GitCoreShape)),
       Layer.provideMerge(
-        Layer.succeed(TextGeneration, { generateBranchName, generateThreadTitle } as unknown as TextGenerationShape),
+        Layer.succeed(TextGeneration, {
+          generateBranchName,
+          generateThreadTitle,
+        } as unknown as TextGenerationShape),
       ),
       Layer.provideMerge(ServerSettingsService.layerTest()),
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), baseDir)),
@@ -523,7 +530,6 @@ describe("ProviderCommandReactor", () => {
       message: "Add a safer reconnect backoff.",
     });
   });
-
 
   it("forwards codex model options through session start and turn send", async () => {
     const harness = await createHarness();

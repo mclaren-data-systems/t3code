@@ -457,9 +457,7 @@ export function useAppSettings() {
       }
 
       setLocalSettings((prev: AppSettings) =>
-        normalizeAppSettings(
-          AppSettingsSchema.make(stripMirroredKeys({ ...prev, ...localPatch })),
-        ),
+        normalizeAppSettings(AppSettingsSchema.make(stripMirroredKeys({ ...prev, ...localPatch }))),
       );
     },
     [setLocalSettings, updateUnifiedSettings],

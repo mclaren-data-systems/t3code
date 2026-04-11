@@ -1093,7 +1093,6 @@ function configureAutoUpdater(): void {
   }
   updaterConfigured = true;
 
-
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
   // Keep alpha branding, but force all installs onto the stable update track.

@@ -20,13 +20,67 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 
 /** Inline type aliases for SDK message subtypes that aren't re-exported publicly. */
-type SDKHookStartedMessage = { type: "system"; subtype: "hook_started"; hook_id: string; hook_name: string; hook_event: string; [k: string]: unknown };
-type SDKHookProgressMessage = { type: "system"; subtype: "hook_progress"; hook_id: string; output: string; stdout: string; stderr: string; [k: string]: unknown };
-type SDKHookResponseMessage = { type: "system"; subtype: "hook_response"; hook_id: string; outcome: "error" | "cancelled" | "success"; output: string; stdout: string; stderr: string; exit_code?: number; [k: string]: unknown };
-type SDKTaskStartedMessage = { type: "system"; subtype: "task_started"; task_id: string; description: string; task_type?: string; [k: string]: unknown };
-type SDKTaskProgressMessage = { type: "system"; subtype: "task_progress"; task_id: string; description: string; summary?: string; usage?: Record<string, unknown>; last_tool_name?: string; [k: string]: unknown };
-type SDKTaskNotificationMessage = { type: "system"; subtype: "task_notification"; task_id: string; status: "completed" | "failed" | "stopped"; summary?: string; usage?: Record<string, unknown>; [k: string]: unknown };
-type SDKToolUseSummaryMessage = { type: "tool_use_summary"; summary: string; preceding_tool_use_ids?: readonly string[]; [k: string]: unknown };
+type SDKHookStartedMessage = {
+  type: "system";
+  subtype: "hook_started";
+  hook_id: string;
+  hook_name: string;
+  hook_event: string;
+  [k: string]: unknown;
+};
+type SDKHookProgressMessage = {
+  type: "system";
+  subtype: "hook_progress";
+  hook_id: string;
+  output: string;
+  stdout: string;
+  stderr: string;
+  [k: string]: unknown;
+};
+type SDKHookResponseMessage = {
+  type: "system";
+  subtype: "hook_response";
+  hook_id: string;
+  outcome: "error" | "cancelled" | "success";
+  output: string;
+  stdout: string;
+  stderr: string;
+  exit_code?: number;
+  [k: string]: unknown;
+};
+type SDKTaskStartedMessage = {
+  type: "system";
+  subtype: "task_started";
+  task_id: string;
+  description: string;
+  task_type?: string;
+  [k: string]: unknown;
+};
+type SDKTaskProgressMessage = {
+  type: "system";
+  subtype: "task_progress";
+  task_id: string;
+  description: string;
+  summary?: string;
+  usage?: Record<string, unknown>;
+  last_tool_name?: string;
+  [k: string]: unknown;
+};
+type SDKTaskNotificationMessage = {
+  type: "system";
+  subtype: "task_notification";
+  task_id: string;
+  status: "completed" | "failed" | "stopped";
+  summary?: string;
+  usage?: Record<string, unknown>;
+  [k: string]: unknown;
+};
+type SDKToolUseSummaryMessage = {
+  type: "tool_use_summary";
+  summary: string;
+  preceding_tool_use_ids?: readonly string[];
+  [k: string]: unknown;
+};
 import {
   ApprovalRequestId,
   type CanonicalItemType,
@@ -1511,9 +1565,21 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 
     type StreamEvent = {
       type: string;
-      delta: { type: string; text?: string; thinking?: string; partial_json?: string; [k: string]: unknown };
+      delta: {
+        type: string;
+        text?: string;
+        thinking?: string;
+        partial_json?: string;
+        [k: string]: unknown;
+      };
       index: number;
-      content_block?: { type: string; id?: string; name?: string; input?: unknown; [k: string]: unknown };
+      content_block?: {
+        type: string;
+        id?: string;
+        name?: string;
+        input?: unknown;
+        [k: string]: unknown;
+      };
       [k: string]: unknown;
     };
     const { event } = message as { event: StreamEvent };
@@ -1928,7 +1994,12 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 
     const status = turnStatusFromResult(message);
     const errors = (message as { errors?: unknown[] }).errors;
-    const errorMessage = message.subtype === "success" ? undefined : (typeof errors?.[0] === "string" ? errors[0] : undefined);
+    const errorMessage =
+      message.subtype === "success"
+        ? undefined
+        : typeof errors?.[0] === "string"
+          ? errors[0]
+          : undefined;
 
     if (status === "failed") {
       yield* emitRuntimeError(context, errorMessage ?? "Claude turn failed.");
@@ -2030,7 +2101,9 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             output: hookResponse.output,
             stdout: hookResponse.stdout,
             stderr: hookResponse.stderr,
-            ...(typeof hookResponse.exit_code === "number" ? { exitCode: hookResponse.exit_code } : {}),
+            ...(typeof hookResponse.exit_code === "number"
+              ? { exitCode: hookResponse.exit_code }
+              : {}),
           },
         });
         return;
@@ -2197,7 +2270,12 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     }
 
     if (message.type === "auth_status") {
-      const authMsg = message as { isAuthenticating?: boolean; output?: string; error?: string; [k: string]: unknown };
+      const authMsg = message as {
+        isAuthenticating?: boolean;
+        output?: string;
+        error?: string;
+        [k: string]: unknown;
+      };
       yield* offerRuntimeEvent({
         ...base,
         type: "auth.status",

@@ -302,7 +302,6 @@ describe("OrchestrationEngine", () => {
     await system.dispose();
   });
 
-
   it("replays append-only events from sequence", async () => {
     const system = await createOrchestrationSystem();
     const { engine } = system;

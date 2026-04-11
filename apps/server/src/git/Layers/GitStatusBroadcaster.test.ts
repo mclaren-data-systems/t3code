@@ -179,7 +179,6 @@ describe("GitStatusBroadcasterLive", () => {
     }).pipe(Effect.provide(makeTestLayer(state)));
   });
 
-
   it.effect("streams a local snapshot first and remote updates later", () => {
     const state = {
       currentLocalStatus: baseLocalStatus,

@@ -13,7 +13,12 @@ import { decodeJsonResult } from "@t3tools/shared/schemaJson";
 import { query as claudeQuery } from "@anthropic-ai/claude-agent-sdk";
 
 /** Inline type for SDK SlashCommand (re-export not visible from the main entrypoint). */
-type ClaudeSlashCommand = { name: string; description: string; hint?: string; argumentHint?: string };
+type ClaudeSlashCommand = {
+  name: string;
+  description: string;
+  hint?: string;
+  argumentHint?: string;
+};
 
 import {
   buildServerProvider,
@@ -360,7 +365,9 @@ function parseClaudeInitializationCommands(
       }
 
       const description = nonEmptyProbeString(command.description);
-      const argumentHint = command.argumentHint ? nonEmptyProbeString(command.argumentHint) : undefined;
+      const argumentHint = command.argumentHint
+        ? nonEmptyProbeString(command.argumentHint)
+        : undefined;
 
       return [
         {
@@ -443,7 +450,9 @@ const probeClaudeCapabilities = (binaryPath: string) => {
     const account = (init as { account?: { subscriptionType?: string } }).account;
     return {
       subscriptionType: account?.subscriptionType,
-      slashCommands: parseClaudeInitializationCommands(init.commands as ClaudeSlashCommand[] | undefined),
+      slashCommands: parseClaudeInitializationCommands(
+        init.commands as ClaudeSlashCommand[] | undefined,
+      ),
     };
   }).pipe(
     Effect.ensuring(

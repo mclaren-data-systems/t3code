@@ -77,8 +77,6 @@ function toSearchableWorkspaceEntry(entry: ProjectEntry): SearchableWorkspaceEnt
   };
 }
 
-
-
 function scoreEntry(entry: SearchableWorkspaceEntry, query: string): number | null {
   if (!query) {
     return entry.kind === "directory" ? 0 : 1;

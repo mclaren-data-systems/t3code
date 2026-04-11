@@ -66,9 +66,7 @@ const assistantSegmentStateKey = (threadId: ThreadId, baseMessageId: MessageId) 
   `${threadId}:${baseMessageId}`;
 
 const assistantSegmentMessageId = (baseMessageId: MessageId, segmentIndex: number): MessageId =>
-  segmentIndex === 0
-    ? baseMessageId
-    : MessageId.make(`${baseMessageId}:segment:${segmentIndex}`);
+  segmentIndex === 0 ? baseMessageId : MessageId.make(`${baseMessageId}:segment:${segmentIndex}`);
 
 function toTurnId(value: TurnId | string | undefined): TurnId | undefined {
   return value === undefined ? undefined : TurnId.make(String(value));
