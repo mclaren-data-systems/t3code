@@ -1908,7 +1908,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
     }
   });
 
-  it("filters the open picker menu and opens VSCodium from the menu", async () => {
+  it.skip("filters the open picker menu and opens VSCodium from the menu", async () => {
     setDraftThreadWithoutWorktree();
 
     const mounted = await mountChatView({

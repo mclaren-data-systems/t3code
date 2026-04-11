@@ -200,6 +200,7 @@ vi.mock("~/store", () => ({
                   id: SHARED_THREAD_ID,
                   branch: BRANCH_NAME,
                   worktreePath: null,
+                  modelSelection: { provider: "codex", model: "gpt-5-codex" },
                 },
               }
             : {},
@@ -221,6 +222,7 @@ vi.mock("~/store", () => ({
                   id: SHARED_THREAD_ID,
                   branch: BRANCH_NAME,
                   worktreePath: null,
+                  modelSelection: { provider: "codex", model: "gpt-5-codex" },
                 },
               }
             : {},
