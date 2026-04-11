@@ -438,6 +438,21 @@ it.layer(NodeServices.layer)("isCommandAvailable", (it) => {
     }),
   );
 
+  it.effect("keeps explicit command paths with executable extensions missing from PATHEXT", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const dir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-open-test-" });
+      const filePath = path.join(dir, "custom.CMD");
+      yield* fs.writeFileString(filePath, "@echo off\r\n");
+      const env = {
+        PATH: dir,
+        PATHEXT: ".COM;.EXE",
+      } satisfies NodeJS.ProcessEnv;
+      assert.equal(isCommandAvailable(filePath, { platform: "win32", env }), true);
+    }),
+  );
+
   it.effect("uses platform-specific PATH delimiter for platform overrides", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;

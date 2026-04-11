@@ -1,6 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync } from "node:fs";
+import { extname, win32 as win32Path } from "node:path";
+import {
+  spawn,
+  spawnSync,
+  type ChildProcess,
+  type ChildProcessWithoutNullStreams,
+} from "node:child_process";
 import readline from "node:readline";
 
 import {
@@ -19,6 +26,7 @@ import {
 } from "@t3tools/contracts";
 import type { ProviderSessionUsage, ProviderUsageResult } from "@t3tools/contracts";
 import type { ProviderThreadSnapshot } from "./provider/Services/ProviderAdapter.ts";
+import { resolveCommandPath } from "./commandPath.ts";
 
 const PROVIDER = "geminiCli" as const;
 
@@ -57,10 +65,6 @@ export function fetchGeminiCliUsage(): ProviderUsageResult {
     ...(sessionUsage ? { sessionUsage } : {}),
   };
 }
-
-type GeminiCliProviderOptions = {
-  readonly binaryPath?: string;
-};
 
 function readGeminiResumeSessionId(resumeCursor: unknown): string | undefined {
   if (typeof resumeCursor === "string" && resumeCursor.trim().length > 0) {
@@ -149,6 +153,7 @@ interface GeminiCliSession {
   geminiSessionId: string | undefined;
   activeTurnId: TurnId | undefined;
   activeProcess: ChildProcess | undefined;
+  interruptedTurnId: TurnId | undefined;
   /** Stable itemId for the current turn's assistant message (reused across content.delta events). */
   activeAssistantItemId: RuntimeItemId | undefined;
   /** Track active tool items by tool_id → { itemId, toolName, paramSummary } for item lifecycle events. */
@@ -162,6 +167,134 @@ interface GeminiCliSession {
 
 function defaultBinaryPath(): string {
   return "gemini";
+}
+
+export function buildGeminiSpawnOptions(input: {
+  readonly cwd: string;
+  readonly env: NodeJS.ProcessEnv;
+}): {
+  readonly cwd: string;
+  readonly stdio: ["pipe", "pipe", "pipe"];
+  readonly env: NodeJS.ProcessEnv;
+  readonly shell: false;
+} {
+  return {
+    cwd: input.cwd,
+    stdio: ["pipe", "pipe", "pipe"],
+    env: input.env,
+    shell: false,
+  };
+}
+
+interface GeminiSpawnPlan {
+  readonly command: string;
+  readonly args: ReadonlyArray<string>;
+  readonly options: ReturnType<typeof buildGeminiSpawnOptions>;
+}
+
+interface GeminiSpawnPlanDependencies {
+  readonly resolveCommandPath?: typeof resolveCommandPath;
+  readonly existsSync?: typeof existsSync;
+}
+
+function resolveGeminiShimEntryPoint(
+  binaryPath: string,
+  fileExists: typeof existsSync = existsSync,
+): string | undefined {
+  if (![".cmd", ".bat"].includes(extname(binaryPath).toLowerCase())) {
+    return undefined;
+  }
+
+  const shimDirectory = win32Path.dirname(binaryPath);
+  const shimEntryPoint = win32Path.join(
+    shimDirectory,
+    "node_modules",
+    "@google",
+    "gemini-cli",
+    "dist",
+    "index.js",
+  );
+
+  return fileExists(shimEntryPoint) ? shimEntryPoint : undefined;
+}
+
+function resolveNodeCommand(
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform = process.platform,
+  commandPathResolver: typeof resolveCommandPath = resolveCommandPath,
+): string {
+  if (platform === "win32") {
+    return commandPathResolver("node", { platform: "win32", env }) ?? "node";
+  }
+  return "node";
+}
+
+export function resolveGeminiSpawnPlan(
+  input: {
+    readonly binaryPath: string;
+    readonly args: ReadonlyArray<string>;
+    readonly cwd: string;
+    readonly env: NodeJS.ProcessEnv;
+  },
+  platform: NodeJS.Platform = process.platform,
+  dependencies: GeminiSpawnPlanDependencies = {},
+): GeminiSpawnPlan {
+  const commandPathResolver = dependencies.resolveCommandPath ?? resolveCommandPath;
+  const fileExists = dependencies.existsSync ?? existsSync;
+  const options = buildGeminiSpawnOptions({
+    cwd: input.cwd,
+    env: input.env,
+  });
+
+  if (platform !== "win32") {
+    return {
+      command: input.binaryPath,
+      args: [...input.args],
+      options,
+    };
+  }
+
+  const resolvedBinaryPath =
+    commandPathResolver(input.binaryPath, {
+      platform,
+      env: input.env,
+    }) ?? input.binaryPath;
+
+  if (extname(resolvedBinaryPath).toLowerCase() === ".js") {
+    return {
+      command: resolveNodeCommand(input.env, platform, commandPathResolver),
+      args: [resolvedBinaryPath, ...input.args],
+      options,
+    };
+  }
+
+  const shimEntryPoint = resolveGeminiShimEntryPoint(resolvedBinaryPath, fileExists);
+  if (shimEntryPoint) {
+    return {
+      command: resolveNodeCommand(input.env, platform, commandPathResolver),
+      args: [shimEntryPoint, ...input.args],
+      options,
+    };
+  }
+
+  return {
+    command: resolvedBinaryPath,
+    args: [...input.args],
+    options,
+  };
+}
+
+function killGeminiChildProcess(child: ChildProcess, signal: NodeJS.Signals = "SIGTERM"): void {
+  if (process.platform === "win32" && child.pid !== undefined) {
+    try {
+      spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+      return;
+    } catch {
+      // Fall back to direct kill when taskkill is unavailable.
+    }
+  }
+
+  child.kill(signal);
 }
 
 /** Extract a short description from tool parameters for display. */
@@ -233,6 +366,7 @@ export class GeminiCliServerManager extends EventEmitter<{
       geminiSessionId: resumeSessionId,
       activeTurnId: undefined,
       activeProcess: undefined,
+      interruptedTurnId: undefined,
       activeAssistantItemId: undefined,
       activeToolItems: new Map(),
       createdAt: now,
@@ -293,6 +427,7 @@ export class GeminiCliServerManager extends EventEmitter<{
     session.updatedAt = new Date().toISOString();
     session.activeToolItems.clear();
     session.activeAssistantItemId = undefined;
+    session.interruptedTurnId = undefined;
 
     const prompt = input.input ?? "";
 
@@ -318,11 +453,20 @@ export class GeminiCliServerManager extends EventEmitter<{
       args.push("--resume", session.geminiSessionId);
     }
 
-    const child = spawn(session.binaryPath, args, {
+    const spawnPlan = resolveGeminiSpawnPlan({
+      binaryPath: session.binaryPath,
+      args,
       cwd: session.cwd,
-      stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env },
     });
+
+    const child: ChildProcessWithoutNullStreams = spawn(
+      spawnPlan.command,
+      [...spawnPlan.args],
+      spawnPlan.options,
+    );
+
+    child.stdin.end();
 
     session.activeProcess = child;
 
@@ -332,6 +476,7 @@ export class GeminiCliServerManager extends EventEmitter<{
       payload: { model: effectiveModel },
     });
 
+    let stderrSummary = "";
     const rl = readline.createInterface({ input: child.stdout });
 
     rl.on("line", (line) => {
@@ -341,6 +486,10 @@ export class GeminiCliServerManager extends EventEmitter<{
     child.stderr.on("data", (chunk: Buffer) => {
       const text = chunk.toString().trim();
       if (!text) return;
+      if (stderrSummary.length < 2_000) {
+        const nextSummary = stderrSummary.length > 0 ? `${stderrSummary}\n${text}` : text;
+        stderrSummary = nextSummary.slice(0, 2_000);
+      }
       const normalized = text.toLowerCase();
       if (normalized.includes("trusted folder") || normalized.includes("untrusted folder")) {
         this.emitEvent(input.threadId, turnId, {
@@ -365,21 +514,25 @@ export class GeminiCliServerManager extends EventEmitter<{
       if (s.status === "running" && s.activeTurnId === turnId) {
         s.status = "ready";
         s.updatedAt = new Date().toISOString();
+        const wasInterrupted = s.interruptedTurnId === turnId || signal === "SIGINT";
+        s.interruptedTurnId = undefined;
 
         // Flush any open assistant message or tool items that never received completion.
         this.finalizeOpenItems(input.threadId, turnId, s);
 
         this.emitEvent(input.threadId, turnId, {
           type: "turn.completed",
-          payload:
-            signal === "SIGINT"
-              ? { state: "interrupted" }
-              : code === 0
-                ? { state: "completed" }
-                : {
-                    state: "failed",
-                    errorMessage: `Gemini CLI exited with code ${code}`,
-                  },
+          payload: wasInterrupted
+            ? { state: "interrupted" }
+            : code === 0
+              ? { state: "completed" }
+              : {
+                  state: "failed",
+                  errorMessage:
+                    stderrSummary.length > 0
+                      ? `Gemini CLI exited with code ${code}: ${stderrSummary}`
+                      : `Gemini CLI exited with code ${code}`,
+                },
         });
       }
     });
@@ -390,6 +543,7 @@ export class GeminiCliServerManager extends EventEmitter<{
         s.activeProcess = undefined;
         s.status = "ready";
         s.updatedAt = new Date().toISOString();
+        s.interruptedTurnId = undefined;
 
         // Flush any open assistant message or tool items that never received completion.
         this.finalizeOpenItems(input.threadId, turnId, s);
@@ -419,7 +573,8 @@ export class GeminiCliServerManager extends EventEmitter<{
       throw new Error(`Unknown Gemini CLI session: ${threadId}`);
     }
     if (session.status === "running" && session.activeProcess) {
-      session.activeProcess.kill("SIGINT");
+      session.interruptedTurnId = session.activeTurnId;
+      killGeminiChildProcess(session.activeProcess, "SIGINT");
     }
     return Promise.resolve();
   }
@@ -445,7 +600,7 @@ export class GeminiCliServerManager extends EventEmitter<{
     if (!session) return;
     if (session.activeProcess) {
       try {
-        session.activeProcess.kill();
+        killGeminiChildProcess(session.activeProcess);
       } catch {
         // Process may already be dead.
       }

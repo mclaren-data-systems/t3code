@@ -57,16 +57,19 @@ function envCaptureEnd(name: string): string {
   return `__T3CODE_ENV_${name}_END__`;
 }
 
-function buildEnvironmentCaptureCommand(names: ReadonlyArray<string>): string {
+function buildEnvironmentCaptureCommand(names: ReadonlyArray<string>, isFish: boolean): string {
   return names
     .map((name) => {
       if (!SHELL_ENV_NAME_PATTERN.test(name)) {
         throw new Error(`Unsupported environment variable name: ${name}`);
       }
 
+      const captureCmd =
+        isFish && name === "PATH" ? `printf '%s\\n' "$PATH" || true` : `printenv ${name} || true`;
+
       return [
         `printf '%s\\n' '${envCaptureStart(name)}'`,
-        `printenv ${name} || true`,
+        captureCmd,
         `printf '%s\\n' '${envCaptureEnd(name)}'`,
       ].join("; ");
     })
@@ -109,7 +112,12 @@ export const readEnvironmentFromLoginShell: ShellEnvironmentReader = (
     return {};
   }
 
-  const output = execFile(shell, ["-ilc", buildEnvironmentCaptureCommand(names)], {
+  const isFish = shell.endsWith("fish");
+  const shellArgs =
+    isFish || shell.endsWith("zsh")
+      ? ["-ilc", buildEnvironmentCaptureCommand(names, isFish)]
+      : ["-lc", buildEnvironmentCaptureCommand(names, isFish)];
+  const output = execFile(shell, shellArgs, {
     encoding: "utf8",
     timeout: 5000,
   });

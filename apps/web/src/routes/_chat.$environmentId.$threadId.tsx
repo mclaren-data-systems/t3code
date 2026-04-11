@@ -137,6 +137,15 @@ const DiffPanelInlineSidebar = (props: {
     [],
   );
 
+  const resizable = useMemo(
+    () => ({
+      minWidth: DIFF_INLINE_SIDEBAR_MIN_WIDTH,
+      shouldAcceptWidth: shouldAcceptInlineSidebarWidth,
+      storageKey: DIFF_INLINE_SIDEBAR_WIDTH_STORAGE_KEY,
+    }),
+    [shouldAcceptInlineSidebarWidth],
+  );
+
   return (
     <SidebarProvider
       defaultOpen={false}
@@ -149,11 +158,7 @@ const DiffPanelInlineSidebar = (props: {
         side="right"
         collapsible="offcanvas"
         className="border-l border-border bg-card text-foreground"
-        resizable={{
-          minWidth: DIFF_INLINE_SIDEBAR_MIN_WIDTH,
-          shouldAcceptWidth: shouldAcceptInlineSidebarWidth,
-          storageKey: DIFF_INLINE_SIDEBAR_WIDTH_STORAGE_KEY,
-        }}
+        resizable={resizable}
       >
         {renderDiffContent ? <LazyDiffPanel mode="sidebar" /> : null}
         <SidebarRail />
