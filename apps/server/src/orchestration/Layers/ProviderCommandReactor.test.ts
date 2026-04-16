@@ -28,6 +28,10 @@ import {
 } from "../../provider/Services/ProviderService.ts";
 import { GitCore, type GitCoreShape } from "../../git/Services/GitCore.ts";
 import {
+  GitStatusBroadcaster,
+  type GitStatusBroadcasterShape,
+} from "../../git/Services/GitStatusBroadcaster.ts";
+import {
   TextGeneration,
   type TextGenerationShape,
   type ThreadTitleGenerationResult,
@@ -181,14 +185,31 @@ describe("ProviderCommandReactor", () => {
             : "renamed-branch",
       }),
     );
-    const generateBranchName = vi.fn(
-      (_input?: unknown): Effect.Effect<{ branch: string }, TextGenerationError> =>
-        Effect.fail(
-          new TextGenerationError({
-            operation: "generateBranchName",
-            detail: "disabled in test harness",
-          }),
-        ),
+    const refreshStatus = vi.fn((_: string) =>
+      Effect.succeed({
+        isRepo: true,
+        hasOriginRemote: true,
+        isDefaultBranch: false,
+        branch: "renamed-branch",
+        hasWorkingTreeChanges: false,
+        workingTree: {
+          files: [],
+          insertions: 0,
+          deletions: 0,
+        },
+        hasUpstream: true,
+        aheadCount: 0,
+        behindCount: 0,
+        pr: null,
+      }),
+    );
+    const generateBranchName = vi.fn<TextGenerationShape["generateBranchName"]>((_) =>
+      Effect.fail(
+        new TextGenerationError({
+          operation: "generateBranchName",
+          detail: "disabled in test harness",
+        }),
+      ),
     );
     const generateThreadTitle = vi.fn(
       (_input?: unknown): Effect.Effect<ThreadTitleGenerationResult, TextGenerationError> =>
@@ -239,7 +260,16 @@ describe("ProviderCommandReactor", () => {
       Layer.provideMerge(Layer.succeed(ProviderService, service)),
       Layer.provideMerge(Layer.succeed(GitCore, { renameBranch } as unknown as GitCoreShape)),
       Layer.provideMerge(
-        Layer.succeed(TextGeneration, {
+        Layer.succeed(GitStatusBroadcaster, {
+          getStatus: () => Effect.die("getStatus should not be called in this test"),
+          refreshLocalStatus: () =>
+            Effect.die("refreshLocalStatus should not be called in this test"),
+          refreshStatus,
+          streamStatus: () => Stream.die("streamStatus should not be called in this test"),
+        } satisfies GitStatusBroadcasterShape),
+      ),
+      Layer.provideMerge(
+        Layer.mock(TextGeneration, {
           generateBranchName,
           generateThreadTitle,
         } as unknown as TextGenerationShape),
@@ -292,6 +322,7 @@ describe("ProviderCommandReactor", () => {
       respondToUserInput,
       stopSession,
       renameBranch,
+      refreshStatus,
       generateBranchName,
       generateThreadTitle,
       stateDir,
@@ -526,9 +557,11 @@ describe("ProviderCommandReactor", () => {
     );
 
     await waitFor(() => harness.generateBranchName.mock.calls.length === 1);
+    await waitFor(() => harness.refreshStatus.mock.calls.length === 1);
     expect(harness.generateBranchName.mock.calls[0]?.[0]).toMatchObject({
       message: "Add a safer reconnect backoff.",
     });
+    expect(harness.refreshStatus.mock.calls[0]?.[0]).toBe("/tmp/provider-project-worktree");
   });
 
   it("forwards codex model options through session start and turn send", async () => {
@@ -1251,6 +1284,61 @@ describe("ProviderCommandReactor", () => {
     await waitFor(() => harness.interruptTurn.mock.calls.length === 1);
     expect(harness.interruptTurn.mock.calls[0]?.[0]).toEqual({
       threadId: "thread-1",
+    });
+  });
+
+  it("starts a fresh session when only projected session state exists", async () => {
+    const harness = await createHarness();
+    const now = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-session-set-stale"),
+        threadId: ThreadId.make("thread-1"),
+        session: {
+          threadId: ThreadId.make("thread-1"),
+          status: "ready",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: now,
+        },
+        createdAt: now,
+      }),
+    );
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-turn-start-stale"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-stale"),
+          role: "user",
+          text: "resume codex",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.startSession.mock.calls.length === 1);
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+
+    expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({
+      threadId: ThreadId.make("thread-1"),
+      modelSelection: {
+        provider: "codex",
+        model: "gpt-5-codex",
+      },
+      runtimeMode: "approval-required",
+    });
+    expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
+      threadId: ThreadId.make("thread-1"),
     });
   });
 

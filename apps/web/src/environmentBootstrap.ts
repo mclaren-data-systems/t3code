@@ -28,16 +28,6 @@ export function getPrimaryKnownEnvironment(): KnownEnvironment | null {
     return desktopEnvironment;
   }
 
-  const legacyDesktopWsUrl = window.desktopBridge?.getWsUrl();
-  if (typeof legacyDesktopWsUrl === "string" && legacyDesktopWsUrl.length > 0) {
-    return createKnownEnvironmentFromWsUrl({
-      id: "desktop-legacy",
-      label: "Local environment",
-      source: "desktop-managed",
-      wsUrl: legacyDesktopWsUrl,
-    });
-  }
-
   const configuredWsUrl = import.meta.env.VITE_WS_URL;
   if (typeof configuredWsUrl === "string" && configuredWsUrl.length > 0) {
     return createKnownEnvironmentFromWsUrl({

@@ -92,6 +92,7 @@ type SDKToolUseSummaryMessage = {
   preceding_tool_use_ids?: readonly string[];
   [k: string]: unknown;
 };
+import { parseCliArgs } from "@t3tools/shared/cliArgs";
 import {
   ApprovalRequestId,
   type CanonicalItemType,
@@ -532,11 +533,53 @@ function classifyRequestType(toolName: string): CanonicalRequestType {
       : "dynamic_tool_call";
 }
 
+function isTodoTool(toolName: string): boolean {
+  return toolName.toLowerCase().includes("todowrite");
+}
+
+type PlanStep = { step: string; status: "pending" | "inProgress" | "completed" };
+
+function extractPlanStepsFromTodoInput(input: Record<string, unknown>): PlanStep[] | null {
+  // TodoWrite format: { todos: [{ content, status, activeForm? }] }
+  const todos = input.todos;
+  if (!Array.isArray(todos) || todos.length === 0) {
+    return null;
+  }
+  return todos
+    .filter((t): t is Record<string, unknown> => t !== null && typeof t === "object")
+    .map((todo) => ({
+      step:
+        typeof todo.content === "string" && todo.content.trim().length > 0
+          ? todo.content.trim()
+          : "Task",
+      status:
+        todo.status === "completed"
+          ? "completed"
+          : todo.status === "in_progress"
+            ? "inProgress"
+            : "pending",
+    }));
+}
+
 function summarizeToolRequest(toolName: string, input: Record<string, unknown>): string {
   const commandValue = input.command ?? input.cmd;
   const command = typeof commandValue === "string" ? commandValue : undefined;
   if (command && command.trim().length > 0) {
     return `${toolName}: ${command.trim().slice(0, 400)}`;
+  }
+
+  // For agent/subagent tools, prefer human-readable description or prompt over raw JSON
+  const itemType = classifyToolItemType(toolName);
+  if (itemType === "collab_agent_tool_call") {
+    const description =
+      typeof input.description === "string" ? input.description.trim() : undefined;
+    const prompt = typeof input.prompt === "string" ? input.prompt.trim() : undefined;
+    const subagentType =
+      typeof input.subagent_type === "string" ? input.subagent_type.trim() : undefined;
+    const label = description || (prompt ? prompt.slice(0, 200) : undefined);
+    if (label) {
+      return subagentType ? `${subagentType}: ${label}` : label;
+    }
   }
 
   const serialized = JSON.stringify(input);
@@ -1710,6 +1753,26 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             payload: message,
           },
         });
+
+        // Emit plan update when TodoWrite input is parsed
+        if (parsedInput && isTodoTool(nextTool.toolName)) {
+          const planSteps = extractPlanStepsFromTodoInput(parsedInput);
+          if (planSteps && planSteps.length > 0) {
+            const planStamp = yield* makeEventStamp();
+            yield* offerRuntimeEvent({
+              type: "turn.plan.updated",
+              eventId: planStamp.eventId,
+              provider: PROVIDER,
+              createdAt: planStamp.createdAt,
+              threadId: context.session.threadId,
+              ...(context.turnState ? { turnId: asCanonicalTurnId(context.turnState.turnId) } : {}),
+              payload: {
+                plan: planSteps,
+              },
+              providerRefs: nativeProviderRefs(context),
+            });
+          }
+        }
       }
       return;
     }
@@ -2804,6 +2867,7 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ),
       );
       const claudeBinaryPath = claudeSettings.binaryPath;
+      const extraArgs = parseCliArgs(claudeSettings.launchArgs).flags;
       const modelSelection =
         input.modelSelection?.provider === "claudeAgent" ? input.modelSelection : undefined;
       const caps = getClaudeModelCapabilities(modelSelection?.model);
@@ -2843,6 +2907,7 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         canUseTool,
         env: process.env,
         ...(input.cwd ? { additionalDirectories: [input.cwd] } : {}),
+        ...(Object.keys(extraArgs).length > 0 ? { extraArgs } : {}),
       };
 
       const queryRuntime = yield* Effect.try({

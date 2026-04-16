@@ -163,6 +163,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
   interactionMode: ProviderInteractionMode;
   runtimeMode: RuntimeMode;
   showPlanToggle: boolean;
+  planSidebarLabel: string;
   planSidebarOpen: boolean;
   onToggleInteractionMode: () => void;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
@@ -244,10 +245,14 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
             size="sm"
             type="button"
             onClick={props.onTogglePlanSidebar}
-            title={props.planSidebarOpen ? "Hide plan sidebar" : "Show plan sidebar"}
+            title={
+              props.planSidebarOpen
+                ? `Hide ${props.planSidebarLabel.toLowerCase()} sidebar`
+                : `Show ${props.planSidebarLabel.toLowerCase()} sidebar`
+            }
           >
             <ListTodoIcon />
-            <span className="sr-only sm:not-sr-only">Plan</span>
+            <span className="sr-only sm:not-sr-only">{props.planSidebarLabel}</span>
           </Button>
         </>
       ) : null}
@@ -381,6 +386,7 @@ export interface ChatComposerProps {
   activeProposedPlan: Thread["proposedPlans"][number] | null;
   activePlan: { turnId?: TurnId } | null;
   sidebarProposedPlan: { turnId?: TurnId } | null;
+  planSidebarLabel: string;
   planSidebarOpen: boolean;
 
   // Mode
@@ -475,6 +481,7 @@ export const ChatComposer = memo(
       activeProposedPlan,
       activePlan,
       sidebarProposedPlan,
+      planSidebarLabel,
       planSidebarOpen,
       runtimeMode,
       interactionMode,
@@ -1912,7 +1919,7 @@ export const ChatComposer = memo(
                   isComposerFooterCompact ? "gap-1.5" : "gap-2 sm:gap-0",
                 )}
               >
-                <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <div className="-m-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   <ProviderModelPicker
                     compact={isComposerFooterCompact}
                     provider={selectedProvider}
@@ -1932,6 +1939,7 @@ export const ChatComposer = memo(
                     <CompactComposerControlsMenu
                       activePlan={showPlanSidebarToggle}
                       interactionMode={interactionMode}
+                      planSidebarLabel={planSidebarLabel}
                       planSidebarOpen={planSidebarOpen}
                       runtimeMode={runtimeMode}
                       traitsMenuContent={providerTraitsMenuContent}
@@ -1954,6 +1962,7 @@ export const ChatComposer = memo(
                         interactionMode={interactionMode}
                         runtimeMode={runtimeMode}
                         showPlanToggle={showPlanSidebarToggle}
+                        planSidebarLabel={planSidebarLabel}
                         planSidebarOpen={planSidebarOpen}
                         onToggleInteractionMode={toggleInteractionMode}
                         onRuntimeModeChange={handleRuntimeModeChange}
