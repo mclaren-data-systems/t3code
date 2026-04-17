@@ -72,6 +72,14 @@ function resolveCommandEditorArgs(
   }
 }
 
+function resolveEditorArgs(
+  editor: (typeof EDITORS)[number],
+  target: string,
+): ReadonlyArray<string> {
+  const baseArgs = "baseArgs" in editor ? editor.baseArgs : [];
+  return [...baseArgs, ...resolveCommandEditorArgs(editor, target)];
+}
+
 /** Editors that are terminals requiring --working-directory instead of a positional path arg. */
 const WORKING_DIRECTORY_EDITORS = new Set<EditorId>(["ghostty"]);
 
@@ -239,7 +247,7 @@ export const resolveEditorLaunch = Effect.fn("resolveEditorLaunch")(function* (
       return { command, args: [`--working-directory=${workingDirectory}`] };
     }
 
-    const args = resolveCommandEditorArgs(editorDef, input.cwd);
+    const args = resolveEditorArgs(editorDef, input.cwd);
 
     // On macOS, fall back to `open -a` when the CLI tool isn't in PATH
     // but the .app bundle is installed.

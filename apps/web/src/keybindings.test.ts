@@ -20,6 +20,7 @@ import {
   isTerminalToggleShortcut,
   resolveShortcutCommand,
   shortcutLabelForCommand,
+  terminalDeleteShortcutData,
   terminalNavigationShortcutData,
   type ShortcutEventLike,
 } from "./keybindings";
@@ -453,6 +454,34 @@ describe("isTerminalClearShortcut", () => {
   it("ignores non-keydown events", () => {
     assert.isFalse(
       isTerminalClearShortcut(event({ type: "keyup", key: "l", ctrlKey: true }), "Linux"),
+    );
+  });
+});
+
+describe("terminalDeleteShortcutData", () => {
+  it("maps Cmd+Backspace on macOS to delete-to-line-start", () => {
+    assert.strictEqual(
+      terminalDeleteShortcutData(event({ key: "Backspace", metaKey: true }), "MacIntel"),
+      "\u0015",
+    );
+  });
+
+  it("ignores non-macOS platforms and modified variants", () => {
+    assert.isNull(terminalDeleteShortcutData(event({ key: "Backspace", metaKey: true }), "Linux"));
+    assert.isNull(
+      terminalDeleteShortcutData(
+        event({ key: "Backspace", metaKey: true, altKey: true }),
+        "MacIntel",
+      ),
+    );
+  });
+
+  it("ignores non-keydown events", () => {
+    assert.isNull(
+      terminalDeleteShortcutData(
+        event({ type: "keyup", key: "Backspace", metaKey: true }),
+        "MacIntel",
+      ),
     );
   });
 });
