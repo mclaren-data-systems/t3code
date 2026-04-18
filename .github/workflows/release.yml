@@ -255,7 +255,7 @@ jobs:
 
       - name: Merge macOS updater manifests
         run: |
-          bun run scripts/merge-mac-update-manifests.ts \
+          bun run scripts/merge-update-manifests.ts --platform mac \
             release-assets/latest-mac.yml \
             release-assets/latest-mac-x64.yml
           rm -f release-assets/latest-mac-x64.yml
