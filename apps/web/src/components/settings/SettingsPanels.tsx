@@ -167,7 +167,7 @@ const PROVIDER_SETTINGS: readonly InstallProviderSettings[] = [
     customModelExample: "opencode-pro",
     serverUrlPlaceholder: "http://127.0.0.1:4096",
     serverUrlDescription: "Leave blank to let T3 Code spawn the server when needed",
-    serverPasswordPlaceholder: "Server password (optional)",
+    serverPasswordPlaceholder: "Server password",
     serverPasswordDescription:
       "If your OpenCode server requires authentication, enter the password here. NOTE: Stored in plain text on disk",
   },
@@ -1510,7 +1510,9 @@ export function GeneralSettingsPanel() {
                           htmlFor={`provider-install-${providerCard.provider}-server-url`}
                           className="block"
                         >
-                          <span className="text-xs font-medium text-foreground">Server URL</span>
+                          <span className="text-xs font-medium text-foreground">
+                            {providerCard.title} server URL
+                          </span>
                           <Input
                             id={`provider-install-${providerCard.provider}-server-url`}
                             className="mt-1.5"
@@ -1546,7 +1548,7 @@ export function GeneralSettingsPanel() {
                           className="block"
                         >
                           <span className="text-xs font-medium text-foreground">
-                            Server password
+                            {providerCard.title} server password
                           </span>
                           <Input
                             id={`provider-install-${providerCard.provider}-server-password`}

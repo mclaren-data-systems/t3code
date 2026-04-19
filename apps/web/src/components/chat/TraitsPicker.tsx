@@ -354,7 +354,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
             <div className="px-2 pt-1.5 pb-1 font-medium text-muted-foreground text-xs">
               {provider === "opencode" ? "Variant" : "Effort"}
             </div>
-            {ultrathinkInBodyText ? (
+            {ultrathinkPromptControlled ? (
               <div className="px-2 pb-1.5 text-muted-foreground/80 text-xs">
                 Remove Ultrathink from the prompt to change effort.
               </div>
