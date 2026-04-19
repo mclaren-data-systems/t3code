@@ -8,8 +8,8 @@ import {
   GeminiCliModelOptions,
   KiloModelOptions,
   OpencodeModelOptions,
-} from "./model";
-import { RepositoryIdentity } from "./environment";
+} from "./model.ts";
+import { RepositoryIdentity } from "./environment.ts";
 import {
   ApprovalRequestId,
   CheckpointRef,
@@ -24,7 +24,7 @@ import {
   ThreadId,
   TrimmedNonEmptyString,
   TurnId,
-} from "./baseSchemas";
+} from "./baseSchemas.ts";
 
 export const ORCHESTRATION_WS_METHODS = {
   dispatchCommand: "orchestration.dispatchCommand",
@@ -96,6 +96,12 @@ export const OpencodeModelSelection = Schema.Struct({
   options: Schema.optionalKey(OpencodeModelOptions),
 });
 export type OpencodeModelSelection = typeof OpencodeModelSelection.Type;
+/**
+ * Upstream-compatible alias so upstream-authored code that imports
+ * `OpenCodeModelSelection` still resolves against the fork's richer schema.
+ */
+export const OpenCodeModelSelection = OpencodeModelSelection;
+export type OpenCodeModelSelection = OpencodeModelSelection;
 
 export const GeminiCliModelSelection = Schema.Struct({
   provider: Schema.Literal("geminiCli"),
@@ -590,6 +596,7 @@ const ProjectDeleteCommand = Schema.Struct({
   type: Schema.Literal("project.delete"),
   commandId: CommandId,
   projectId: ProjectId,
+  force: Schema.optional(Schema.Boolean),
 });
 
 const ThreadCreateCommand = Schema.Struct({
