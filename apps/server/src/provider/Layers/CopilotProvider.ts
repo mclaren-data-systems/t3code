@@ -33,14 +33,13 @@ const EMPTY_CAPABILITIES: ModelCapabilities = {
   promptInjectedEffortLevels: [],
 };
 
-const BUILT_IN_COPILOT_MODELS: ReadonlyArray<ServerProviderModel> = MODEL_OPTIONS_BY_PROVIDER.copilot.map(
-  (option) => ({
+const BUILT_IN_COPILOT_MODELS: ReadonlyArray<ServerProviderModel> =
+  MODEL_OPTIONS_BY_PROVIDER.copilot.map((option) => ({
     slug: option.slug,
     name: option.name,
     isCustom: false,
     capabilities: EMPTY_CAPABILITIES,
-  }),
-);
+  }));
 
 function getCopilotModelsForSettings(
   copilotSettings: Pick<GenericProviderSettings, "customModels">,
