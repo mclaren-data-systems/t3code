@@ -31,6 +31,7 @@ import {
 } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDebouncedValue } from "@tanstack/react-pacer";
+import { scopedThreadKey } from "@t3tools/client-runtime";
 import { projectSearchEntriesQueryOptions } from "~/lib/projectReactQuery";
 import {
   clampCollapsedComposerCursor,
@@ -38,6 +39,7 @@ import {
   collapseExpandedComposerCursor,
   detectComposerTrigger,
   expandCollapsedComposerCursor,
+  parseStandaloneComposerSlashCommand,
   replaceTextRange,
 } from "../../composer-logic";
 import { deriveComposerSendState, readFileAsDataUrl } from "../ChatView.logic";
@@ -105,8 +107,15 @@ import type { PendingApproval, PendingUserInput } from "../../session-logic";
 import { deriveLatestContextWindowSnapshot } from "../../lib/contextWindow";
 import { formatProviderSkillDisplayName } from "../../providerSkillPresentation";
 import { searchProviderSkills } from "../../providerSkillSearch";
+import { useThreadMessageHistoryStore } from "../../threadMessageHistoryStore";
+import {
+  isThreadMessageHistoryBoundary,
+  resolveThreadMessageHistoryNavigation,
+  type ThreadMessageHistoryDirection,
+} from "../../threadMessageHistory";
 
 const IMAGE_SIZE_LIMIT_LABEL = `${Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))}MB`;
+const EMPTY_THREAD_MESSAGE_HISTORY: readonly string[] = [];
 
 const runtimeModeConfig: Record<
   RuntimeMode,
@@ -559,6 +568,14 @@ export const ChatComposer = memo(
     const syncComposerDraftPersistedAttachments = useComposerDraftStore(
       (store) => store.syncPersistedAttachments,
     );
+    const threadMessageHistoryKey = useMemo(
+      () => scopedThreadKey(routeThreadRef),
+      [routeThreadRef],
+    );
+    const threadMessageHistory = useThreadMessageHistoryStore(
+      (store) => store.historyByThreadKey[threadMessageHistoryKey] ?? EMPTY_THREAD_MESSAGE_HISTORY,
+    );
+    const appendThreadMessageHistory = useThreadMessageHistoryStore((store) => store.appendMessage);
     const getComposerDraft = useComposerDraftStore((store) => store.getComposerDraft);
 
     // ------------------------------------------------------------------
@@ -674,6 +691,13 @@ export const ChatComposer = memo(
     const composerMenuItemsRef = useRef<ComposerCommandItem[]>([]);
     const activeComposerMenuItemRef = useRef<ComposerCommandItem | null>(null);
     const dragDepthRef = useRef(0);
+    const threadMessageHistoryNavigationRef = useRef<{
+      index: number | null;
+      draft: string;
+    }>({
+      index: null,
+      draft: "",
+    });
 
     // ------------------------------------------------------------------
     // Derived: composer send state
@@ -866,6 +890,10 @@ export const ChatComposer = memo(
           scheduleComposerFocus();
           return;
         }
+        threadMessageHistoryNavigationRef.current = {
+          index: null,
+          draft: "",
+        };
         promptRef.current = nextPrompt;
         setComposerDraftPrompt(composerDraftTarget, nextPrompt);
         const nextCursor = collapseExpandedComposerCursor(nextPrompt, nextPrompt.length);
@@ -943,6 +971,10 @@ export const ChatComposer = memo(
 
     const removeComposerTerminalContextFromDraft = useCallback(
       (contextId: string) => {
+        threadMessageHistoryNavigationRef.current = {
+          index: null,
+          draft: "",
+        };
         const contextIndex = composerTerminalContexts.findIndex(
           (context) => context.id === contextId,
         );
@@ -1037,6 +1069,10 @@ export const ChatComposer = memo(
         return;
       }
 
+      threadMessageHistoryNavigationRef.current = {
+        index: null,
+        draft: "",
+      };
       promptRef.current = nextCustomAnswer;
       const nextCursor = collapseExpandedComposerCursor(nextCustomAnswer, nextCustomAnswer.length);
       setComposerCursor(nextCursor);
@@ -1064,6 +1100,10 @@ export const ChatComposer = memo(
       );
       setComposerTrigger(detectComposerTrigger(promptRef.current, promptRef.current.length));
       dragDepthRef.current = 0;
+      threadMessageHistoryNavigationRef.current = {
+        index: null,
+        draft: "",
+      };
       setIsDragOverComposer(false);
     }, [draftId, activeThreadId, promptRef]);
 
@@ -1204,6 +1244,15 @@ export const ChatComposer = memo(
         cursorAdjacentToMention: boolean,
         terminalContextIds: string[],
       ) => {
+        if (
+          threadMessageHistoryNavigationRef.current.index !== null &&
+          nextPrompt !== promptRef.current
+        ) {
+          threadMessageHistoryNavigationRef.current = {
+            index: null,
+            draft: "",
+          };
+        }
         if (activePendingProgress?.activeQuestion && pendingUserInputs.length > 0) {
           setComposerCursor(nextCursor);
           setComposerTrigger(
@@ -1253,6 +1302,10 @@ export const ChatComposer = memo(
         replacement: string,
         options?: { expectedText?: string; focusEditorAfterReplace?: boolean },
       ): boolean => {
+        threadMessageHistoryNavigationRef.current = {
+          index: null,
+          draft: "",
+        };
         const currentText = promptRef.current;
         const safeStart = Math.max(0, Math.min(currentText.length, rangeStart));
         const safeEnd = Math.max(safeStart, Math.min(currentText.length, rangeEnd));
@@ -1294,6 +1347,65 @@ export const ChatComposer = memo(
         promptRef,
         setPrompt,
       ],
+    );
+
+    const applyThreadMessageHistoryPrompt = useCallback(
+      (nextPrompt: string) => {
+        promptRef.current = nextPrompt;
+        setPrompt(nextPrompt);
+        const nextCursor = collapseExpandedComposerCursor(nextPrompt, nextPrompt.length);
+        const nextExpandedCursor = expandCollapsedComposerCursor(nextPrompt, nextCursor);
+        setComposerCursor(nextCursor);
+        setComposerTrigger(detectComposerTrigger(nextPrompt, nextExpandedCursor));
+        setComposerHighlightedItemId(null);
+        setComposerHighlightedSearchKey(null);
+        window.requestAnimationFrame(() => {
+          composerEditorRef.current?.focusAt(nextCursor);
+        });
+      },
+      [promptRef, setPrompt],
+    );
+
+    const navigateThreadMessageHistory = useCallback(
+      (
+        direction: ThreadMessageHistoryDirection,
+        commandContext: {
+          value: string;
+          expandedCursor: number;
+          selectionCollapsed: boolean;
+        },
+      ) => {
+        if (!commandContext.selectionCollapsed) {
+          return false;
+        }
+
+        const navigationState = threadMessageHistoryNavigationRef.current;
+        if (
+          navigationState.index === null &&
+          !isThreadMessageHistoryBoundary({
+            direction,
+            text: commandContext.value,
+            expandedCursor: commandContext.expandedCursor,
+          })
+        ) {
+          return false;
+        }
+
+        const result = resolveThreadMessageHistoryNavigation({
+          direction,
+          history: threadMessageHistory,
+          navigation: navigationState,
+          currentDraft: promptRef.current,
+        });
+        if (!result.handled) {
+          return false;
+        }
+
+        threadMessageHistoryNavigationRef.current = result.navigation;
+        applyThreadMessageHistoryPrompt(result.nextPrompt);
+        return true;
+      },
+      [applyThreadMessageHistoryPrompt, promptRef, threadMessageHistory],
     );
 
     const readComposerSnapshot = useCallback((): {
@@ -1444,6 +1556,13 @@ export const ChatComposer = memo(
     const onComposerCommandKey = (
       key: "ArrowDown" | "ArrowUp" | "Enter" | "Tab",
       event: KeyboardEvent,
+      commandContext: {
+        value: string;
+        cursor: number;
+        expandedCursor: number;
+        selectionCollapsed: boolean;
+        terminalContextIds: string[];
+      },
     ) => {
       if (key === "Tab" && event.shiftKey) {
         toggleInteractionMode();
@@ -1467,8 +1586,20 @@ export const ChatComposer = memo(
           return true;
         }
       }
+      if (
+        (key === "ArrowUp" || key === "ArrowDown") &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.shiftKey
+      ) {
+        return navigateThreadMessageHistory(
+          key === "ArrowUp" ? "backward" : "forward",
+          commandContext,
+        );
+      }
       if (key === "Enter" && !event.shiftKey) {
-        void onSend();
+        void onComposerSubmit();
         return true;
       }
       return false;
@@ -1578,6 +1709,29 @@ export const ChatComposer = memo(
     const handleImplementPlanInNewThreadPrimaryAction = useCallback(() => {
       void onImplementPlanInNewThread();
     }, [onImplementPlanInNewThread]);
+
+    const onComposerSubmit = useCallback(
+      async (event?: { preventDefault: () => void }) => {
+        const promptBeforeSubmit = promptRef.current;
+        const trimmedPrompt = promptBeforeSubmit.trim();
+        const isStandaloneSlashCommand = Boolean(
+          parseStandaloneComposerSlashCommand(trimmedPrompt),
+        );
+        await Promise.resolve(
+          (onSend as unknown as (event?: { preventDefault: () => void }) => void | Promise<void>)(
+            event,
+          ),
+        );
+        if (
+          trimmedPrompt.length > 0 &&
+          !isStandaloneSlashCommand &&
+          promptRef.current.length === 0
+        ) {
+          appendThreadMessageHistory(threadMessageHistoryKey, promptBeforeSubmit);
+        }
+      },
+      [appendThreadMessageHistory, onSend, promptRef, threadMessageHistoryKey],
+    );
 
     // ------------------------------------------------------------------
     // Imperative handle
@@ -1691,7 +1845,7 @@ export const ChatComposer = memo(
     return (
       <form
         ref={composerFormRef}
-        onSubmit={onSend}
+        onSubmit={onComposerSubmit}
         className="mx-auto w-full min-w-0 max-w-208"
         data-chat-composer-form="true"
       >

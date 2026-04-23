@@ -903,6 +903,13 @@ interface ComposerPromptEditorProps {
   onCommandKeyDown?: (
     key: "ArrowDown" | "ArrowUp" | "Enter" | "Tab",
     event: KeyboardEvent,
+    context: {
+      value: string;
+      cursor: number;
+      expandedCursor: number;
+      selectionCollapsed: boolean;
+      terminalContextIds: string[];
+    },
   ) => boolean;
   onPaste: ClipboardEventHandler<HTMLElement>;
 }
@@ -915,6 +922,13 @@ function ComposerCommandKeyPlugin(props: {
   onCommandKeyDown?: (
     key: "ArrowDown" | "ArrowUp" | "Enter" | "Tab",
     event: KeyboardEvent,
+    context: {
+      value: string;
+      cursor: number;
+      expandedCursor: number;
+      selectionCollapsed: boolean;
+      terminalContextIds: string[];
+    },
   ) => boolean;
 }) {
   const [editor] = useLexicalComposerContext();
@@ -927,7 +941,29 @@ function ComposerCommandKeyPlugin(props: {
       if (!props.onCommandKeyDown || !event) {
         return false;
       }
-      const handled = props.onCommandKeyDown(key, event);
+      let context = {
+        value: "",
+        cursor: 0,
+        expandedCursor: 0,
+        selectionCollapsed: false,
+        terminalContextIds: [] as string[],
+      };
+      editor.getEditorState().read(() => {
+        const value = $getRoot().getTextContent();
+        const selection = $getSelection();
+        const selectionCollapsed = $isRangeSelection(selection) && selection.isCollapsed();
+        const terminalContextIds = collectTerminalContextIds($getRoot());
+        const fallbackCursor = 0;
+        const fallbackExpandedCursor = 0;
+        context = {
+          value,
+          cursor: $readSelectionOffsetFromEditorState(fallbackCursor),
+          expandedCursor: $readExpandedSelectionOffsetFromEditorState(fallbackExpandedCursor),
+          selectionCollapsed,
+          terminalContextIds,
+        };
+      });
+      const handled = props.onCommandKeyDown(key, event, context);
       if (handled) {
         event.preventDefault();
         event.stopPropagation();
