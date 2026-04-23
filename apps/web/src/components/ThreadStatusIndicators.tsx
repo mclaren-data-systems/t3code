@@ -117,7 +117,7 @@ export function ThreadStatusLabel({
           status.pulse ? "animate-pulse" : ""
         }`}
       />
-      <span className="hidden md:inline">{status.label}</span>
+      {status.showLabel !== false ? <span className="hidden md:inline">{status.label}</span> : null}
     </span>
   );
 }
@@ -131,6 +131,9 @@ export function ThreadRowLeadingStatus({ thread }: { thread: SidebarThreadSummar
   const threadRef = scopeThreadRef(thread.environmentId, thread.id);
   const lastVisitedAt = useUiStateStore(
     (state) => state.threadLastVisitedAtById[scopedThreadKey(threadRef)],
+  );
+  const lastCompletionAcknowledgedAt = useUiStateStore(
+    (state) => state.threadLastCompletionAcknowledgedAtById[scopedThreadKey(threadRef)],
   );
   const threadProjectCwd = useStore(
     useMemo(
@@ -150,6 +153,7 @@ export function ThreadRowLeadingStatus({ thread }: { thread: SidebarThreadSummar
   const threadStatus = resolveThreadStatusPill({
     thread: {
       ...thread,
+      lastCompletionAcknowledgedAt,
       lastVisitedAt,
     },
   });

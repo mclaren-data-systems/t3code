@@ -36,6 +36,7 @@ export interface ThreadStatusPill {
   colorClass: string;
   dotClass: string;
   pulse: boolean;
+  showLabel?: boolean;
 }
 
 const THREAD_STATUS_PRIORITY: Record<ThreadStatusPill["label"], number> = {
@@ -56,6 +57,7 @@ type ThreadStatusInput = Pick<
   | "latestTurn"
   | "session"
 > & {
+  lastCompletionAcknowledgedAt?: string | undefined;
   lastVisitedAt?: string | undefined;
 };
 
@@ -144,15 +146,26 @@ export function useThreadJumpHintVisibility(): {
   };
 }
 
-export function hasUnseenCompletion(thread: ThreadStatusInput): boolean {
-  if (!thread.latestTurn?.completedAt) return false;
-  const completedAt = Date.parse(thread.latestTurn.completedAt);
-  if (Number.isNaN(completedAt)) return false;
-  if (!thread.lastVisitedAt) return true;
+function didCompletionOccurAfter(timestamp: string | undefined, completedAt: string): boolean {
+  if (!timestamp) return true;
+  const timestampMs = Date.parse(timestamp);
+  if (Number.isNaN(timestampMs)) return true;
+  return Date.parse(completedAt) > timestampMs;
+}
 
-  const lastVisitedAt = Date.parse(thread.lastVisitedAt);
-  if (Number.isNaN(lastVisitedAt)) return true;
-  return completedAt > lastVisitedAt;
+export function hasUnreadCompletion(thread: ThreadStatusInput): boolean {
+  if (!thread.latestTurn?.completedAt) return false;
+  if (Number.isNaN(Date.parse(thread.latestTurn.completedAt))) return false;
+  return didCompletionOccurAfter(thread.lastVisitedAt, thread.latestTurn.completedAt);
+}
+
+export function hasUnacknowledgedCompletion(thread: ThreadStatusInput): boolean {
+  if (!thread.latestTurn?.completedAt) return false;
+  if (Number.isNaN(Date.parse(thread.latestTurn.completedAt))) return false;
+  return didCompletionOccurAfter(
+    thread.lastCompletionAcknowledgedAt,
+    thread.latestTurn.completedAt,
+  );
 }
 
 export function shouldClearThreadSelectionOnMouseDown(target: HTMLElement | null): boolean {
@@ -381,12 +394,13 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
-  if (hasUnseenCompletion(thread)) {
+  if (hasUnreadCompletion(thread)) {
     return {
       label: "Completed",
       colorClass: "text-emerald-600 dark:text-emerald-300/90",
       dotClass: "bg-emerald-500 dark:bg-emerald-300/90",
       pulse: false,
+      showLabel: hasUnacknowledgedCompletion(thread),
     };
   }
 

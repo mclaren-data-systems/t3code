@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearThreadUi,
   hydratePersistedProjectState,
+  markThreadCompletionAcknowledged,
   markThreadUnread,
   PERSISTED_STATE_KEY,
   type PersistedUiState,
@@ -21,6 +22,7 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     projectExpandedById: {},
     projectOrder: [],
     threadLastVisitedAtById: {},
+    threadLastCompletionAcknowledgedAtById: {},
     threadChangedFilesExpandedById: {},
     ...overrides,
   };
@@ -34,17 +36,24 @@ describe("uiStateStore pure functions", () => {
       threadLastVisitedAtById: {
         [threadId]: "2026-02-25T12:35:00.000Z",
       },
+      threadLastCompletionAcknowledgedAtById: {
+        [threadId]: "2026-02-25T12:35:00.000Z",
+      },
     });
 
     const next = markThreadUnread(initialState, threadId, latestTurnCompletedAt);
 
     expect(next.threadLastVisitedAtById[threadId]).toBe("2026-02-25T12:29:59.999Z");
+    expect(next.threadLastCompletionAcknowledgedAtById[threadId]).toBe("2026-02-25T12:29:59.999Z");
   });
 
   it("markThreadUnread does not change a thread without a completed turn", () => {
     const threadId = ThreadId.make("thread-1");
     const initialState = makeUiState({
       threadLastVisitedAtById: {
+        [threadId]: "2026-02-25T12:35:00.000Z",
+      },
+      threadLastCompletionAcknowledgedAtById: {
         [threadId]: "2026-02-25T12:35:00.000Z",
       },
     });
@@ -307,6 +316,10 @@ describe("uiStateStore pure functions", () => {
         [thread1]: "2026-02-25T12:35:00.000Z",
         [thread2]: "2026-02-25T12:36:00.000Z",
       },
+      threadLastCompletionAcknowledgedAtById: {
+        [thread1]: "2026-02-25T12:35:00.000Z",
+        [thread2]: "2026-02-25T12:36:00.000Z",
+      },
       threadChangedFilesExpandedById: {
         [thread1]: {
           "turn-1": false,
@@ -320,6 +333,9 @@ describe("uiStateStore pure functions", () => {
     const next = syncThreads(initialState, [{ key: thread1 }]);
 
     expect(next.threadLastVisitedAtById).toEqual({
+      [thread1]: "2026-02-25T12:35:00.000Z",
+    });
+    expect(next.threadLastCompletionAcknowledgedAtById).toEqual({
       [thread1]: "2026-02-25T12:35:00.000Z",
     });
     expect(next.threadChangedFilesExpandedById).toEqual({
@@ -343,6 +359,27 @@ describe("uiStateStore pure functions", () => {
     expect(next.threadLastVisitedAtById).toEqual({
       [thread1]: "2026-02-25T12:35:00.000Z",
     });
+    expect(next.threadLastCompletionAcknowledgedAtById).toEqual({
+      [thread1]: "2026-02-25T12:35:00.000Z",
+    });
+  });
+
+  it("markThreadCompletionAcknowledged updates only completion acknowledgment state", () => {
+    const thread1 = ThreadId.make("thread-1");
+    const initialState = makeUiState({
+      threadLastVisitedAtById: {
+        [thread1]: "2026-02-25T12:35:00.000Z",
+      },
+    });
+
+    const next = markThreadCompletionAcknowledged(
+      initialState,
+      thread1,
+      "2026-02-25T12:40:00.000Z",
+    );
+
+    expect(next.threadLastVisitedAtById[thread1]).toBe("2026-02-25T12:35:00.000Z");
+    expect(next.threadLastCompletionAcknowledgedAtById[thread1]).toBe("2026-02-25T12:40:00.000Z");
   });
 
   it("setProjectExpanded updates expansion without touching order", () => {
@@ -376,6 +413,7 @@ describe("uiStateStore pure functions", () => {
     const next = clearThreadUi(initialState, thread1);
 
     expect(next.threadLastVisitedAtById).toEqual({});
+    expect(next.threadLastCompletionAcknowledgedAtById).toEqual({});
     expect(next.threadChangedFilesExpandedById).toEqual({});
   });
 

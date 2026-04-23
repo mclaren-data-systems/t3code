@@ -8,7 +8,8 @@ import {
   getFallbackThreadIdAfterDelete,
   getVisibleThreadsForProject,
   getProjectSortTimestamp,
-  hasUnseenCompletion,
+  hasUnreadCompletion,
+  hasUnacknowledgedCompletion,
   isContextMenuPointerDown,
   orderItemsByPreferredIds,
   resolveProjectStatusIndicator,
@@ -44,19 +45,35 @@ function makeLatestTurn(overrides?: {
   };
 }
 
-describe("hasUnseenCompletion", () => {
+describe("completion status helpers", () => {
   it("returns true when a thread completed after its last visit", () => {
     expect(
-      hasUnseenCompletion({
+      hasUnreadCompletion({
         hasActionableProposedPlan: false,
         hasPendingApprovals: false,
         hasPendingUserInput: false,
         interactionMode: "default",
         latestTurn: makeLatestTurn(),
         lastVisitedAt: "2026-03-09T10:04:00.000Z",
+        lastCompletionAcknowledgedAt: "2026-03-09T10:04:00.000Z",
         session: null,
       }),
     ).toBe(true);
+  });
+
+  it("treats completed threads as acknowledged once they are opened", () => {
+    expect(
+      hasUnacknowledgedCompletion({
+        hasActionableProposedPlan: false,
+        hasPendingApprovals: false,
+        hasPendingUserInput: false,
+        interactionMode: "default",
+        latestTurn: makeLatestTurn(),
+        lastVisitedAt: "2026-03-09T10:04:00.000Z",
+        lastCompletionAcknowledgedAt: "2026-03-09T10:05:00.000Z",
+        session: null,
+      }),
+    ).toBe(false);
   });
 });
 
@@ -472,6 +489,7 @@ describe("resolveThreadStatusPill", () => {
     hasPendingUserInput: false,
     interactionMode: "plan" as const,
     latestTurn: null,
+    lastCompletionAcknowledgedAt: undefined,
     lastVisitedAt: undefined,
     session: {
       provider: "codex" as const,
@@ -544,6 +562,25 @@ describe("resolveThreadStatusPill", () => {
         },
       }),
     ).toMatchObject({ label: "Completed", pulse: false });
+  });
+
+  it("keeps the completed dot but hides the label after completion was acknowledged", () => {
+    expect(
+      resolveThreadStatusPill({
+        thread: {
+          ...baseThread,
+          interactionMode: "default",
+          latestTurn: makeLatestTurn(),
+          lastCompletionAcknowledgedAt: "2026-03-09T10:05:00.000Z",
+          lastVisitedAt: "2026-03-09T10:04:00.000Z",
+          session: {
+            ...baseThread.session,
+            status: "ready",
+            orchestrationStatus: "ready",
+          },
+        },
+      }),
+    ).toMatchObject({ label: "Completed", pulse: false, showLabel: false });
   });
 
   it("shows completed when there is an unseen completion and no active blocker", () => {

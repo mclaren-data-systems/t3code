@@ -20,6 +20,7 @@ export interface PersistedUiState {
   expandedProjectCwds?: string[];
   projectOrderCwds?: string[];
   threadLastVisitedAtById?: Record<string, string>;
+  threadLastCompletionAcknowledgedAtById?: Record<string, string>;
   threadChangedFilesExpandedById?: Record<string, Record<string, boolean>>;
 }
 
@@ -30,6 +31,7 @@ export interface UiProjectState {
 
 export interface UiThreadState {
   threadLastVisitedAtById: Record<string, string>;
+  threadLastCompletionAcknowledgedAtById: Record<string, string>;
   threadChangedFilesExpandedById: Record<string, Record<string, boolean>>;
 }
 
@@ -52,6 +54,7 @@ const initialState: UiState = {
   projectExpandedById: {},
   projectOrder: [],
   threadLastVisitedAtById: {},
+  threadLastCompletionAcknowledgedAtById: {},
   threadChangedFilesExpandedById: {},
 };
 
@@ -59,6 +62,7 @@ const persistedCollapsedProjectCwds = new Set<string>();
 const persistedExpandedProjectCwds = new Set<string>();
 const persistedProjectOrderCwds: string[] = [];
 let persistedThreadLastVisitedAtById: Record<string, string> = {};
+let persistedThreadLastCompletionAcknowledgedAtById: Record<string, string> = {};
 // Pre-fix persisted shape only listed expanded cwds, so anything not listed
 // was treated as collapsed. Track whether the loaded blob carried the new
 // `collapsedProjectCwds` field so we can preserve that legacy semantic for
@@ -82,7 +86,11 @@ function readPersistedState(): UiState {
           continue;
         }
         hydratePersistedProjectState(JSON.parse(legacyRaw) as PersistedUiState);
-        return { ...initialState, threadLastVisitedAtById: persistedThreadLastVisitedAtById };
+        return {
+          ...initialState,
+          threadLastVisitedAtById: persistedThreadLastVisitedAtById,
+          threadLastCompletionAcknowledgedAtById: persistedThreadLastCompletionAcknowledgedAtById,
+        };
       }
       return initialState;
     }
@@ -91,6 +99,7 @@ function readPersistedState(): UiState {
     return {
       ...initialState,
       threadLastVisitedAtById: persistedThreadLastVisitedAtById,
+      threadLastCompletionAcknowledgedAtById: persistedThreadLastCompletionAcknowledgedAtById,
       threadChangedFilesExpandedById: sanitizePersistedThreadChangedFilesExpanded(
         parsed.threadChangedFilesExpandedById,
       ),
@@ -153,6 +162,16 @@ export function hydratePersistedProjectState(parsed: PersistedUiState): void {
   } else {
     persistedThreadLastVisitedAtById = {};
   }
+  if (
+    parsed.threadLastCompletionAcknowledgedAtById &&
+    typeof parsed.threadLastCompletionAcknowledgedAtById === "object"
+  ) {
+    persistedThreadLastCompletionAcknowledgedAtById = {
+      ...parsed.threadLastCompletionAcknowledgedAtById,
+    };
+  } else {
+    persistedThreadLastCompletionAcknowledgedAtById = { ...persistedThreadLastVisitedAtById };
+  }
 }
 
 export function persistState(state: UiState): void {
@@ -188,6 +207,7 @@ export function persistState(state: UiState): void {
         expandedProjectCwds,
         projectOrderCwds,
         threadLastVisitedAtById: state.threadLastVisitedAtById,
+        threadLastCompletionAcknowledgedAtById: state.threadLastCompletionAcknowledgedAtById,
         threadChangedFilesExpandedById,
       } satisfies PersistedUiState),
     );
@@ -399,6 +419,11 @@ export function syncThreads(state: UiState, threads: readonly SyncThreadInput[])
       retainedThreadIds.has(threadId),
     ),
   );
+  const nextThreadLastCompletionAcknowledgedAtById = Object.fromEntries(
+    Object.entries(state.threadLastCompletionAcknowledgedAtById).filter(([threadId]) =>
+      retainedThreadIds.has(threadId),
+    ),
+  );
   for (const thread of threads) {
     if (
       nextThreadLastVisitedAtById[thread.key] === undefined &&
@@ -406,6 +431,13 @@ export function syncThreads(state: UiState, threads: readonly SyncThreadInput[])
       thread.seedVisitedAt.length > 0
     ) {
       nextThreadLastVisitedAtById[thread.key] = thread.seedVisitedAt;
+    }
+    if (
+      nextThreadLastCompletionAcknowledgedAtById[thread.key] === undefined &&
+      thread.seedVisitedAt !== undefined &&
+      thread.seedVisitedAt.length > 0
+    ) {
+      nextThreadLastCompletionAcknowledgedAtById[thread.key] = thread.seedVisitedAt;
     }
   }
   const nextThreadChangedFilesExpandedById = Object.fromEntries(
@@ -415,6 +447,10 @@ export function syncThreads(state: UiState, threads: readonly SyncThreadInput[])
   );
   if (
     recordsEqual(state.threadLastVisitedAtById, nextThreadLastVisitedAtById) &&
+    recordsEqual(
+      state.threadLastCompletionAcknowledgedAtById,
+      nextThreadLastCompletionAcknowledgedAtById,
+    ) &&
     nestedBooleanRecordsEqual(
       state.threadChangedFilesExpandedById,
       nextThreadChangedFilesExpandedById,
@@ -425,6 +461,7 @@ export function syncThreads(state: UiState, threads: readonly SyncThreadInput[])
   return {
     ...state,
     threadLastVisitedAtById: nextThreadLastVisitedAtById,
+    threadLastCompletionAcknowledgedAtById: nextThreadLastCompletionAcknowledgedAtById,
     threadChangedFilesExpandedById: nextThreadChangedFilesExpandedById,
   };
 }
@@ -447,6 +484,37 @@ export function markThreadVisited(state: UiState, threadId: string, visitedAt?: 
       ...state.threadLastVisitedAtById,
       [threadId]: at,
     },
+    threadLastCompletionAcknowledgedAtById: {
+      ...state.threadLastCompletionAcknowledgedAtById,
+      [threadId]: at,
+    },
+  };
+}
+
+export function markThreadCompletionAcknowledged(
+  state: UiState,
+  threadId: string,
+  acknowledgedAt?: string,
+): UiState {
+  const at = acknowledgedAt ?? new Date().toISOString();
+  const acknowledgedAtMs = Date.parse(at);
+  const previousAcknowledgedAt = state.threadLastCompletionAcknowledgedAtById[threadId];
+  const previousAcknowledgedAtMs = previousAcknowledgedAt
+    ? Date.parse(previousAcknowledgedAt)
+    : NaN;
+  if (
+    Number.isFinite(previousAcknowledgedAtMs) &&
+    Number.isFinite(acknowledgedAtMs) &&
+    previousAcknowledgedAtMs >= acknowledgedAtMs
+  ) {
+    return state;
+  }
+  return {
+    ...state,
+    threadLastCompletionAcknowledgedAtById: {
+      ...state.threadLastCompletionAcknowledgedAtById,
+      [threadId]: at,
+    },
   };
 }
 
@@ -463,7 +531,10 @@ export function markThreadUnread(
     return state;
   }
   const unreadVisitedAt = new Date(latestTurnCompletedAtMs - 1).toISOString();
-  if (state.threadLastVisitedAtById[threadId] === unreadVisitedAt) {
+  if (
+    state.threadLastVisitedAtById[threadId] === unreadVisitedAt &&
+    state.threadLastCompletionAcknowledgedAtById[threadId] === unreadVisitedAt
+  ) {
     return state;
   }
   return {
@@ -472,22 +543,32 @@ export function markThreadUnread(
       ...state.threadLastVisitedAtById,
       [threadId]: unreadVisitedAt,
     },
+    threadLastCompletionAcknowledgedAtById: {
+      ...state.threadLastCompletionAcknowledgedAtById,
+      [threadId]: unreadVisitedAt,
+    },
   };
 }
 
 export function clearThreadUi(state: UiState, threadId: string): UiState {
   const hasVisitedState = threadId in state.threadLastVisitedAtById;
+  const hasAcknowledgedState = threadId in state.threadLastCompletionAcknowledgedAtById;
   const hasChangedFilesState = threadId in state.threadChangedFilesExpandedById;
-  if (!hasVisitedState && !hasChangedFilesState) {
+  if (!hasVisitedState && !hasAcknowledgedState && !hasChangedFilesState) {
     return state;
   }
   const nextThreadLastVisitedAtById = { ...state.threadLastVisitedAtById };
+  const nextThreadLastCompletionAcknowledgedAtById = {
+    ...state.threadLastCompletionAcknowledgedAtById,
+  };
   const nextThreadChangedFilesExpandedById = { ...state.threadChangedFilesExpandedById };
   delete nextThreadLastVisitedAtById[threadId];
+  delete nextThreadLastCompletionAcknowledgedAtById[threadId];
   delete nextThreadChangedFilesExpandedById[threadId];
   return {
     ...state,
     threadLastVisitedAtById: nextThreadLastVisitedAtById,
+    threadLastCompletionAcknowledgedAtById: nextThreadLastCompletionAcknowledgedAtById,
     threadChangedFilesExpandedById: nextThreadChangedFilesExpandedById,
   };
 }
@@ -612,6 +693,7 @@ interface UiStateStore extends UiState {
   syncProjects: (projects: readonly SyncProjectInput[]) => void;
   syncThreads: (threads: readonly SyncThreadInput[]) => void;
   markThreadVisited: (threadId: string, visitedAt?: string) => void;
+  markThreadCompletionAcknowledged: (threadId: string, acknowledgedAt?: string) => void;
   markThreadUnread: (threadId: string, latestTurnCompletedAt: string | null | undefined) => void;
   clearThreadUi: (threadId: string) => void;
   setThreadChangedFilesExpanded: (threadId: string, turnId: string, expanded: boolean) => void;
@@ -629,6 +711,8 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
   syncThreads: (threads) => set((state) => syncThreads(state, threads)),
   markThreadVisited: (threadId, visitedAt) =>
     set((state) => markThreadVisited(state, threadId, visitedAt)),
+  markThreadCompletionAcknowledged: (threadId, acknowledgedAt) =>
+    set((state) => markThreadCompletionAcknowledged(state, threadId, acknowledgedAt)),
   markThreadUnread: (threadId, latestTurnCompletedAt) =>
     set((state) => markThreadUnread(state, threadId, latestTurnCompletedAt)),
   clearThreadUi: (threadId) => set((state) => clearThreadUi(state, threadId)),
