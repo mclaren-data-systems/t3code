@@ -284,6 +284,26 @@ export function shouldHandleTerminalSelectionMouseUp(
   return selectionGestureActive && button === 0;
 }
 
+export function terminalControlShortcutData(
+  event: Pick<KeyboardEvent, "type" | "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey">,
+  hasSelection: boolean,
+): string | null {
+  if (event.type !== undefined && event.type !== "keydown") {
+    return null;
+  }
+
+  if (hasSelection || !event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
+    return null;
+  }
+
+  const normalizedKey = event.key.toLowerCase();
+  if (!/^[a-z]$/.test(normalizedKey)) {
+    return null;
+  }
+
+  return String.fromCharCode(normalizedKey.charCodeAt(0) - 96);
+}
+
 interface TerminalViewportProps {
   threadRef: ScopedThreadRef;
   threadId: ThreadId;
@@ -478,6 +498,14 @@ export function TerminalViewport({
         event.preventDefault();
         event.stopPropagation();
         void sendTerminalInput(deleteData, "Failed to delete terminal input");
+        return false;
+      }
+
+      const controlShortcutData = terminalControlShortcutData(event, terminal.hasSelection());
+      if (controlShortcutData !== null) {
+        event.preventDefault();
+        event.stopPropagation();
+        void sendTerminalInput(controlShortcutData, "Failed to send terminal control input");
         return false;
       }
 

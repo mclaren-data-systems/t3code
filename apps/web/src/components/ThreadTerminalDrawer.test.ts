@@ -5,6 +5,7 @@ import {
   selectPendingTerminalEventEntries,
   selectTerminalEventEntriesAfterSnapshot,
   shouldHandleTerminalSelectionMouseUp,
+  terminalControlShortcutData,
   terminalSelectionActionDelayForClickCount,
 } from "./ThreadTerminalDrawer";
 
@@ -73,6 +74,64 @@ describe("resolveTerminalSelectionActionPosition", () => {
     expect(shouldHandleTerminalSelectionMouseUp(true, 0)).toBe(true);
     expect(shouldHandleTerminalSelectionMouseUp(false, 0)).toBe(false);
     expect(shouldHandleTerminalSelectionMouseUp(true, 1)).toBe(false);
+  });
+
+  it("translates ctrl-letter keydowns into terminal control bytes", () => {
+    expect(
+      terminalControlShortcutData(
+        {
+          type: "keydown",
+          key: "c",
+          ctrlKey: true,
+          metaKey: false,
+          altKey: false,
+          shiftKey: false,
+        } as KeyboardEvent,
+        false,
+      ),
+    ).toBe("\u0003");
+    expect(
+      terminalControlShortcutData(
+        {
+          type: "keydown",
+          key: "d",
+          ctrlKey: true,
+          metaKey: false,
+          altKey: false,
+          shiftKey: false,
+        } as KeyboardEvent,
+        false,
+      ),
+    ).toBe("\u0004");
+  });
+
+  it("does not translate control shortcuts when modifiers conflict or text is selected", () => {
+    expect(
+      terminalControlShortcutData(
+        {
+          type: "keydown",
+          key: "c",
+          ctrlKey: true,
+          metaKey: false,
+          altKey: false,
+          shiftKey: false,
+        } as KeyboardEvent,
+        true,
+      ),
+    ).toBeNull();
+    expect(
+      terminalControlShortcutData(
+        {
+          type: "keydown",
+          key: "c",
+          ctrlKey: true,
+          metaKey: false,
+          altKey: false,
+          shiftKey: true,
+        } as KeyboardEvent,
+        false,
+      ),
+    ).toBeNull();
   });
 
   it("replays only terminal events newer than the open snapshot", () => {

@@ -11,6 +11,7 @@ const {
   fitAddonFitSpy,
   fitAddonLoadSpy,
   environmentApiById,
+  attachedKeyEventHandlerRef,
   readEnvironmentApiMock,
   readLocalApiMock,
 } = vi.hoisted(() => ({
@@ -19,6 +20,7 @@ const {
   fitAddonFitSpy: vi.fn(),
   fitAddonLoadSpy: vi.fn(),
   environmentApiById: new Map<string, { terminal: { open: ReturnType<typeof vi.fn> } }>(),
+  attachedKeyEventHandlerRef: { current: null as ((event: KeyboardEvent) => boolean) | null },
   readEnvironmentApiMock: vi.fn((environmentId: string) => environmentApiById.get(environmentId)),
   readLocalApiMock: vi.fn<
     () =>
@@ -86,7 +88,8 @@ vi.mock("@xterm/xterm", () => ({
       return null;
     }
 
-    attachCustomKeyEventHandler() {
+    attachCustomKeyEventHandler(handler: (event: KeyboardEvent) => boolean) {
+      attachedKeyEventHandlerRef.current = handler;
       return true;
     }
 
@@ -217,6 +220,7 @@ describe("TerminalViewport", () => {
     terminalDisposeSpy.mockClear();
     fitAddonFitSpy.mockClear();
     fitAddonLoadSpy.mockClear();
+    attachedKeyEventHandlerRef.current = null;
   });
 
   it("does not create a terminal when APIs are unavailable", async () => {
@@ -313,6 +317,47 @@ describe("TerminalViewport", () => {
           }),
         }),
       );
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("forwards ctrl+c to the terminal session when no text is selected", async () => {
+    const environment = createEnvironmentApi();
+    environmentApiById.set("environment-a", environment);
+
+    const mounted = await mountTerminalViewport({
+      threadRef: scopeThreadRef("environment-a" as never, THREAD_ID),
+    });
+
+    try {
+      await vi.waitFor(() => {
+        expect(attachedKeyEventHandlerRef.current).not.toBeNull();
+      });
+
+      const preventDefault = vi.fn();
+      const stopPropagation = vi.fn();
+      const handled = attachedKeyEventHandlerRef.current?.({
+        type: "keydown",
+        key: "c",
+        ctrlKey: true,
+        metaKey: false,
+        altKey: false,
+        shiftKey: false,
+        preventDefault,
+        stopPropagation,
+      } as unknown as KeyboardEvent);
+
+      expect(handled).toBe(false);
+      expect(preventDefault).toHaveBeenCalledTimes(1);
+      expect(stopPropagation).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => {
+        expect(environment.terminal.write).toHaveBeenCalledWith({
+          threadId: THREAD_ID,
+          terminalId: "default",
+          data: "\u0003",
+        });
+      });
     } finally {
       await mounted.cleanup();
     }
