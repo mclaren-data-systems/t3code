@@ -1,8 +1,7 @@
-import { type ServerProvider } from "@t3tools/contracts";
+import { PROVIDER_DISPLAY_NAMES, type ServerProvider } from "@t3tools/contracts";
 import { memo } from "react";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { CircleAlertIcon } from "lucide-react";
-import { formatProviderKindLabel } from "../../providerModels";
 
 export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   status,
@@ -13,7 +12,7 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
     return null;
   }
 
-  const providerLabel = status.displayName?.trim() || formatProviderKindLabel(status.provider);
+  const providerLabel = PROVIDER_DISPLAY_NAMES[status.provider] ?? status.provider;
   const defaultMessage =
     status.status === "error"
       ? `${providerLabel} provider is unavailable.`

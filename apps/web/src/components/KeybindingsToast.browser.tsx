@@ -97,6 +97,7 @@ function createBaseServerConfig(): ServerConfig {
       defaultThreadEnvMode: "local" as const,
       textGenerationModelSelection: { provider: "codex" as const, model: "gpt-5.4-mini" },
       providers: {
+        ...DEFAULT_SERVER_SETTINGS.providers,
         codex: { enabled: true, binaryPath: "", homePath: "", customModels: [] },
         claudeAgent: { enabled: true, binaryPath: "", customModels: [], launchArgs: "" },
         cursor: { enabled: true, binaryPath: "", apiEndpoint: "", customModels: [] },

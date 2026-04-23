@@ -9,6 +9,9 @@ import "./index.css";
 import { isElectron } from "./env";
 import { getRouter } from "./router";
 import { APP_DISPLAY_NAME } from "./branding";
+import { getAppSettingsSnapshot } from "./appSettings";
+import { applyAccentColorToDocument } from "./accentColor";
+import { applyThemeConfigToDocument } from "./themeConfig";
 import { syncDocumentWindowControlsOverlayClass } from "./lib/windowControlsOverlay";
 
 // Electron loads the app from a file-backed shell, so hash history avoids path resolution issues.
@@ -21,6 +24,9 @@ if (isElectron) {
 }
 
 document.title = APP_DISPLAY_NAME;
+const initialSettings = getAppSettingsSnapshot();
+applyAccentColorToDocument(initialSettings.accentColor);
+applyThemeConfigToDocument(initialSettings);
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

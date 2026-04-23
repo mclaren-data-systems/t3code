@@ -1,7 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
 import { Effect, FileSystem, Layer, Path } from "effect";
-import { createModelSelection } from "@t3tools/shared/model";
 import { expect } from "vitest";
 
 import { ServerConfig } from "../../config.ts";
@@ -200,10 +199,12 @@ it.layer(ClaudeTextGenerationTestLayer)("ClaudeTextGenerationLive", (it) => {
           stagedSummary: "M README.md",
           stagedPatch: "diff --git a/README.md b/README.md",
           modelSelection: {
-            ...createModelSelection("claudeAgent", "claude-haiku-4-5", [
-              { id: "thinking", value: false },
-              { id: "effort", value: "high" },
-            ]),
+            provider: "claudeAgent",
+            model: "claude-haiku-4-5",
+            options: {
+              thinking: false,
+              effort: "high",
+            },
           },
         });
 
@@ -234,10 +235,12 @@ it.layer(ClaudeTextGenerationTestLayer)("ClaudeTextGenerationLive", (it) => {
           diffSummary: "1 file changed",
           diffPatch: "diff --git a/README.md b/README.md",
           modelSelection: {
-            ...createModelSelection("claudeAgent", "claude-opus-4-6", [
-              { id: "effort", value: "max" },
-              { id: "fastMode", value: true },
-            ]),
+            provider: "claudeAgent",
+            model: "claude-opus-4-6",
+            options: {
+              effort: "max",
+              fastMode: true,
+            },
           },
         });
 

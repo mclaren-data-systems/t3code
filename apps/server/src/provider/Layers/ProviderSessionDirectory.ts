@@ -1,9 +1,11 @@
-import { ProviderKind, type ThreadId } from "@t3tools/contracts";
-import { Effect, Layer, Option, Schema } from "effect";
+import { type ProviderKind, type ThreadId } from "@t3tools/contracts";
+import { Cache, Duration, Effect, Layer, Option } from "effect";
+import * as Semaphore from "effect/Semaphore";
 
 import type { ProviderSessionRuntime } from "../../persistence/Services/ProviderSessionRuntime.ts";
 import { ProviderSessionRuntimeRepository } from "../../persistence/Services/ProviderSessionRuntime.ts";
 import { ProviderSessionDirectoryPersistenceError, ProviderValidationError } from "../Errors.ts";
+import { normalizePersistedProviderKindName } from "../providerKind.ts";
 import {
   ProviderSessionDirectory,
   type ProviderRuntimeBinding,
@@ -24,15 +26,15 @@ function decodeProviderKind(
   providerName: string,
   operation: string,
 ): Effect.Effect<ProviderKind, ProviderSessionDirectoryPersistenceError> {
-  return Schema.decodeUnknownEffect(ProviderKind)(providerName).pipe(
-    Effect.mapError(
-      (cause) =>
-        new ProviderSessionDirectoryPersistenceError({
-          operation,
-          detail: `Unknown persisted provider '${providerName}'.`,
-          cause,
-        }),
-    ),
+  const normalizedProvider = normalizePersistedProviderKindName(providerName);
+  if (normalizedProvider !== null) {
+    return Effect.succeed(normalizedProvider);
+  }
+  return Effect.fail(
+    new ProviderSessionDirectoryPersistenceError({
+      operation,
+      detail: `Unknown persisted provider '${providerName}'.`,
+    }),
   );
 }
 
@@ -77,6 +79,12 @@ function toRuntimeBinding(
 const makeProviderSessionDirectory = Effect.gen(function* () {
   const repository = yield* ProviderSessionRuntimeRepository;
 
+  const upsertLocks = yield* Cache.make<string, Semaphore.Semaphore>({
+    capacity: 10_000,
+    timeToLive: Duration.minutes(60),
+    lookup: () => Semaphore.make(1),
+  });
+
   const getBinding = (threadId: ThreadId) =>
     repository.getByThreadId({ threadId }).pipe(
       Effect.mapError(toPersistenceError("ProviderSessionDirectory.getBinding:getByThreadId")),
@@ -84,50 +92,71 @@ const makeProviderSessionDirectory = Effect.gen(function* () {
         Option.match(runtime, {
           onNone: () => Effect.succeed(Option.none<ProviderRuntimeBinding>()),
           onSome: (value) =>
-            toRuntimeBinding(value, "ProviderSessionDirectory.getBinding").pipe(
-              Effect.map((binding) => Option.some(binding)),
+            decodeProviderKind(value.providerName, "ProviderSessionDirectory.getBinding").pipe(
+              Effect.map((provider) =>
+                Option.some({
+                  threadId: value.threadId,
+                  provider,
+                  adapterKey: value.adapterKey,
+                  runtimeMode: value.runtimeMode,
+                  status: value.status,
+                  resumeCursor: value.resumeCursor,
+                  runtimePayload: value.runtimePayload,
+                }),
+              ),
+              // Gracefully treat unknown persisted providers as "no binding"
+              Effect.orElseSucceed(() => Option.none<ProviderRuntimeBinding>()),
             ),
         }),
       ),
     );
 
   const upsert: ProviderSessionDirectoryShape["upsert"] = Effect.fn(function* (binding) {
-    const existing = yield* repository
-      .getByThreadId({ threadId: binding.threadId })
-      .pipe(Effect.mapError(toPersistenceError("ProviderSessionDirectory.upsert:getByThreadId")));
-
-    const existingRuntime = Option.getOrUndefined(existing);
-    const resolvedThreadId = binding.threadId ?? existingRuntime?.threadId;
-    if (!resolvedThreadId) {
+    const threadId = binding.threadId;
+    if (!threadId) {
       return yield* new ProviderValidationError({
         operation: "ProviderSessionDirectory.upsert",
         issue: "threadId must be a non-empty string.",
       });
     }
 
-    const now = new Date().toISOString();
-    const providerChanged =
-      existingRuntime !== undefined && existingRuntime.providerName !== binding.provider;
-    yield* repository
-      .upsert({
-        threadId: resolvedThreadId,
-        providerName: binding.provider,
-        adapterKey:
-          binding.adapterKey ??
-          (providerChanged ? binding.provider : (existingRuntime?.adapterKey ?? binding.provider)),
-        runtimeMode: binding.runtimeMode ?? existingRuntime?.runtimeMode ?? "full-access",
-        status: binding.status ?? existingRuntime?.status ?? "running",
-        lastSeenAt: now,
-        resumeCursor:
-          binding.resumeCursor !== undefined
-            ? binding.resumeCursor
-            : (existingRuntime?.resumeCursor ?? null),
-        runtimePayload: mergeRuntimePayload(
-          existingRuntime?.runtimePayload ?? null,
-          binding.runtimePayload,
-        ),
-      })
-      .pipe(Effect.mapError(toPersistenceError("ProviderSessionDirectory.upsert:upsert")));
+    const lock = yield* Cache.get(upsertLocks, threadId);
+    yield* Semaphore.withPermit(lock)(
+      Effect.gen(function* () {
+        const existing = yield* repository
+          .getByThreadId({ threadId })
+          .pipe(
+            Effect.mapError(toPersistenceError("ProviderSessionDirectory.upsert:getByThreadId")),
+          );
+
+        const existingRuntime = Option.getOrUndefined(existing);
+        const now = new Date().toISOString();
+        const providerChanged =
+          existingRuntime !== undefined && existingRuntime.providerName !== binding.provider;
+        yield* repository
+          .upsert({
+            threadId,
+            providerName: binding.provider,
+            adapterKey:
+              binding.adapterKey ??
+              (providerChanged
+                ? binding.provider
+                : (existingRuntime?.adapterKey ?? binding.provider)),
+            runtimeMode: binding.runtimeMode ?? existingRuntime?.runtimeMode ?? "full-access",
+            status: binding.status ?? existingRuntime?.status ?? "running",
+            lastSeenAt: now,
+            resumeCursor:
+              binding.resumeCursor !== undefined
+                ? binding.resumeCursor
+                : (existingRuntime?.resumeCursor ?? null),
+            runtimePayload: mergeRuntimePayload(
+              existingRuntime?.runtimePayload ?? null,
+              binding.runtimePayload,
+            ),
+          })
+          .pipe(Effect.mapError(toPersistenceError("ProviderSessionDirectory.upsert:upsert")));
+      }),
+    );
   });
 
   const getProvider: ProviderSessionDirectoryShape["getProvider"] = (threadId) =>

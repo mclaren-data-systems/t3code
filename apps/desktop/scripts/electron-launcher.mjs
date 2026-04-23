@@ -8,6 +8,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -15,6 +16,8 @@ import {
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { generateAssetCatalogForIcon } from "../../../scripts/lib/macos-icon-composer.ts";
 
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
 const APP_DISPLAY_NAME = isDevelopment ? "T3 Code (Dev)" : "T3 Code (Alpha)";
@@ -24,7 +27,6 @@ const LAUNCHER_VERSION = 2;
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const desktopDir = resolve(__dirname, "..");
 const repoRoot = resolve(desktopDir, "..", "..");
-const defaultIconPath = join(desktopDir, "resources", "icon.icns");
 const developmentMacIconPngPath = join(repoRoot, "assets", "dev", "blueprint-macos-1024.png");
 
 function setPlistString(plistPath, key, value) {
@@ -56,12 +58,12 @@ function runChecked(command, args) {
   throw new Error(`Failed to run ${command} ${args.join(" ")}: ${details}`.trim());
 }
 
-function ensureDevelopmentIconIcns(runtimeDir) {
+function ensureDevelopmentIconIcns(runtimeDir, fallbackIconPath) {
   const generatedIconPath = join(runtimeDir, "icon-dev.icns");
   mkdirSync(runtimeDir, { recursive: true });
 
   if (!existsSync(developmentMacIconPngPath)) {
-    return defaultIconPath;
+    return fallbackIconPath;
   }
 
   const sourceMtimeMs = statSync(developmentMacIconPngPath).mtimeMs;
@@ -102,22 +104,52 @@ function ensureDevelopmentIconIcns(runtimeDir) {
       "[desktop-launcher] Failed to generate dev macOS icon, falling back to default icon.",
       error,
     );
-    return defaultIconPath;
+    return fallbackIconPath;
   } finally {
     rmSync(iconsetRoot, { recursive: true, force: true });
   }
 }
 
-function patchMainBundleInfoPlist(appBundlePath, iconPath) {
+function patchMainBundleInfoPlist(appBundlePath) {
   const infoPlistPath = join(appBundlePath, "Contents", "Info.plist");
   setPlistString(infoPlistPath, "CFBundleDisplayName", APP_DISPLAY_NAME);
   setPlistString(infoPlistPath, "CFBundleName", APP_DISPLAY_NAME);
   setPlistString(infoPlistPath, "CFBundleIdentifier", APP_BUNDLE_ID);
   setPlistString(infoPlistPath, "CFBundleIconFile", "icon.icns");
+}
 
-  const resourcesDir = join(appBundlePath, "Contents", "Resources");
-  copyFileSync(iconPath, join(resourcesDir, "icon.icns"));
-  copyFileSync(iconPath, join(resourcesDir, "electron.icns"));
+function patchHelperBundleInfoPlists(appBundlePath) {
+  const frameworksDir = join(appBundlePath, "Contents", "Frameworks");
+  if (!existsSync(frameworksDir)) {
+    return;
+  }
+
+  for (const entry of readdirSync(frameworksDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !entry.name.endsWith(".app")) {
+      continue;
+    }
+    if (!entry.name.startsWith("Electron Helper")) {
+      continue;
+    }
+
+    const helperPlistPath = join(frameworksDir, entry.name, "Contents", "Info.plist");
+    if (!existsSync(helperPlistPath)) {
+      continue;
+    }
+
+    const suffix = entry.name.replace("Electron Helper", "").replace(".app", "").trim();
+    const helperName = suffix
+      ? `${APP_DISPLAY_NAME} Helper ${suffix}`
+      : `${APP_DISPLAY_NAME} Helper`;
+    const helperIdSuffix = suffix.replace(/[()]/g, "").trim().toLowerCase().replace(/\s+/g, "-");
+    const helperBundleId = helperIdSuffix
+      ? `${APP_BUNDLE_ID}.helper.${helperIdSuffix}`
+      : `${APP_BUNDLE_ID}.helper`;
+
+    setPlistString(helperPlistPath, "CFBundleDisplayName", helperName);
+    setPlistString(helperPlistPath, "CFBundleName", helperName);
+    setPlistString(helperPlistPath, "CFBundleIdentifier", helperBundleId);
+  }
 }
 
 function readJson(path) {
@@ -128,21 +160,74 @@ function readJson(path) {
   }
 }
 
-function buildMacLauncher(electronBinaryPath) {
+function resolveIconSourceMetadata(desktopResourcesDir) {
+  const iconComposerPath = join(desktopResourcesDir, "icon.icon");
+  if (existsSync(iconComposerPath)) {
+    return {
+      iconAssetKind: "icon",
+      iconMtimeMs: statSync(iconComposerPath).mtimeMs,
+    };
+  }
+
+  const legacyIconPath = join(desktopResourcesDir, "icon.icns");
+  return {
+    iconAssetKind: "icns",
+    iconMtimeMs: statSync(legacyIconPath).mtimeMs,
+  };
+}
+
+async function stageMainBundleIcons(appBundlePath, desktopResourcesDir, legacyIconOverride) {
+  const resourcesDir = join(appBundlePath, "Contents", "Resources");
+  const iconComposerPath = join(desktopResourcesDir, "icon.icon");
+  const legacyIconPath = legacyIconOverride ?? join(desktopResourcesDir, "icon.icns");
+
+  if (existsSync(iconComposerPath)) {
+    const compiled = await generateAssetCatalogForIcon(iconComposerPath);
+    const infoPlistPath = join(appBundlePath, "Contents", "Info.plist");
+
+    setPlistString(infoPlistPath, "CFBundleIconName", "Icon");
+    writeFileSync(join(resourcesDir, "Assets.car"), compiled.assetCatalog);
+    writeFileSync(join(resourcesDir, "icon.icns"), compiled.icnsFile);
+    writeFileSync(join(resourcesDir, "electron.icns"), compiled.icnsFile);
+    return {
+      iconAssetKind: "icon",
+      iconMtimeMs: statSync(iconComposerPath).mtimeMs,
+    };
+  }
+
+  copyFileSync(legacyIconPath, join(resourcesDir, "icon.icns"));
+  copyFileSync(legacyIconPath, join(resourcesDir, "electron.icns"));
+  return {
+    iconAssetKind: "icns",
+    iconMtimeMs: statSync(legacyIconPath).mtimeMs,
+  };
+}
+
+async function buildMacLauncher(electronBinaryPath) {
   const sourceAppBundlePath = resolve(electronBinaryPath, "../../..");
   const runtimeDir = join(desktopDir, ".electron-runtime");
   const targetAppBundlePath = join(runtimeDir, `${APP_DISPLAY_NAME}.app`);
   const targetBinaryPath = join(targetAppBundlePath, "Contents", "MacOS", "Electron");
-  const iconPath = isDevelopment ? ensureDevelopmentIconIcns(runtimeDir) : defaultIconPath;
+  const desktopResourcesDir = join(desktopDir, "resources");
+  const defaultLegacyIconPath = join(desktopResourcesDir, "icon.icns");
   const metadataPath = join(runtimeDir, "metadata.json");
 
   mkdirSync(runtimeDir, { recursive: true });
+
+  // In dev mode, fall back to a generated icon derived from the dev blueprint PNG so dev
+  // builds are visually distinct. If the modern icon.icon composer source is present, the
+  // staging step below takes precedence and this override is ignored.
+  const legacyIconOverride = isDevelopment
+    ? ensureDevelopmentIconIcns(runtimeDir, defaultLegacyIconPath)
+    : undefined;
+
+  const iconMetadata = resolveIconSourceMetadata(desktopResourcesDir);
 
   const expectedMetadata = {
     launcherVersion: LAUNCHER_VERSION,
     sourceAppBundlePath,
     sourceAppMtimeMs: statSync(sourceAppBundlePath).mtimeMs,
-    iconMtimeMs: statSync(iconPath).mtimeMs,
+    ...iconMetadata,
   };
 
   const currentMetadata = readJson(metadataPath);
@@ -156,13 +241,22 @@ function buildMacLauncher(electronBinaryPath) {
 
   rmSync(targetAppBundlePath, { recursive: true, force: true });
   cpSync(sourceAppBundlePath, targetAppBundlePath, { recursive: true });
-  patchMainBundleInfoPlist(targetAppBundlePath, iconPath);
-  writeFileSync(metadataPath, `${JSON.stringify(expectedMetadata, null, 2)}\n`);
+  patchMainBundleInfoPlist(targetAppBundlePath);
+  const refreshedIconMetadata = await stageMainBundleIcons(
+    targetAppBundlePath,
+    desktopResourcesDir,
+    legacyIconOverride,
+  );
+  patchHelperBundleInfoPlists(targetAppBundlePath);
+  writeFileSync(
+    metadataPath,
+    `${JSON.stringify({ ...expectedMetadata, ...refreshedIconMetadata }, null, 2)}\n`,
+  );
 
   return targetBinaryPath;
 }
 
-export function resolveElectronPath() {
+export async function resolveElectronPath() {
   const require = createRequire(import.meta.url);
   const electronBinaryPath = require("electron");
 
@@ -170,11 +264,5 @@ export function resolveElectronPath() {
     return electronBinaryPath;
   }
 
-  // Dev launches do not need a renamed app bundle badly enough to risk breaking
-  // Electron helper resource lookup on macOS.
-  if (isDevelopment) {
-    return electronBinaryPath;
-  }
-
-  return buildMacLauncher(electronBinaryPath);
+  return await buildMacLauncher(electronBinaryPath);
 }

@@ -25,21 +25,15 @@ import type {
 } from "@t3tools/contracts";
 import { ServerSettingsError } from "@t3tools/contracts";
 
-import { createModelCapabilities } from "@t3tools/shared/model";
-
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
 import { buildServerProvider } from "../providerSnapshot.ts";
 import { CodexProvider } from "../Services/CodexProvider.ts";
-import { expandHomePath } from "../../pathExpansion.ts";
+import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import packageJson from "../../../package.json" with { type: "json" };
 
 const PROVIDER = "codex" as const;
 const PROVIDER_PROBE_TIMEOUT_MS = 8_000;
-const CODEX_PRESENTATION = {
-  displayName: "Codex",
-  showInteractionModeToggle: true,
-} as const;
 
 export interface CodexAppServerProviderSnapshot {
   readonly account: CodexSchema.V2GetAccountResponse;
@@ -69,9 +63,7 @@ function codexAccountAuthLabel(account: CodexSchema.V2GetAccountResponse["accoun
     case "plus":
       return "ChatGPT Plus Subscription";
     case "pro":
-      return "ChatGPT Pro 20x Subscription";
-    case "prolite":
-      return "ChatGPT Pro 5x Subscription";
+      return "ChatGPT Pro Subscription";
     case "team":
       return "ChatGPT Team Subscription";
     case "self_serve_business_usage_based":
@@ -93,44 +85,17 @@ function codexAccountAuthLabel(account: CodexSchema.V2GetAccountResponse["accoun
 function mapCodexModelCapabilities(
   model: CodexSchema.V2ModelListResponse__Model,
 ): ModelCapabilities {
-  const reasoningOptions = model.supportedReasoningEfforts.map(({ reasoningEffort }) =>
-    reasoningEffort === model.defaultReasoningEffort
-      ? {
-          id: reasoningEffort,
-          label: REASONING_EFFORT_LABELS[reasoningEffort],
-          isDefault: true,
-        }
-      : {
-          id: reasoningEffort,
-          label: REASONING_EFFORT_LABELS[reasoningEffort],
-        },
-  );
-  const defaultReasoning = reasoningOptions.find((option) => option.isDefault)?.id;
-  const supportsFastMode = (model.additionalSpeedTiers ?? []).includes("fast");
-  return createModelCapabilities({
-    optionDescriptors: [
-      ...(reasoningOptions.length > 0
-        ? [
-            {
-              id: "reasoningEffort",
-              label: "Reasoning",
-              type: "select" as const,
-              options: reasoningOptions,
-              ...(defaultReasoning ? { currentValue: defaultReasoning } : {}),
-            },
-          ]
-        : []),
-      ...(supportsFastMode
-        ? [
-            {
-              id: "fastMode",
-              label: "Fast Mode",
-              type: "boolean" as const,
-            },
-          ]
-        : []),
-    ],
-  });
+  return {
+    reasoningEffortLevels: model.supportedReasoningEfforts.map(({ reasoningEffort }) => ({
+      value: reasoningEffort,
+      label: REASONING_EFFORT_LABELS[reasoningEffort],
+      ...(reasoningEffort === model.defaultReasoningEffort ? { isDefault: true } : {}),
+    })),
+    supportsFastMode: (model.additionalSpeedTiers ?? []).includes("fast"),
+    supportsThinkingToggle: false,
+    contextWindowOptions: [],
+    promptInjectedEffortLevels: [],
+  };
 }
 
 const toDisplayName = (model: CodexSchema.V2ModelListResponse__Model): string => {
@@ -256,7 +221,7 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
       command: input.binaryPath,
       args: ["app-server"],
       cwd: input.cwd,
-      ...(input.homePath ? { env: { CODEX_HOME: expandHomePath(input.homePath) } } : {}),
+      ...(input.homePath ? { env: { CODEX_HOME: input.homePath } } : {}),
     }),
   );
   const client = yield* Effect.service(CodexClient.CodexAppServerClient).pipe(
@@ -325,7 +290,6 @@ const makePendingCodexProvider = (codexSettings: CodexSettings): ServerProvider 
   if (!codexSettings.enabled) {
     return buildServerProvider({
       provider: PROVIDER,
-      presentation: CODEX_PRESENTATION,
       enabled: false,
       checkedAt,
       models,
@@ -342,7 +306,6 @@ const makePendingCodexProvider = (codexSettings: CodexSettings): ServerProvider 
 
   return buildServerProvider({
     provider: PROVIDER,
-    presentation: CODEX_PRESENTATION,
     enabled: true,
     checkedAt,
     models,
@@ -398,19 +361,19 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
 ): Effect.fn.Return<
   ServerProvider,
   ServerSettingsError,
-  ServerSettingsService | ChildProcessSpawner.ChildProcessSpawner
+  ServerSettingsService | ServerConfig | ChildProcessSpawner.ChildProcessSpawner
 > {
   const codexSettings = yield* Effect.service(ServerSettingsService).pipe(
     Effect.flatMap((service) => service.getSettings),
     Effect.map((settings) => settings.providers.codex),
   );
+  const serverConfig = yield* Effect.service(ServerConfig);
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
   const emptyModels = emptyCodexModelsFromSettings(codexSettings);
 
   if (!codexSettings.enabled) {
     return buildServerProvider({
       provider: PROVIDER,
-      presentation: CODEX_PRESENTATION,
       enabled: false,
       checkedAt,
       models: emptyModels,
@@ -428,7 +391,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
   const probeResult = yield* probe({
     binaryPath: codexSettings.binaryPath,
     homePath: codexSettings.homePath,
-    cwd: process.cwd(),
+    cwd: serverConfig.cwd,
     customModels: codexSettings.customModels,
   }).pipe(Effect.timeoutOption(Duration.millis(PROVIDER_PROBE_TIMEOUT_MS)), Effect.result);
 
@@ -437,7 +400,6 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
     const installed = !Schema.is(CodexErrors.CodexAppServerSpawnError)(error);
     return buildServerProvider({
       provider: PROVIDER,
-      presentation: CODEX_PRESENTATION,
       enabled: codexSettings.enabled,
       checkedAt,
       models: emptyModels,
@@ -457,7 +419,6 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
   if (Option.isNone(probeResult.success)) {
     return buildServerProvider({
       provider: PROVIDER,
-      presentation: CODEX_PRESENTATION,
       enabled: codexSettings.enabled,
       checkedAt,
       models: emptyModels,
@@ -477,7 +438,6 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
 
   return buildServerProvider({
     provider: PROVIDER,
-    presentation: CODEX_PRESENTATION,
     enabled: codexSettings.enabled,
     checkedAt,
     models: snapshot.models,
@@ -497,9 +457,11 @@ export const CodexProviderLive = Layer.effect(
   Effect.gen(function* () {
     const serverSettings = yield* ServerSettingsService;
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const serverConfig = yield* Effect.service(ServerConfig);
     const checkProvider = checkCodexProviderStatus().pipe(
       Effect.provideService(ServerSettingsService, serverSettings),
       Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+      Effect.provideService(ServerConfig, serverConfig),
     );
 
     return yield* makeManagedServerProvider<CodexSettings>({

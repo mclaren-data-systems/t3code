@@ -1,20 +1,8 @@
 import { describe, it, assert } from "@effect/vitest";
 import type { ServerProvider } from "@t3tools/contracts";
-import { createModelCapabilities } from "@t3tools/shared/model";
 import { Deferred, Effect, Fiber, PubSub, Ref, Stream } from "effect";
 
 import { makeManagedServerProvider } from "./makeManagedServerProvider.ts";
-
-const emptyCapabilities = createModelCapabilities({ optionDescriptors: [] });
-const fastModeCapabilities = createModelCapabilities({
-  optionDescriptors: [
-    {
-      id: "fastMode",
-      label: "Fast Mode",
-      type: "boolean",
-    },
-  ],
-});
 
 interface TestSettings {
   readonly enabled: boolean;
@@ -55,7 +43,13 @@ const enrichedSnapshot: ServerProvider = {
       slug: "composer-2",
       name: "Composer 2",
       isCustom: false,
-      capabilities: fastModeCapabilities,
+      capabilities: {
+        reasoningEffortLevels: [],
+        supportsFastMode: true,
+        supportsThinkingToggle: false,
+        contextWindowOptions: [],
+        promptInjectedEffortLevels: [],
+      },
     },
   ],
 };
@@ -74,7 +68,13 @@ const enrichedSnapshotSecond: ServerProvider = {
       slug: "gpt-5.4",
       name: "GPT-5.4",
       isCustom: false,
-      capabilities: emptyCapabilities,
+      capabilities: {
+        reasoningEffortLevels: [],
+        supportsFastMode: false,
+        supportsThinkingToggle: false,
+        contextWindowOptions: [],
+        promptInjectedEffortLevels: [],
+      },
     },
   ],
 };

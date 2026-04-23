@@ -21,10 +21,25 @@ const RuntimeEventRawSource = Schema.Union([
   Schema.Literal("codex.app-server.notification"),
   Schema.Literal("codex.app-server.request"),
   Schema.Literal("codex.eventmsg"),
+  Schema.Literal("copilot.sdk.session-event"),
+  Schema.Literal("copilot.sdk.synthetic"),
   Schema.Literal("claude.sdk.message"),
   Schema.Literal("claude.sdk.permission"),
   Schema.Literal("codex.sdk.thread-event"),
+  Schema.Literal("cursor.acp.notification"),
+  Schema.Literal("cursor.acp.request"),
+  Schema.Literal("cursor.acp.response"),
+  Schema.Literal("opencode.server.event"),
+  Schema.Literal("opencode.server.permission"),
+  Schema.Literal("opencode.server.question"),
   Schema.Literal("opencode.sdk.event"),
+  Schema.Literal("kilo.server.event"),
+  Schema.Literal("kilo.server.permission"),
+  Schema.Literal("kilo.server.question"),
+  Schema.Literal("amp.cli.system"),
+  Schema.Literal("amp.cli.assistant"),
+  Schema.Literal("amp.cli.result"),
+  Schema.Literal("gemini.cli.event"),
   Schema.Literal("acp.jsonrpc"),
   Schema.TemplateLiteral(["acp.", Schema.String, ".extension"]),
 ]);
@@ -428,7 +443,7 @@ export type RequestResolvedPayload = typeof RequestResolvedPayload.Type;
 
 const UserInputQuestionOption = Schema.Struct({
   label: TrimmedNonEmptyStringSchema,
-  description: TrimmedNonEmptyStringSchema,
+  description: Schema.optional(TrimmedNonEmptyStringSchema),
 });
 export type UserInputQuestionOption = typeof UserInputQuestionOption.Type;
 

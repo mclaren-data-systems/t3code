@@ -12,7 +12,7 @@ layer("024_BackfillProjectionThreadShellSummary", (it) => {
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
 
-      yield* runMigrations({ toMigrationInclusive: 23 });
+      yield* runMigrations({ toMigrationInclusive: 25 });
 
       yield* sql`
         INSERT INTO projection_threads (
@@ -172,7 +172,7 @@ layer("024_BackfillProjectionThreadShellSummary", (it) => {
         )
       `;
 
-      yield* runMigrations({ toMigrationInclusive: 24 });
+      yield* runMigrations({ toMigrationInclusive: 26 });
 
       const threadRows = yield* sql<{
         readonly latestUserMessageAt: string | null;

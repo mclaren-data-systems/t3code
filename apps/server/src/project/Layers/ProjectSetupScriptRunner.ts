@@ -15,14 +15,22 @@ const makeProjectSetupScriptRunner = Effect.gen(function* () {
   const runForThread: ProjectSetupScriptRunnerShape["runForThread"] = (input) =>
     Effect.gen(function* () {
       const readModel = yield* orchestrationEngine.getReadModel();
-      const project =
-        (input.projectId
-          ? readModel.projects.find((entry) => entry.id === input.projectId)
-          : null) ??
-        (input.projectCwd
-          ? readModel.projects.find((entry) => entry.workspaceRoot === input.projectCwd)
-          : null) ??
-        null;
+      const projectById = input.projectId
+        ? (readModel.projects.find((entry) => entry.id === input.projectId) ?? null)
+        : null;
+      const projectByCwd = input.projectCwd
+        ? (readModel.projects.find((entry) => entry.workspaceRoot === input.projectCwd) ?? null)
+        : null;
+
+      if (projectById && projectByCwd && projectById.id !== projectByCwd.id) {
+        return yield* Effect.fail(
+          new Error(
+            `Conflicting project selectors: projectId "${input.projectId}" resolves to project "${projectById.id}" but projectCwd "${input.projectCwd}" resolves to project "${projectByCwd.id}".`,
+          ),
+        );
+      }
+
+      const project = projectById ?? projectByCwd ?? null;
 
       if (!project) {
         return yield* Effect.fail(new Error("Project was not found for setup script execution."));

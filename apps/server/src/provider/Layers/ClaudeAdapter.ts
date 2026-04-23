@@ -17,8 +17,81 @@ import {
   type SDKResultMessage,
   type SettingSource,
   type SDKUserMessage,
-  type ModelUsage,
 } from "@anthropic-ai/claude-agent-sdk";
+
+/** Inline types from SDK — not yet re-exported from the public entry. */
+type ModelUsage = {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens: number;
+  cacheCreationInputTokens: number;
+  webSearchRequests: number;
+  contextWindow: number;
+};
+type NonNullableUsage = Record<string, unknown>;
+
+/** Inline type aliases for SDK message subtypes that aren't re-exported publicly. */
+type SDKHookStartedMessage = {
+  type: "system";
+  subtype: "hook_started";
+  hook_id: string;
+  hook_name: string;
+  hook_event: string;
+  [k: string]: unknown;
+};
+type SDKHookProgressMessage = {
+  type: "system";
+  subtype: "hook_progress";
+  hook_id: string;
+  output: string;
+  stdout: string;
+  stderr: string;
+  [k: string]: unknown;
+};
+type SDKHookResponseMessage = {
+  type: "system";
+  subtype: "hook_response";
+  hook_id: string;
+  outcome: "error" | "cancelled" | "success";
+  output: string;
+  stdout: string;
+  stderr: string;
+  exit_code?: number;
+  [k: string]: unknown;
+};
+type SDKTaskStartedMessage = {
+  type: "system";
+  subtype: "task_started";
+  task_id: string;
+  description: string;
+  task_type?: string;
+  [k: string]: unknown;
+};
+type SDKTaskProgressMessage = {
+  type: "system";
+  subtype: "task_progress";
+  task_id: string;
+  description: string;
+  summary?: string;
+  usage?: Record<string, unknown>;
+  last_tool_name?: string;
+  [k: string]: unknown;
+};
+type SDKTaskNotificationMessage = {
+  type: "system";
+  subtype: "task_notification";
+  task_id: string;
+  status: "completed" | "failed" | "stopped";
+  summary?: string;
+  usage?: Record<string, unknown>;
+  [k: string]: unknown;
+};
+type SDKToolUseSummaryMessage = {
+  type: "tool_use_summary";
+  summary: string;
+  preceding_tool_use_ids?: readonly string[];
+  [k: string]: unknown;
+};
 import { parseCliArgs } from "@t3tools/shared/cliArgs";
 import {
   ApprovalRequestId,
@@ -40,14 +113,9 @@ import {
   ThreadId,
   TurnId,
   type UserInputQuestion,
+  type ClaudeAgentEffort,
 } from "@t3tools/contracts";
-import {
-  applyClaudePromptEffortPrefix,
-  getModelSelectionBooleanOptionValue,
-  getModelSelectionStringOptionValue,
-  getProviderOptionDescriptors,
-  resolvePromptInjectedEffort,
-} from "@t3tools/shared/model";
+import { applyClaudePromptEffortPrefix, resolveEffort, trimOrNull } from "@t3tools/shared/model";
 import {
   Cause,
   DateTime,
@@ -66,12 +134,7 @@ import {
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
-import {
-  getClaudeModelCapabilities,
-  normalizeClaudeCliEffort,
-  resolveClaudeApiModelId,
-  resolveClaudeEffort,
-} from "./ClaudeProvider.ts";
+import { getClaudeModelCapabilities, resolveClaudeApiModelId } from "./ClaudeProvider.ts";
 import {
   ProviderAdapterProcessError,
   ProviderAdapterRequestError,
@@ -81,6 +144,7 @@ import {
   type ProviderAdapterError,
 } from "../Errors.ts";
 import { ClaudeAdapter, type ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
+import { getProviderCapabilities } from "../Services/ProviderAdapter.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 
 const PROVIDER = "claudeAgent" as const;
@@ -221,9 +285,19 @@ function normalizeClaudeStreamMessages(cause: Cause.Cause<Error>): ReadonlyArray
   return squashed.length > 0 ? [squashed] : [];
 }
 
-function getEffectiveClaudeAgentEffort(effort: string | null | undefined): ClaudeSdkEffort | null {
-  const normalized = normalizeClaudeCliEffort(effort);
-  return normalized ? (normalized as ClaudeSdkEffort) : null;
+function getEffectiveClaudeAgentEffort(
+  effort: ClaudeAgentEffort | null | undefined,
+): ClaudeSdkEffort | null {
+  if (!effort) {
+    return null;
+  }
+  if (effort === "ultrathink") {
+    return null;
+  }
+  if (effort === "xhigh") {
+    return "max";
+  }
+  return effort;
 }
 
 function isClaudeInterruptedMessage(message: string): boolean {
@@ -555,14 +629,16 @@ const CLAUDE_SETTING_SOURCES = [
 
 function buildPromptText(input: ProviderSendTurnInput): string {
   const rawEffort =
-    input.modelSelection?.provider === "claudeAgent"
-      ? getModelSelectionStringOptionValue(input.modelSelection, "effort")
-      : null;
+    input.modelSelection?.provider === "claudeAgent" ? input.modelSelection.options?.effort : null;
   const claudeModel =
     input.modelSelection?.provider === "claudeAgent" ? input.modelSelection.model : undefined;
   const caps = getClaudeModelCapabilities(claudeModel);
 
-  const promptEffort = resolvePromptInjectedEffort(caps, rawEffort);
+  // For prompt injection, we check if the raw effort is a prompt-injected level (e.g. "ultrathink").
+  // resolveEffort strips prompt-injected values (returning the default instead), so we check the raw value directly.
+  const trimmedEffort = trimOrNull(rawEffort);
+  const promptEffort =
+    trimmedEffort && caps.promptInjectedEffortLevels.includes(trimmedEffort) ? trimmedEffort : null;
   return applyClaudePromptEffortPrefix(input.input?.trim() ?? "", promptEffort);
 }
 
@@ -575,7 +651,7 @@ function buildUserMessage(input: {
     parent_tool_use_id: null,
     message: {
       role: "user",
-      content: input.sdkContent as unknown as SDKUserMessage["message"]["content"],
+      content: input.sdkContent as unknown as Array<Record<string, unknown>>,
     },
   } as SDKUserMessage;
 }
@@ -1378,7 +1454,9 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     errorMessage?: string,
     result?: SDKResultMessage,
   ) {
-    const resultContextWindow = maxClaudeContextWindowFromModelUsage(result?.modelUsage);
+    const resultContextWindow = maxClaudeContextWindowFromModelUsage(
+      result?.modelUsage as Record<string, ModelUsage> | undefined,
+    );
     if (resultContextWindow !== undefined) {
       context.lastKnownContextWindow = resultContextWindow;
     }
@@ -1555,7 +1633,26 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       return;
     }
 
-    const { event } = message;
+    type StreamEvent = {
+      type: string;
+      delta: {
+        type: string;
+        text?: string;
+        thinking?: string;
+        partial_json?: string;
+        [k: string]: unknown;
+      };
+      index: number;
+      content_block?: {
+        type: string;
+        id?: string;
+        name?: string;
+        input?: unknown;
+        [k: string]: unknown;
+      };
+      [k: string]: unknown;
+    };
+    const { event } = message as { event: StreamEvent };
 
     if (event.type === "content_block_delta") {
       if (
@@ -1564,7 +1661,7 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       ) {
         const deltaText =
           event.delta.type === "text_delta"
-            ? event.delta.text
+            ? (event.delta.text ?? "")
             : typeof event.delta.thinking === "string"
               ? event.delta.thinking
               : "";
@@ -1711,6 +1808,9 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 
     if (event.type === "content_block_start") {
       const { index, content_block: block } = event;
+      if (!block) {
+        return;
+      }
       if (block.type === "text") {
         yield* ensureAssistantTextBlock(context, index, {
           fallbackText: extractContentBlockText(block),
@@ -1725,13 +1825,13 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         return;
       }
 
-      const toolName = block.name;
+      const toolName = block.name ?? "unknown";
       const itemType = classifyToolItemType(toolName);
       const toolInput =
         typeof block.input === "object" && block.input !== null
           ? (block.input as Record<string, unknown>)
           : {};
-      const itemId = block.id;
+      const itemId = block.id ?? "";
       const detail = summarizeToolRequest(toolName, toolInput);
       const inputFingerprint =
         Object.keys(toolInput).length > 0 ? toolInputFingerprint(toolInput) : undefined;
@@ -2003,7 +2103,13 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     }
 
     const status = turnStatusFromResult(message);
-    const errorMessage = message.subtype === "success" ? undefined : message.errors[0];
+    const errors = (message as { errors?: unknown[] }).errors;
+    const errorMessage =
+      message.subtype === "success"
+        ? undefined
+        : typeof errors?.[0] === "string"
+          ? errors[0]
+          : undefined;
 
     if (status === "failed") {
       yield* emitRuntimeError(context, errorMessage ?? "Claude turn failed.");
@@ -2067,58 +2173,69 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           },
         });
         return;
-      case "hook_started":
+      case "hook_started": {
+        const hookStarted = message as SDKHookStartedMessage;
         yield* offerRuntimeEvent({
           ...base,
           type: "hook.started",
           payload: {
-            hookId: message.hook_id,
-            hookName: message.hook_name,
-            hookEvent: message.hook_event,
+            hookId: hookStarted.hook_id,
+            hookName: hookStarted.hook_name,
+            hookEvent: hookStarted.hook_event,
           },
         });
         return;
-      case "hook_progress":
+      }
+      case "hook_progress": {
+        const hookProgress = message as SDKHookProgressMessage;
         yield* offerRuntimeEvent({
           ...base,
           type: "hook.progress",
           payload: {
-            hookId: message.hook_id,
-            output: message.output,
-            stdout: message.stdout,
-            stderr: message.stderr,
+            hookId: hookProgress.hook_id,
+            output: hookProgress.output,
+            stdout: hookProgress.stdout,
+            stderr: hookProgress.stderr,
           },
         });
         return;
-      case "hook_response":
+      }
+      case "hook_response": {
+        const hookResponse = message as SDKHookResponseMessage;
         yield* offerRuntimeEvent({
           ...base,
           type: "hook.completed",
           payload: {
-            hookId: message.hook_id,
-            outcome: message.outcome,
-            output: message.output,
-            stdout: message.stdout,
-            stderr: message.stderr,
-            ...(typeof message.exit_code === "number" ? { exitCode: message.exit_code } : {}),
+            hookId: hookResponse.hook_id,
+            outcome: hookResponse.outcome,
+            output: hookResponse.output,
+            stdout: hookResponse.stdout,
+            stderr: hookResponse.stderr,
+            ...(typeof hookResponse.exit_code === "number"
+              ? { exitCode: hookResponse.exit_code }
+              : {}),
           },
         });
         return;
-      case "task_started":
+      }
+      case "task_started": {
+        const taskStarted = message as SDKTaskStartedMessage;
         yield* offerRuntimeEvent({
           ...base,
           type: "task.started",
           payload: {
-            taskId: RuntimeTaskId.make(message.task_id),
-            description: message.description,
-            ...(message.task_type ? { taskType: message.task_type } : {}),
+            taskId: RuntimeTaskId.make(taskStarted.task_id),
+            description: taskStarted.description,
+            ...(taskStarted.task_type ? { taskType: taskStarted.task_type } : {}),
           },
         });
         return;
-      case "task_progress":
-        if (message.usage) {
+      }
+      case "task_progress": {
+        const taskProgress = message as SDKTaskProgressMessage;
+        if (taskProgress.usage) {
           const normalizedUsage = normalizeClaudeTokenUsage(
-            message.usage,
+            taskProgress.usage,
             context.lastKnownContextWindow,
           );
           if (normalizedUsage) {
@@ -2139,18 +2256,20 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           ...base,
           type: "task.progress",
           payload: {
-            taskId: RuntimeTaskId.make(message.task_id),
-            description: message.description,
-            ...(message.summary ? { summary: message.summary } : {}),
-            ...(message.usage ? { usage: message.usage } : {}),
-            ...(message.last_tool_name ? { lastToolName: message.last_tool_name } : {}),
+            taskId: RuntimeTaskId.make(taskProgress.task_id),
+            description: taskProgress.description,
+            ...(taskProgress.summary ? { summary: taskProgress.summary } : {}),
+            ...(taskProgress.usage ? { usage: taskProgress.usage } : {}),
+            ...(taskProgress.last_tool_name ? { lastToolName: taskProgress.last_tool_name } : {}),
           },
         });
         return;
-      case "task_notification":
-        if (message.usage) {
+      }
+      case "task_notification": {
+        const taskNotification = message as SDKTaskNotificationMessage;
+        if (taskNotification.usage) {
           const normalizedUsage = normalizeClaudeTokenUsage(
-            message.usage,
+            taskNotification.usage,
             context.lastKnownContextWindow,
           );
           if (normalizedUsage) {
@@ -2171,13 +2290,14 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           ...base,
           type: "task.completed",
           payload: {
-            taskId: RuntimeTaskId.make(message.task_id),
-            status: message.status,
-            ...(message.summary ? { summary: message.summary } : {}),
-            ...(message.usage ? { usage: message.usage } : {}),
+            taskId: RuntimeTaskId.make(taskNotification.task_id),
+            status: taskNotification.status,
+            ...(taskNotification.summary ? { summary: taskNotification.summary } : {}),
+            ...(taskNotification.usage ? { usage: taskNotification.usage } : {}),
           },
         });
         return;
+      }
       case "files_persisted":
         yield* offerRuntimeEvent({
           ...base,
@@ -2245,15 +2365,14 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     }
 
     if (message.type === "tool_use_summary") {
+      const toolSummary = message as SDKToolUseSummaryMessage;
       yield* offerRuntimeEvent({
         ...base,
         type: "tool.summary",
         payload: {
-          summary: message.summary,
-          ...(message.preceding_tool_use_ids.length > 0
-            ? {
-                precedingToolUseIds: message.preceding_tool_use_ids,
-              }
+          summary: toolSummary.summary,
+          ...(toolSummary.preceding_tool_use_ids && toolSummary.preceding_tool_use_ids.length > 0
+            ? { precedingToolUseIds: toolSummary.preceding_tool_use_ids }
             : {}),
         },
       });
@@ -2261,13 +2380,19 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     }
 
     if (message.type === "auth_status") {
+      const authMsg = message as {
+        isAuthenticating?: boolean;
+        output?: string;
+        error?: string;
+        [k: string]: unknown;
+      };
       yield* offerRuntimeEvent({
         ...base,
         type: "auth.status",
         payload: {
-          isAuthenticating: message.isAuthenticating,
-          output: message.output,
-          ...(message.error ? { error: message.error } : {}),
+          isAuthenticating: authMsg.isAuthenticating,
+          ...(authMsg.output ? { output: [authMsg.output] } : {}),
+          ...(authMsg.error ? { error: authMsg.error } : {}),
         },
       });
       return;
@@ -2822,22 +2947,14 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       const modelSelection =
         input.modelSelection?.provider === "claudeAgent" ? input.modelSelection : undefined;
       const caps = getClaudeModelCapabilities(modelSelection?.model);
-      const descriptors = getProviderOptionDescriptors({ caps });
       const apiModelId = modelSelection ? resolveClaudeApiModelId(modelSelection) : undefined;
-      const rawEffort = getModelSelectionStringOptionValue(modelSelection, "effort");
-      const effort = resolveClaudeEffort(caps, rawEffort) ?? null;
-      const fastModeSupported = descriptors.some(
-        (descriptor) => descriptor.type === "boolean" && descriptor.id === "fastMode",
-      );
-      const thinkingSupported = descriptors.some(
-        (descriptor) => descriptor.type === "boolean" && descriptor.id === "thinking",
-      );
-      const fastMode =
-        getModelSelectionBooleanOptionValue(modelSelection, "fastMode") === true &&
-        fastModeSupported;
-      const thinking = thinkingSupported
-        ? getModelSelectionBooleanOptionValue(modelSelection, "thinking")
-        : undefined;
+      const effort = (resolveEffort(caps, modelSelection?.options?.effort) ??
+        null) as ClaudeAgentEffort | null;
+      const fastMode = modelSelection?.options?.fastMode === true && caps.supportsFastMode;
+      const thinking =
+        typeof modelSelection?.options?.thinking === "boolean" && caps.supportsThinkingToggle
+          ? modelSelection.options.thinking
+          : undefined;
       const effectiveEffort = getEffectiveClaudeAgentEffort(effort);
       const runtimeModeToPermission: Record<string, PermissionMode> = {
         "auto-accept-edits": "acceptEdits",
@@ -3196,9 +3313,7 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 
   return {
     provider: PROVIDER,
-    capabilities: {
-      sessionModelSwitch: "in-session",
-    },
+    capabilities: getProviderCapabilities(PROVIDER),
     startSession,
     sendTurn,
     interruptTurn,

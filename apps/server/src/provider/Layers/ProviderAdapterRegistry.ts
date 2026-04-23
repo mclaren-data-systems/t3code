@@ -15,11 +15,14 @@ import {
   ProviderAdapterRegistry,
   type ProviderAdapterRegistryShape,
 } from "../Services/ProviderAdapterRegistry.ts";
+import { AmpAdapter } from "../Services/AmpAdapter.ts";
 import { ClaudeAdapter } from "../Services/ClaudeAdapter.ts";
 import { CodexAdapter } from "../Services/CodexAdapter.ts";
+import { CopilotAdapter } from "../Services/CopilotAdapter.ts";
 import { CursorAdapter } from "../Services/CursorAdapter.ts";
+import { GeminiCliAdapter } from "../Services/GeminiCliAdapter.ts";
+import { KiloAdapter } from "../Services/KiloAdapter.ts";
 import { OpenCodeAdapter } from "../Services/OpenCodeAdapter.ts";
-import { createBuiltInAdapterList } from "../builtInProviderCatalog.ts";
 
 export interface ProviderAdapterRegistryLiveOptions {
   readonly adapters?: ReadonlyArray<ProviderAdapterShape<ProviderAdapterError>>;
@@ -28,16 +31,19 @@ export interface ProviderAdapterRegistryLiveOptions {
 const makeProviderAdapterRegistry = Effect.fn("makeProviderAdapterRegistry")(function* (
   options?: ProviderAdapterRegistryLiveOptions,
 ) {
-  const cursorAdapterOption = yield* Effect.serviceOption(CursorAdapter);
   const adapters =
     options?.adapters !== undefined
       ? options.adapters
-      : createBuiltInAdapterList({
-          codex: yield* CodexAdapter,
-          claudeAgent: yield* ClaudeAdapter,
-          opencode: yield* OpenCodeAdapter,
-          ...(cursorAdapterOption._tag === "Some" ? { cursor: cursorAdapterOption.value } : {}),
-        });
+      : [
+          yield* CodexAdapter,
+          yield* ClaudeAdapter,
+          yield* CopilotAdapter,
+          yield* CursorAdapter,
+          yield* GeminiCliAdapter,
+          yield* OpenCodeAdapter,
+          yield* AmpAdapter,
+          yield* KiloAdapter,
+        ];
   const byProvider = new Map(adapters.map((adapter) => [adapter.provider, adapter]));
 
   const getByProvider: ProviderAdapterRegistryShape["getByProvider"] = (provider) => {

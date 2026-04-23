@@ -279,7 +279,7 @@ function setStoreThreads(threads: ReadonlyArray<ReturnType<typeof makeThread>>) 
           interactionMode: thread.interactionMode,
           error: thread.error,
           createdAt: thread.createdAt,
-          archivedAt: thread.archivedAt,
+          archivedAt: thread.archivedAt ?? null,
           updatedAt: thread.updatedAt,
           branch: thread.branch,
           worktreePath: thread.worktreePath,

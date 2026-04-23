@@ -4,6 +4,7 @@ import { Effect } from "effect";
 import type { TraceRecord } from "./TraceRecord.ts";
 
 const FLUSH_BUFFER_THRESHOLD = 32;
+const MAX_BUFFERED_BYTES = 5 * 1024 * 1024; // 5 MB
 
 export interface TraceSinkOptions {
   readonly filePath: string;
@@ -40,6 +41,12 @@ export const makeTraceSink = Effect.fn("makeTraceSink")(function* (options: Trac
       sink.write(chunk);
     } catch {
       buffer.unshift(chunk);
+      // Drop oldest chunks if buffer exceeds the cap to prevent unbounded memory growth
+      let totalBytes = buffer.reduce((sum, c) => sum + c.length, 0);
+      while (totalBytes > MAX_BUFFERED_BYTES && buffer.length > 0) {
+        const dropped = buffer.pop()!;
+        totalBytes -= dropped.length;
+      }
     }
   };
 

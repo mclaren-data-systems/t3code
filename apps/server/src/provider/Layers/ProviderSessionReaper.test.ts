@@ -139,7 +139,17 @@ describe("ProviderSessionReaper", () => {
       respondToUserInput: () => unsupported(),
       stopSession,
       listSessions: () => Effect.succeed([]),
-      getCapabilities: () => Effect.succeed({ sessionModelSwitch: "in-session" }),
+      getCapabilities: () =>
+        Effect.succeed({
+          sessionModelSwitch: "in-session" as const,
+          transport: "app-server-json-rpc" as const,
+          modelDiscovery: "native" as const,
+          supportsModelDiscovery: true,
+          supportsResume: true,
+          supportsRollback: false,
+          supportsAttachments: false,
+          persistentRuntime: true,
+        }),
       rollbackConversation: () => unsupported(),
       streamEvents: Stream.empty,
     };

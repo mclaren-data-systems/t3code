@@ -12,7 +12,7 @@ layer("025_CleanupInvalidProjectionPendingApprovals", (it) => {
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
 
-      yield* runMigrations({ toMigrationInclusive: 24 });
+      yield* runMigrations({ toMigrationInclusive: 26 });
 
       yield* sql`
         INSERT INTO projection_threads (
@@ -152,7 +152,7 @@ layer("025_CleanupInvalidProjectionPendingApprovals", (it) => {
           )
       `;
 
-      yield* runMigrations({ toMigrationInclusive: 25 });
+      yield* runMigrations({ toMigrationInclusive: 27 });
 
       const approvalRows = yield* sql<{
         readonly requestId: string;

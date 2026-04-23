@@ -23,7 +23,8 @@ export function deriveOrchestrationBatchEffects(
   for (const event of events) {
     switch (event.type) {
       case "thread.turn-diff-completed":
-      case "thread.reverted": {
+      case "thread.reverted":
+      case "thread.session-set": {
         needsProviderInvalidation = true;
         break;
       }
@@ -47,18 +48,22 @@ export function deriveOrchestrationBatchEffects(
       }
 
       case "thread.archived": {
+        const existingArchived = threadLifecycleEffects.get(event.payload.threadId);
         threadLifecycleEffects.set(event.payload.threadId, {
-          clearPromotedDraft: false,
-          clearDeletedThread: false,
+          ...existingArchived,
+          clearPromotedDraft: existingArchived?.clearPromotedDraft ?? false,
+          clearDeletedThread: existingArchived?.clearDeletedThread ?? false,
           removeTerminalState: true,
         });
         break;
       }
 
       case "thread.unarchived": {
+        const existingUnarchived = threadLifecycleEffects.get(event.payload.threadId);
         threadLifecycleEffects.set(event.payload.threadId, {
-          clearPromotedDraft: false,
-          clearDeletedThread: false,
+          ...existingUnarchived,
+          clearPromotedDraft: existingUnarchived?.clearPromotedDraft ?? false,
+          clearDeletedThread: existingUnarchived?.clearDeletedThread ?? false,
           removeTerminalState: false,
         });
         break;

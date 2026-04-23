@@ -46,6 +46,7 @@ export function PullRequestThreadDialog({
   const [reference, setReference] = useState(initialReference ?? "");
   const [referenceDirty, setReferenceDirty] = useState(false);
   const [preparingMode, setPreparingMode] = useState<"local" | "worktree" | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [debouncedReference, referenceDebouncer] = useDebouncedValue(
     reference,
     { wait: 450 },
@@ -57,6 +58,7 @@ export function PullRequestThreadDialog({
     setReference(initialReference ?? "");
     setReferenceDirty(false);
     setPreparingMode(null);
+    setSubmitError(null);
   }, [initialReference, open]);
 
   useEffect(() => {
@@ -131,6 +133,7 @@ export function PullRequestThreadDialog({
       if (!parsedReference || !resolvedPullRequest || !cwd) {
         return;
       }
+      setSubmitError(null);
       setPreparingMode(mode);
       try {
         const result = await preparePullRequestThreadMutation.mutateAsync({
@@ -143,6 +146,10 @@ export function PullRequestThreadDialog({
           worktreePath: result.worktreePath,
         });
         onOpenChange(false);
+      } catch (error) {
+        setSubmitError(
+          error instanceof Error ? error.message : "Failed to prepare pull request thread.",
+        );
       } finally {
         setPreparingMode(null);
       }
@@ -167,6 +174,7 @@ export function PullRequestThreadDialog({
         : null;
   const errorMessage =
     validationMessage ??
+    submitError ??
     (resolvedPullRequest === null && resolvePullRequestQuery.isError
       ? resolvePullRequestQuery.error instanceof Error
         ? resolvePullRequestQuery.error.message

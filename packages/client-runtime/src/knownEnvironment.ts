@@ -29,7 +29,30 @@ export function createKnownEnvironment(input: {
   };
 }
 
+export function createKnownEnvironmentFromWsUrl(input: {
+  readonly id?: string;
+  readonly label: string;
+  readonly source?: KnownEnvironmentSource;
+  readonly wsUrl: string;
+}): KnownEnvironment {
+  return {
+    id: input.id ?? `ws:${input.label}`,
+    label: input.label,
+    source: input.source ?? "manual",
+    target: {
+      httpBaseUrl: input.wsUrl.replace(/^wss:/, "https:").replace(/^ws:/, "http:"),
+      wsBaseUrl: input.wsUrl,
+    },
+  };
+}
+
 export function getKnownEnvironmentWsBaseUrl(
+  environment: KnownEnvironment | null | undefined,
+): string | null {
+  return environment?.target.wsBaseUrl ?? null;
+}
+
+export function getKnownEnvironmentBaseUrl(
   environment: KnownEnvironment | null | undefined,
 ): string | null {
   return environment?.target.wsBaseUrl ?? null;

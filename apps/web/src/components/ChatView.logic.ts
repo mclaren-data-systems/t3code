@@ -2,6 +2,7 @@ import {
   type EnvironmentId,
   ProjectId,
   type ModelSelection,
+  type OrchestrationThreadActivity,
   type ProviderKind,
   type ScopedThreadRef,
   type ThreadId,
@@ -9,6 +10,7 @@ import {
 } from "@t3tools/contracts";
 import { type ChatMessage, type SessionPhase, type Thread, type ThreadSession } from "../types";
 import { type ComposerImageAttachment, type DraftThreadState } from "../composerDraftStore";
+import { deriveWorkLogEntries, type WorkLogEntry } from "../session-logic";
 import { Schema } from "effect";
 import { selectThreadByRef, useStore } from "../store";
 import {
@@ -177,6 +179,30 @@ export function cloneComposerImageForRetry(
   } catch {
     return image;
   }
+}
+
+/**
+ * Resolve which provider the health banner should reflect before a session
+ * starts. Once a session is active its provider takes precedence; otherwise
+ * fall back to the user's currently selected draft provider.
+ */
+export function resolveProviderHealthBannerProvider(opts: {
+  sessionProvider: ProviderKind | null;
+  selectedProvider: ProviderKind;
+}): ProviderKind {
+  return opts.sessionProvider ?? opts.selectedProvider;
+}
+
+/**
+ * Derive work-log entries that keep completed tool calls from previous turns
+ * visible while the user is composing a new message. Passing `undefined` for
+ * the turn-id filter causes `deriveWorkLogEntries` to include all activities
+ * rather than scoping to only the latest turn.
+ */
+export function deriveVisibleThreadWorkLogEntries(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+): WorkLogEntry[] {
+  return deriveWorkLogEntries(activities, undefined);
 }
 
 export function deriveComposerSendState(options: {

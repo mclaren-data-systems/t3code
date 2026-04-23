@@ -259,11 +259,15 @@ export default function ProjectScriptsControl({
     setDialogOpen(true);
   };
 
-  const confirmDeleteScript = useCallback(() => {
+  const confirmDeleteScript = useCallback(async () => {
     if (!editingScriptId) return;
-    setDeleteConfirmOpen(false);
-    setDialogOpen(false);
-    void onDeleteScript(editingScriptId);
+    try {
+      await onDeleteScript(editingScriptId);
+      setDeleteConfirmOpen(false);
+      setDialogOpen(false);
+    } catch (error) {
+      setValidationError(error instanceof Error ? error.message : "Failed to delete action.");
+    }
   }, [editingScriptId, onDeleteScript]);
 
   return (
@@ -444,6 +448,7 @@ export default function ProjectScriptsControl({
                 <Label htmlFor="script-command">Command</Label>
                 <Textarea
                   id="script-command"
+                  className="font-mono"
                   placeholder="bun test"
                   value={command}
                   onChange={(event) => setCommand(event.target.value)}

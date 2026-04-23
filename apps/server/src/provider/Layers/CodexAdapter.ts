@@ -27,11 +27,6 @@ import * as CodexErrors from "effect-codex-app-server/errors";
 import * as EffectCodexSchema from "effect-codex-app-server/schema";
 
 import {
-  getModelSelectionBooleanOptionValue,
-  getModelSelectionStringOptionValue,
-} from "@t3tools/shared/model";
-
-import {
   ProviderAdapterRequestError,
   ProviderAdapterProcessError,
   ProviderAdapterSessionClosedError,
@@ -43,6 +38,8 @@ import { CodexAdapter, type CodexAdapterShape } from "../Services/CodexAdapter.t
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { getProviderCapabilities } from "../Services/ProviderAdapter.ts";
+import type { ProviderUsageResult } from "@t3tools/contracts";
 import {
   CodexResumeCursorSchema,
   CodexSessionRuntimeThreadIdMissingError,
@@ -320,11 +317,15 @@ function toUserInputQuestions(questions: ReadonlyArray<CodexToolUserInputQuestio
         question.options
           ?.map((option) => {
             const label = trimText(option.label);
+            // Description is optional — keep label-only options rather than
+            // dropping them, otherwise Codex tool prompts that only provide
+            // labels (no per-option description) lose all choices and the
+            // surrounding `options.length === 0` guard rejects the question.
             const description = trimText(option.description);
-            if (!label || !description) {
+            if (!label) {
               return undefined;
             }
-            return { label, description };
+            return description ? { label, description } : { label };
           })
           .filter((option) => option !== undefined) ?? [];
 
@@ -1377,8 +1378,7 @@ const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           ...(input.modelSelection?.provider === "codex"
             ? { model: input.modelSelection.model }
             : {}),
-          ...(input.modelSelection?.provider === "codex" &&
-          getModelSelectionBooleanOptionValue(input.modelSelection, "fastMode") === true
+          ...(input.modelSelection?.provider === "codex" && input.modelSelection.options?.fastMode
             ? { serviceTier: "fast" }
             : {}),
         };
@@ -1402,6 +1402,10 @@ const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           ),
         );
 
+        // Keep the Codex event pump in the session scope so it is
+        // interrupted automatically when the session's scope closes,
+        // rather than leaking into the surrounding `Effect.scoped` fiber
+        // which exits as soon as `startSession` returns.
         const eventFiber = yield* Stream.runForEach(runtime.events, (event) =>
           Effect.gen(function* () {
             yield* writeNativeEvent(event);
@@ -1417,7 +1421,7 @@ const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
             }
             yield* Queue.offerAll(runtimeEventQueue, runtimeEvents);
           }),
-        ).pipe(Effect.forkChild);
+        ).pipe(Effect.forkIn(sessionScope));
 
         const started = yield* runtime.start().pipe(
           Effect.mapError(
@@ -1491,26 +1495,19 @@ const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     );
 
     const session = yield* requireSession(input.threadId);
-    const reasoningEffort =
-      input.modelSelection?.provider === "codex"
-        ? getModelSelectionStringOptionValue(input.modelSelection, "reasoningEffort")
-        : undefined;
-    const fastMode =
-      input.modelSelection?.provider === "codex"
-        ? getModelSelectionBooleanOptionValue(input.modelSelection, "fastMode")
-        : undefined;
     return yield* session.runtime
       .sendTurn({
         ...(input.input !== undefined ? { input: input.input } : {}),
         ...(input.modelSelection?.provider === "codex"
           ? { model: input.modelSelection.model }
           : {}),
-        ...(reasoningEffort
-          ? {
-              effort: reasoningEffort as EffectCodexSchema.V2TurnStartParams__ReasoningEffort,
-            }
+        ...(input.modelSelection?.provider === "codex" &&
+        input.modelSelection.options?.reasoningEffort !== undefined
+          ? { effort: input.modelSelection.options.reasoningEffort }
           : {}),
-        ...(fastMode === true ? { serviceTier: "fast" } : {}),
+        ...(input.modelSelection?.provider === "codex" && input.modelSelection.options?.fastMode
+          ? { serviceTier: "fast" }
+          : {}),
         ...(input.interactionMode !== undefined ? { interactionMode: input.interactionMode } : {}),
         ...(codexAttachments.length > 0 ? { attachments: codexAttachments } : {}),
       })
@@ -1656,9 +1653,7 @@ const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
 
   return {
     provider: PROVIDER,
-    capabilities: {
-      sessionModelSwitch: "in-session",
-    },
+    capabilities: getProviderCapabilities(PROVIDER),
     startSession,
     sendTurn,
     interruptTurn,
@@ -1675,6 +1670,16 @@ const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     },
   } satisfies CodexAdapterShape;
 });
+
+/**
+ * Fetches Codex usage information. After upstream's effect-codex-app-server
+ * refactor (PR #1942), the manager-based rate limit readout is no longer
+ * available at the adapter layer. Returns an empty usage record until
+ * rate-limit events are surfaced through the new session runtime.
+ */
+export async function fetchCodexUsage(): Promise<ProviderUsageResult> {
+  return { provider: "codex" };
+}
 
 export const CodexAdapterLive = Layer.effect(CodexAdapter, makeCodexAdapter());
 

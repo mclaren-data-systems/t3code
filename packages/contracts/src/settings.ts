@@ -3,8 +3,15 @@ import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import { TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
 import {
+  AmpModelOptions,
+  ClaudeModelOptions,
+  CodexModelOptions,
+  CopilotModelOptions,
+  CursorModelOptions,
   DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER,
-  ProviderOptionSelections,
+  GeminiCliModelOptions,
+  KiloModelOptions,
+  OpencodeModelOptions,
 } from "./model.ts";
 import { ModelSelection, ProviderKind } from "./orchestration.ts";
 
@@ -101,6 +108,7 @@ export const CursorSettings = Schema.Struct({
   customModels: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
 });
 export type CursorSettings = typeof CursorSettings.Type;
+
 export const OpenCodeSettings = Schema.Struct({
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   binaryPath: makeBinaryPathSetting("opencode"),
@@ -109,6 +117,14 @@ export const OpenCodeSettings = Schema.Struct({
   customModels: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
 });
 export type OpenCodeSettings = typeof OpenCodeSettings.Type;
+
+export const GenericProviderSettings = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  customModels: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  binaryPath: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  configDir: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+});
+export type GenericProviderSettings = typeof GenericProviderSettings.Type;
 
 export const ObservabilitySettings = Schema.Struct({
   otlpTracesUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
@@ -135,8 +151,12 @@ export const ServerSettings = Schema.Struct({
   providers: Schema.Struct({
     codex: CodexSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     claudeAgent: ClaudeSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+    copilot: GenericProviderSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     cursor: CursorSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     opencode: OpenCodeSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+    geminiCli: GenericProviderSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+    amp: GenericProviderSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+    kilo: GenericProviderSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   }).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 });
@@ -167,26 +187,86 @@ export const DEFAULT_UNIFIED_SETTINGS: UnifiedSettings = {
 
 // ── Server Settings Patch (replace with a Schema.deepPartial if available) ──────────────────────────────────────────
 
+const CodexModelOptionsPatch = Schema.Struct({
+  reasoningEffort: Schema.optionalKey(CodexModelOptions.fields.reasoningEffort),
+  fastMode: Schema.optionalKey(CodexModelOptions.fields.fastMode),
+});
+
+const ClaudeModelOptionsPatch = Schema.Struct({
+  thinking: Schema.optionalKey(ClaudeModelOptions.fields.thinking),
+  effort: Schema.optionalKey(ClaudeModelOptions.fields.effort),
+  fastMode: Schema.optionalKey(ClaudeModelOptions.fields.fastMode),
+  contextWindow: Schema.optionalKey(ClaudeModelOptions.fields.contextWindow),
+});
+
+const CopilotModelOptionsPatch = Schema.Struct({
+  reasoningEffort: Schema.optionalKey(CopilotModelOptions.fields.reasoningEffort),
+});
+
+const CursorModelOptionsPatch = Schema.Struct({
+  reasoning: Schema.optionalKey(CursorModelOptions.fields.reasoning),
+  fastMode: Schema.optionalKey(CursorModelOptions.fields.fastMode),
+  thinking: Schema.optionalKey(CursorModelOptions.fields.thinking),
+});
+
+const OpencodeModelOptionsPatch = Schema.Struct({
+  providerId: Schema.optionalKey(OpencodeModelOptions.fields.providerId),
+  reasoningEffort: Schema.optionalKey(OpencodeModelOptions.fields.reasoningEffort),
+});
+
+const GeminiCliModelOptionsPatch = Schema.Struct({
+  thinkingBudget: Schema.optionalKey(GeminiCliModelOptions.fields.thinkingBudget),
+});
+
+const AmpModelOptionsPatch = Schema.Struct({
+  mode: Schema.optionalKey(AmpModelOptions.fields.mode),
+});
+
+const KiloModelOptionsPatch = Schema.Struct({
+  providerId: Schema.optionalKey(KiloModelOptions.fields.providerId),
+  reasoningEffort: Schema.optionalKey(KiloModelOptions.fields.reasoningEffort),
+});
+
 const ModelSelectionPatch = Schema.Union([
   Schema.Struct({
     provider: Schema.optionalKey(Schema.Literal("codex")),
     model: Schema.optionalKey(TrimmedNonEmptyString),
-    options: Schema.optionalKey(ProviderOptionSelections),
+    options: Schema.optionalKey(CodexModelOptionsPatch),
   }),
   Schema.Struct({
     provider: Schema.optionalKey(Schema.Literal("claudeAgent")),
     model: Schema.optionalKey(TrimmedNonEmptyString),
-    options: Schema.optionalKey(ProviderOptionSelections),
+    options: Schema.optionalKey(ClaudeModelOptionsPatch),
+  }),
+  Schema.Struct({
+    provider: Schema.optionalKey(Schema.Literal("copilot")),
+    model: Schema.optionalKey(TrimmedNonEmptyString),
+    options: Schema.optionalKey(CopilotModelOptionsPatch),
   }),
   Schema.Struct({
     provider: Schema.optionalKey(Schema.Literal("cursor")),
     model: Schema.optionalKey(TrimmedNonEmptyString),
-    options: Schema.optionalKey(ProviderOptionSelections),
+    options: Schema.optionalKey(CursorModelOptionsPatch),
   }),
   Schema.Struct({
     provider: Schema.optionalKey(Schema.Literal("opencode")),
     model: Schema.optionalKey(TrimmedNonEmptyString),
-    options: Schema.optionalKey(ProviderOptionSelections),
+    options: Schema.optionalKey(OpencodeModelOptionsPatch),
+  }),
+  Schema.Struct({
+    provider: Schema.optionalKey(Schema.Literal("geminiCli")),
+    model: Schema.optionalKey(TrimmedNonEmptyString),
+    options: Schema.optionalKey(GeminiCliModelOptionsPatch),
+  }),
+  Schema.Struct({
+    provider: Schema.optionalKey(Schema.Literal("amp")),
+    model: Schema.optionalKey(TrimmedNonEmptyString),
+    options: Schema.optionalKey(AmpModelOptionsPatch),
+  }),
+  Schema.Struct({
+    provider: Schema.optionalKey(Schema.Literal("kilo")),
+    model: Schema.optionalKey(TrimmedNonEmptyString),
+    options: Schema.optionalKey(KiloModelOptionsPatch),
   }),
 ]);
 
@@ -202,6 +282,13 @@ const ClaudeSettingsPatch = Schema.Struct({
   binaryPath: Schema.optionalKey(Schema.String),
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
   launchArgs: Schema.optionalKey(Schema.String),
+});
+
+const GenericProviderSettingsPatch = Schema.Struct({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  binaryPath: Schema.optionalKey(Schema.String),
+  configDir: Schema.optionalKey(Schema.String),
+  customModels: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
 const CursorSettingsPatch = Schema.Struct({
@@ -235,8 +322,12 @@ export const ServerSettingsPatch = Schema.Struct({
     Schema.Struct({
       codex: Schema.optionalKey(CodexSettingsPatch),
       claudeAgent: Schema.optionalKey(ClaudeSettingsPatch),
+      copilot: Schema.optionalKey(GenericProviderSettingsPatch),
       cursor: Schema.optionalKey(CursorSettingsPatch),
       opencode: Schema.optionalKey(OpenCodeSettingsPatch),
+      geminiCli: Schema.optionalKey(GenericProviderSettingsPatch),
+      amp: Schema.optionalKey(GenericProviderSettingsPatch),
+      kilo: Schema.optionalKey(GenericProviderSettingsPatch),
     }),
   ),
 });

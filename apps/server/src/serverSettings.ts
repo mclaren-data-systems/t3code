@@ -39,7 +39,6 @@ import {
   Cause,
 } from "effect";
 import * as Semaphore from "effect/Semaphore";
-import { writeFileStringAtomically } from "./atomicWrite.ts";
 import { ServerConfig } from "./config.ts";
 import { type DeepPartial, deepMerge } from "@t3tools/shared/Struct";
 import { fromLenientJson } from "@t3tools/shared/schemaJson";
@@ -106,7 +105,16 @@ export class ServerSettingsService extends Context.Service<
 
 const ServerSettingsJson = fromLenientJson(ServerSettings);
 
-const PROVIDER_ORDER: readonly ProviderKind[] = ["codex", "claudeAgent", "opencode", "cursor"];
+const PROVIDER_ORDER: readonly ProviderKind[] = [
+  "codex",
+  "claudeAgent",
+  "copilot",
+  "cursor",
+  "opencode",
+  "geminiCli",
+  "amp",
+  "kilo",
+];
 
 /**
  * Ensure the `textGenerationModelSelection` points to an enabled provider.
@@ -234,14 +242,14 @@ const makeServerSettings = Effect.gen(function* () {
   const getSettingsFromCache = Cache.get(settingsCache, cacheKey);
 
   const writeSettingsAtomically = (settings: ServerSettings) => {
+    const tempPath = `${settingsPath}.${process.pid}.${Date.now()}.tmp`;
     const sparseSettings = stripDefaultServerSettings(settings, DEFAULT_SERVER_SETTINGS) ?? {};
 
-    return writeFileStringAtomically({
-      filePath: settingsPath,
-      contents: `${JSON.stringify(sparseSettings, null, 2)}\n`,
-    }).pipe(
-      Effect.provideService(FileSystem.FileSystem, fs),
-      Effect.provideService(Path.Path, pathService),
+    return Effect.succeed(`${JSON.stringify(sparseSettings, null, 2)}\n`).pipe(
+      Effect.tap(() => fs.makeDirectory(pathService.dirname(settingsPath), { recursive: true })),
+      Effect.tap((encoded) => fs.writeFileString(tempPath, encoded)),
+      Effect.flatMap(() => fs.rename(tempPath, settingsPath)),
+      Effect.ensuring(fs.remove(tempPath, { force: true }).pipe(Effect.ignore({ log: true }))),
       Effect.mapError(
         (cause) =>
           new ServerSettingsError({

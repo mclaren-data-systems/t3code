@@ -13,7 +13,6 @@ import {
 } from "@t3tools/contracts";
 import { Cause, Effect, Exit, Layer, Queue, Ref, Scope, Stream } from "effect";
 import type { OpencodeClient, Part, PermissionRequest, QuestionRequest } from "@opencode-ai/sdk/v2";
-import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
@@ -27,6 +26,7 @@ import {
   ProviderAdapterValidationError,
 } from "../Errors.ts";
 import { OpenCodeAdapter, type OpenCodeAdapterShape } from "../Services/OpenCodeAdapter.ts";
+import { getProviderCapabilities } from "../Services/ProviderAdapter.ts";
 import {
   buildOpenCodePermissionRules,
   OpenCodeRuntime,
@@ -1147,11 +1147,11 @@ export function makeOpenCodeAdapterLive(options?: OpenCodeAdapterLiveOptions) {
 
         const agent =
           input.modelSelection?.provider === PROVIDER
-            ? getModelSelectionStringOptionValue(input.modelSelection, "agent")
+            ? input.modelSelection.options?.agent
             : undefined;
         const variant =
           input.modelSelection?.provider === PROVIDER
-            ? getModelSelectionStringOptionValue(input.modelSelection, "variant")
+            ? input.modelSelection.options?.variant
             : undefined;
 
         context.activeTurnId = turnId;
@@ -1364,9 +1364,7 @@ export function makeOpenCodeAdapterLive(options?: OpenCodeAdapterLiveOptions) {
 
       return {
         provider: PROVIDER,
-        capabilities: {
-          sessionModelSwitch: "in-session",
-        },
+        capabilities: getProviderCapabilities(PROVIDER),
         startSession,
         sendTurn,
         interruptTurn,

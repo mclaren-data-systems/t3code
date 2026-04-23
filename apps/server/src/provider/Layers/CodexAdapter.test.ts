@@ -14,7 +14,6 @@ import {
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
-import { createModelSelection } from "@t3tools/shared/model";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it, vi } from "@effect/vitest";
 
@@ -32,7 +31,7 @@ import {
   type CodexSessionRuntimeShape,
   type CodexThreadSnapshot,
 } from "./CodexSessionRuntime.ts";
-import { makeCodexAdapterLive } from "./CodexAdapter.ts";
+import { fetchCodexUsage, makeCodexAdapterLive } from "./CodexAdapter.ts";
 
 const asThreadId = (value: string): ThreadId => ThreadId.make(value);
 const asTurnId = (value: string): TurnId => TurnId.make(value);
@@ -235,6 +234,7 @@ validationLayer("CodexAdapterLive validation", (it) => {
       assert.equal(validationRuntimeFactory.factory.mock.calls.length, 0);
     }),
   );
+
   it.effect("maps codex model options before starting a session", () =>
     Effect.gen(function* () {
       validationRuntimeFactory.factory.mockClear();
@@ -243,9 +243,13 @@ validationLayer("CodexAdapterLive validation", (it) => {
       yield* adapter.startSession({
         provider: "codex",
         threadId: asThreadId("thread-1"),
-        modelSelection: createModelSelection("codex", "gpt-5.3-codex", [
-          { id: "fastMode", value: true },
-        ]),
+        modelSelection: {
+          provider: "codex",
+          model: "gpt-5.3-codex",
+          options: {
+            fastMode: true,
+          },
+        },
         runtimeMode: "full-access",
       });
 
@@ -257,6 +261,15 @@ validationLayer("CodexAdapterLive validation", (it) => {
         threadId: asThreadId("thread-1"),
         runtimeMode: "full-access",
       });
+    }),
+  );
+
+  it.effect("fetchCodexUsage returns empty usage after manager removal", () =>
+    Effect.gen(function* () {
+      const usage = yield* Effect.promise(() => fetchCodexUsage());
+      assert.equal(usage.provider, "codex");
+      assert.equal(usage.quota, undefined);
+      assert.equal(usage.quotas, undefined);
     }),
   );
 });
@@ -306,10 +319,14 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
         adapter.sendTurn({
           threadId: asThreadId("sess-missing"),
           input: "hello",
-          modelSelection: createModelSelection("codex", "gpt-5.3-codex", [
-            { id: "reasoningEffort", value: "high" },
-            { id: "fastMode", value: true },
-          ]),
+          modelSelection: {
+            provider: "codex",
+            model: "gpt-5.3-codex",
+            options: {
+              reasoningEffort: "high",
+              fastMode: true,
+            },
+          },
           attachments: [],
         }),
       );
@@ -1013,7 +1030,7 @@ it.effect("flushes managed native logs when the adapter layer shuts down", () =>
       const threadLogPath = path.join(tempDir, "thread-logger.log");
       assert.equal(fs.existsSync(threadLogPath), true);
       const contents = fs.readFileSync(threadLogPath, "utf8");
-      assert.match(contents, /NTIVE: .*"message":"native flush test"/);
+      assert.match(contents, /NATIVE: .*"message":"native flush test"/);
     } finally {
       if (!scopeClosed) {
         yield* Scope.close(scope, Exit.void);

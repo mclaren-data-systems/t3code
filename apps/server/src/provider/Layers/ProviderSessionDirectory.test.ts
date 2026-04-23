@@ -265,4 +265,65 @@ it.layer(makeDirectoryLayer(SqlitePersistenceMemory))("ProviderSessionDirectoryL
 
       fs.rmSync(tempDir, { recursive: true, force: true });
     }));
+
+  it("accepts cursor provider bindings", () =>
+    Effect.gen(function* () {
+      const directory = yield* ProviderSessionDirectory;
+      const threadId = ThreadId.make("thread-cursor");
+
+      yield* directory.upsert({
+        provider: "cursor",
+        threadId,
+      });
+
+      const provider = yield* directory.getProvider(threadId);
+      assert.equal(provider, "cursor");
+      const resolvedBinding = yield* directory.getBinding(threadId);
+      assertSome(resolvedBinding, {
+        threadId,
+        provider: "cursor",
+      });
+      if (Option.isSome(resolvedBinding)) {
+        assert.equal(resolvedBinding.value.threadId, threadId);
+      }
+    }));
+
+  it("normalizes legacy gemini provider bindings on read", () =>
+    Effect.gen(function* () {
+      const directory = yield* ProviderSessionDirectory;
+      const sql = yield* SqlClient.SqlClient;
+      const threadId = ThreadId.make("thread-gemini-legacy");
+
+      yield* sql`
+        INSERT INTO provider_session_runtime (
+          thread_id,
+          provider_name,
+          adapter_key,
+          runtime_mode,
+          status,
+          last_seen_at,
+          resume_cursor_json,
+          runtime_payload_json
+        )
+        VALUES (
+          ${threadId},
+          ${"gemini"},
+          ${"gemini"},
+          ${"full-access"},
+          ${"running"},
+          ${new Date().toISOString()},
+          ${null},
+          ${null}
+        )
+      `;
+
+      const provider = yield* directory.getProvider(threadId);
+      assert.equal(provider, "geminiCli");
+
+      const binding = yield* directory.getBinding(threadId);
+      assertSome(binding, {
+        threadId,
+        provider: "geminiCli",
+      });
+    }));
 });

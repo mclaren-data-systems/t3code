@@ -273,6 +273,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
           deleted_at AS "deletedAt"
         FROM projection_threads
+        WHERE json_extract(model_selection_json, '$.provider') IN ('codex','copilot','claudeAgent','cursor','opencode','geminiCli','amp','kilo')
         ORDER BY created_at ASC, thread_id ASC
       `,
   });

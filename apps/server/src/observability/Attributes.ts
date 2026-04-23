@@ -9,7 +9,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function markSeen(value: object, seen: WeakSet<object>): boolean {
+function markSeen(value: object, seen: Set<object>): boolean {
   if (seen.has(value)) {
     return true;
   }
@@ -17,7 +17,7 @@ function markSeen(value: object, seen: WeakSet<object>): boolean {
   return false;
 }
 
-function normalizeJsonValue(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
+function normalizeJsonValue(value: unknown, seen: Set<object> = new Set()): unknown {
   if (
     value === null ||
     value === undefined ||
@@ -44,24 +44,30 @@ function normalizeJsonValue(value: unknown, seen: WeakSet<object> = new WeakSet(
     if (markSeen(value, seen)) {
       return "[Circular]";
     }
-    return value.map((entry) => normalizeJsonValue(entry, seen));
+    const result = value.map((entry) => normalizeJsonValue(entry, seen));
+    seen.delete(value);
+    return result;
   }
   if (value instanceof Map) {
     if (markSeen(value, seen)) {
       return "[Circular]";
     }
-    return Object.fromEntries(
+    const result = Object.fromEntries(
       Array.from(value.entries(), ([key, entryValue]) => [
         String(key),
         normalizeJsonValue(entryValue, seen),
       ]),
     );
+    seen.delete(value);
+    return result;
   }
   if (value instanceof Set) {
     if (markSeen(value, seen)) {
       return "[Circular]";
     }
-    return Array.from(value.values(), (entry) => normalizeJsonValue(entry, seen));
+    const result = Array.from(value.values(), (entry) => normalizeJsonValue(entry, seen));
+    seen.delete(value);
+    return result;
   }
   if (!isPlainObject(value)) {
     return String(value);
@@ -69,9 +75,11 @@ function normalizeJsonValue(value: unknown, seen: WeakSet<object> = new WeakSet(
   if (markSeen(value, seen)) {
     return "[Circular]";
   }
-  return Object.fromEntries(
+  const result = Object.fromEntries(
     Object.entries(value).map(([key, entryValue]) => [key, normalizeJsonValue(entryValue, seen)]),
   );
+  seen.delete(value);
+  return result;
 }
 
 export function compactTraceAttributes(

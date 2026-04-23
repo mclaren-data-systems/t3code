@@ -96,6 +96,7 @@ describe("MessagesTimeline", () => {
               label: "thinking",
               detail: "Inspecting repository state",
               tone: "thinking",
+              activityKind: "task.progress",
             },
           },
         ]}
@@ -143,6 +144,7 @@ describe("MessagesTimeline", () => {
                 label: "thinking",
                 detail: "Inspecting repository state",
                 tone: "thinking",
+                activityKind: "task.progress",
               },
             },
           ]}

@@ -1,6 +1,6 @@
 # Architecture
 
-T3 Code runs as a **Node.js WebSocket server** that wraps `codex app-server` (JSON-RPC over stdio) and serves a React web app.
+T3 Code runs as a **Node.js WebSocket server** that serves a React web app and coordinates one of several provider runtimes/adapters (e.g. Codex, OpenCode, Copilot, Amp, GeminiCli, Claude) over provider-specific transport boundaries.
 
 ```
 ┌─────────────────────────────────┐
@@ -19,9 +19,10 @@ T3 Code runs as a **Node.js WebSocket server** that wraps `codex app-server` (JS
 │  CheckpointReactor              │
 │  RuntimeReceiptBus              │
 └──────────┬──────────────────────┘
-           │ JSON-RPC over stdio
+           │ Provider-specific transport
 ┌──────────▼──────────────────────┐
-│  codex app-server               │
+│  Provider runtime / adapter     │
+│  (e.g. Codex via JSON-RPC)      │
 └─────────────────────────────────┘
 ```
 
@@ -31,7 +32,7 @@ T3 Code runs as a **Node.js WebSocket server** that wraps `codex app-server` (JS
 
 - **Server**: `apps/server` is the main coordinator. It serves the web app, accepts WebSocket requests, waits for startup readiness before welcoming clients, and sends all outbound pushes through a single ordered push path.
 
-- **Provider runtime**: `codex app-server` does the actual provider/session work. The server talks to it over JSON-RPC on stdio and translates those runtime events into the app's orchestration model.
+- **Provider runtime**: A provider-specific runtime/adapter does the actual provider/session work. The server talks to it through the appropriate transport boundary (e.g. JSON-RPC over stdio for Codex) and translates those runtime events into the app's orchestration model.
 
 - **Background workers**: Long-running async flows such as runtime ingestion, command reaction, and checkpoint processing run as queue-backed workers. This keeps work ordered, reduces timing races, and gives tests a deterministic way to wait for the system to go idle.
 
@@ -86,16 +87,16 @@ sequenceDiagram
     Codex-->>Ingest: Provider runtime events
     Ingest->>Engine: Normalize into orchestration events
     Engine-->>Server: Domain events
-    Server->>Push: Publish orchestration.domainEvent
+    Server->>Push: Publish on terminal.event / server.configUpdated
     Push-->>Browser: Typed push
 ```
 
 1. A user action in the browser becomes a typed request through [`WsTransport`][1] and the browser API layer in [`nativeApi`][12].
 2. [`wsServer`][3] decodes that request using the shared WebSocket contracts in [`ws.ts`][6] and routes it to the right service.
-3. [`ProviderService`][8] starts or resumes a session and talks to `codex app-server` over JSON-RPC on stdio.
+3. [`ProviderService`][8] starts or resumes a session and talks to the selected provider runtime/adapter using its transport boundary (e.g. JSON-RPC over stdio for Codex).
 4. Provider-native events are pulled back into the server by [`ProviderRuntimeIngestion`][9], which converts them into orchestration events.
 5. [`OrchestrationEngine`][10] persists those events, updates the read model, and exposes them as domain events.
-6. [`wsServer`][3] pushes those updates to the browser through [`ServerPushBus`][5] on channels defined in [`orchestration.ts`][11].
+6. [`wsServer`][3] pushes those updates to the browser through [`ServerPushBus`][5] on channels defined in [`ws.ts`][6] (`terminal.event`, `server.welcome`, `server.configUpdated`).
 
 ### Async completion flow
 
@@ -135,7 +136,6 @@ sequenceDiagram
 [8]: ../apps/server/src/provider/Layers/ProviderService.ts
 [9]: ../apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts
 [10]: ../apps/server/src/orchestration/Layers/OrchestrationEngine.ts
-[11]: ../packages/contracts/src/orchestration.ts
 [12]: ../apps/web/src/nativeApi.ts
 [13]: ../apps/server/src/orchestration/Layers/ProviderCommandReactor.ts
 [14]: ../apps/server/src/orchestration/Layers/CheckpointReactor.ts

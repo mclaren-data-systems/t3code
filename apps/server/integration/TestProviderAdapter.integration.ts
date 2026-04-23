@@ -24,6 +24,7 @@ import type {
   ProviderThreadSnapshot,
   ProviderThreadTurnSnapshot,
 } from "../src/provider/Services/ProviderAdapter.ts";
+import { getProviderCapabilities } from "../src/provider/Services/ProviderAdapter.ts";
 
 export interface TestTurnResponse {
   readonly events: ReadonlyArray<FixtureProviderRuntimeEvent>;
@@ -474,9 +475,7 @@ export const makeTestProviderAdapterHarness = (options?: MakeTestProviderAdapter
 
     const adapter: ProviderAdapterShape<ProviderAdapterError> = {
       provider,
-      capabilities: {
-        sessionModelSwitch: "in-session",
-      },
+      capabilities: getProviderCapabilities(provider),
       startSession,
       sendTurn,
       interruptTurn,

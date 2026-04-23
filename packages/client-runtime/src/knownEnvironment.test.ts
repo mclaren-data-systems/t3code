@@ -1,7 +1,11 @@
 import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vitest";
 
-import { createKnownEnvironment, getKnownEnvironmentHttpBaseUrl } from "./knownEnvironment.ts";
+import {
+  createKnownEnvironment,
+  createKnownEnvironmentFromWsUrl,
+  getKnownEnvironmentHttpBaseUrl,
+} from "./knownEnvironment.ts";
 import {
   parseScopedProjectKey,
   parseScopedThreadKey,
@@ -29,6 +33,23 @@ describe("known environment bootstrap helpers", () => {
       target: {
         httpBaseUrl: "https://remote.example.com",
         wsBaseUrl: "wss://remote.example.com",
+      },
+    });
+  });
+
+  it("creates known environments from explicit ws urls", () => {
+    expect(
+      createKnownEnvironmentFromWsUrl({
+        label: "Remote environment",
+        wsUrl: "wss://remote.example.com/ws",
+      }),
+    ).toEqual({
+      id: "ws:Remote environment",
+      label: "Remote environment",
+      source: "manual",
+      target: {
+        httpBaseUrl: "https://remote.example.com/ws",
+        wsBaseUrl: "wss://remote.example.com/ws",
       },
     });
   });

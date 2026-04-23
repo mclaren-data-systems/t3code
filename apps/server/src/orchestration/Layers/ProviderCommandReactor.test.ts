@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 
 import type { ModelSelection, ProviderRuntimeEvent, ProviderSession } from "@t3tools/contracts";
-import { createModelSelection } from "@t3tools/shared/model";
 import {
   ApprovalRequestId,
   CommandId,
@@ -32,7 +31,11 @@ import {
   GitStatusBroadcaster,
   type GitStatusBroadcasterShape,
 } from "../../git/Services/GitStatusBroadcaster.ts";
-import { TextGeneration, type TextGenerationShape } from "../../git/Services/TextGeneration.ts";
+import {
+  TextGeneration,
+  type TextGenerationShape,
+  type ThreadTitleGenerationResult,
+} from "../../git/Services/TextGeneration.ts";
 import { RepositoryIdentityResolverLive } from "../../project/Layers/RepositoryIdentityResolver.ts";
 import { OrchestrationEngineLive } from "./OrchestrationEngine.ts";
 import { OrchestrationProjectionPipelineLive } from "./ProjectionPipeline.ts";
@@ -208,13 +211,14 @@ describe("ProviderCommandReactor", () => {
         }),
       ),
     );
-    const generateThreadTitle = vi.fn<TextGenerationShape["generateThreadTitle"]>((_) =>
-      Effect.fail(
-        new TextGenerationError({
-          operation: "generateThreadTitle",
-          detail: "disabled in test harness",
-        }),
-      ),
+    const generateThreadTitle = vi.fn(
+      (_input?: unknown): Effect.Effect<ThreadTitleGenerationResult, TextGenerationError> =>
+        Effect.fail(
+          new TextGenerationError({
+            operation: "generateThreadTitle",
+            detail: "disabled in test harness",
+          }),
+        ),
     );
 
     const unsupported = () => Effect.die(new Error("Unsupported provider call in test")) as never;
@@ -229,6 +233,13 @@ describe("ProviderCommandReactor", () => {
       getCapabilities: (_provider) =>
         Effect.succeed({
           sessionModelSwitch: input?.sessionModelSwitch ?? "in-session",
+          transport: "app-server-json-rpc" as const,
+          modelDiscovery: "native" as const,
+          supportsModelDiscovery: true,
+          supportsResume: true,
+          supportsRollback: true,
+          supportsAttachments: true,
+          persistentRuntime: true,
         }),
       rollbackConversation: () => unsupported(),
       get streamEvents() {
@@ -261,7 +272,7 @@ describe("ProviderCommandReactor", () => {
         Layer.mock(TextGeneration, {
           generateBranchName,
           generateThreadTitle,
-        }),
+        } as unknown as TextGenerationShape),
       ),
       Layer.provideMerge(ServerSettingsService.layerTest()),
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), baseDir)),
@@ -568,10 +579,14 @@ describe("ProviderCommandReactor", () => {
           text: "hello fast mode",
           attachments: [],
         },
-        modelSelection: createModelSelection("codex", "gpt-5.3-codex", [
-          { id: "reasoningEffort", value: "high" },
-          { id: "fastMode", value: true },
-        ]),
+        modelSelection: {
+          provider: "codex",
+          model: "gpt-5.3-codex",
+          options: {
+            reasoningEffort: "high",
+            fastMode: true,
+          },
+        },
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
         runtimeMode: "approval-required",
         createdAt: now,
@@ -581,17 +596,25 @@ describe("ProviderCommandReactor", () => {
     await waitFor(() => harness.startSession.mock.calls.length === 1);
     await waitFor(() => harness.sendTurn.mock.calls.length === 1);
     expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({
-      modelSelection: createModelSelection("codex", "gpt-5.3-codex", [
-        { id: "reasoningEffort", value: "high" },
-        { id: "fastMode", value: true },
-      ]),
+      modelSelection: {
+        provider: "codex",
+        model: "gpt-5.3-codex",
+        options: {
+          reasoningEffort: "high",
+          fastMode: true,
+        },
+      },
     });
     expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
       threadId: ThreadId.make("thread-1"),
-      modelSelection: createModelSelection("codex", "gpt-5.3-codex", [
-        { id: "reasoningEffort", value: "high" },
-        { id: "fastMode", value: true },
-      ]),
+      modelSelection: {
+        provider: "codex",
+        model: "gpt-5.3-codex",
+        options: {
+          reasoningEffort: "high",
+          fastMode: true,
+        },
+      },
     });
   });
 
@@ -612,9 +635,13 @@ describe("ProviderCommandReactor", () => {
           text: "hello with effort",
           attachments: [],
         },
-        modelSelection: createModelSelection("claudeAgent", "claude-sonnet-4-6", [
-          { id: "effort", value: "max" },
-        ]),
+        modelSelection: {
+          provider: "claudeAgent",
+          model: "claude-sonnet-4-6",
+          options: {
+            effort: "max",
+          },
+        },
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
         runtimeMode: "approval-required",
         createdAt: now,
@@ -624,15 +651,23 @@ describe("ProviderCommandReactor", () => {
     await waitFor(() => harness.startSession.mock.calls.length === 1);
     await waitFor(() => harness.sendTurn.mock.calls.length === 1);
     expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({
-      modelSelection: createModelSelection("claudeAgent", "claude-sonnet-4-6", [
-        { id: "effort", value: "max" },
-      ]),
+      modelSelection: {
+        provider: "claudeAgent",
+        model: "claude-sonnet-4-6",
+        options: {
+          effort: "max",
+        },
+      },
     });
     expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
       threadId: ThreadId.make("thread-1"),
-      modelSelection: createModelSelection("claudeAgent", "claude-sonnet-4-6", [
-        { id: "effort", value: "max" },
-      ]),
+      modelSelection: {
+        provider: "claudeAgent",
+        model: "claude-sonnet-4-6",
+        options: {
+          effort: "max",
+        },
+      },
     });
   });
 
@@ -653,9 +688,13 @@ describe("ProviderCommandReactor", () => {
           text: "hello with fast mode",
           attachments: [],
         },
-        modelSelection: createModelSelection("claudeAgent", "claude-opus-4-6", [
-          { id: "fastMode", value: true },
-        ]),
+        modelSelection: {
+          provider: "claudeAgent",
+          model: "claude-opus-4-6",
+          options: {
+            fastMode: true,
+          },
+        },
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
         runtimeMode: "approval-required",
         createdAt: now,
@@ -665,15 +704,23 @@ describe("ProviderCommandReactor", () => {
     await waitFor(() => harness.startSession.mock.calls.length === 1);
     await waitFor(() => harness.sendTurn.mock.calls.length === 1);
     expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({
-      modelSelection: createModelSelection("claudeAgent", "claude-opus-4-6", [
-        { id: "fastMode", value: true },
-      ]),
+      modelSelection: {
+        provider: "claudeAgent",
+        model: "claude-opus-4-6",
+        options: {
+          fastMode: true,
+        },
+      },
     });
     expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
       threadId: ThreadId.make("thread-1"),
-      modelSelection: createModelSelection("claudeAgent", "claude-opus-4-6", [
-        { id: "fastMode", value: true },
-      ]),
+      modelSelection: {
+        provider: "claudeAgent",
+        model: "claude-opus-4-6",
+        options: {
+          fastMode: true,
+        },
+      },
     });
   });
 
@@ -881,9 +928,13 @@ describe("ProviderCommandReactor", () => {
           text: "first claude turn",
           attachments: [],
         },
-        modelSelection: createModelSelection("claudeAgent", "claude-sonnet-4-6", [
-          { id: "effort", value: "medium" },
-        ]),
+        modelSelection: {
+          provider: "claudeAgent",
+          model: "claude-sonnet-4-6",
+          options: {
+            effort: "medium",
+          },
+        },
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
         runtimeMode: "approval-required",
         createdAt: now,
@@ -904,9 +955,13 @@ describe("ProviderCommandReactor", () => {
           text: "second claude turn",
           attachments: [],
         },
-        modelSelection: createModelSelection("claudeAgent", "claude-sonnet-4-6", [
-          { id: "effort", value: "max" },
-        ]),
+        modelSelection: {
+          provider: "claudeAgent",
+          model: "claude-sonnet-4-6",
+          options: {
+            effort: "max",
+          },
+        },
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
         runtimeMode: "approval-required",
         createdAt: now,
@@ -917,9 +972,13 @@ describe("ProviderCommandReactor", () => {
     await waitFor(() => harness.sendTurn.mock.calls.length === 2);
     expect(harness.startSession.mock.calls[1]?.[1]).toMatchObject({
       resumeCursor: { opaque: "resume-1" },
-      modelSelection: createModelSelection("claudeAgent", "claude-sonnet-4-6", [
-        { id: "effort", value: "max" },
-      ]),
+      modelSelection: {
+        provider: "claudeAgent",
+        model: "claude-sonnet-4-6",
+        options: {
+          effort: "max",
+        },
+      },
     });
   });
 
@@ -1180,10 +1239,10 @@ describe("ProviderCommandReactor", () => {
     const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
     expect(thread?.session?.threadId).toBe("thread-1");
     expect(thread?.session?.providerName).toBe("codex");
-    expect(thread?.session?.runtimeMode).toBe("approval-required");
     expect(
       thread?.activities.find((activity) => activity.kind === "provider.turn.start.failed"),
     ).toMatchObject({
+      summary: "Provider turn start failed",
       payload: {
         detail: expect.stringContaining("cannot switch to 'claudeAgent'"),
       },
@@ -1375,7 +1434,7 @@ describe("ProviderCommandReactor", () => {
     harness.respondToRequest.mockImplementation(() =>
       Effect.fail(
         new ProviderAdapterRequestError({
-          provider: "codex",
+          provider: "cursor",
           method: "session/request_permission",
           detail: "Unknown pending permission request: approval-request-1",
         }),
@@ -1390,7 +1449,7 @@ describe("ProviderCommandReactor", () => {
         session: {
           threadId: ThreadId.make("thread-1"),
           status: "running",
-          providerName: "codex",
+          providerName: "cursor",
           runtimeMode: "approval-required",
           activeTurnId: null,
           lastError: null,

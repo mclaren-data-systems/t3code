@@ -46,13 +46,13 @@ function updateThread(
 }
 
 function decodeForEvent<A>(
-  schema: Schema.Schema<A>,
+  schema: Schema.Schema<A> & { readonly DecodingServices: never },
   value: unknown,
   eventType: OrchestrationEvent["type"],
   field: string,
 ): Effect.Effect<A, OrchestrationProjectorDecodeError> {
   return Effect.try({
-    try: () => Schema.decodeUnknownSync(schema as any)(value),
+    try: () => Schema.decodeUnknownSync(schema as never)(value) as A,
     catch: (error) => toProjectorDecodeError(`${eventType}:${field}`)(error as Schema.SchemaError),
   });
 }
@@ -461,7 +461,22 @@ export function projectEvent(
                         ? thread.latestTurn.assistantMessageId
                         : null,
                   }
-                : thread.latestTurn,
+                : // When session leaves "running", settle the latest turn
+                  // so providers without checkpoints (e.g. Copilot) still
+                  // mark the turn as completed.
+                  thread.latestTurn !== null &&
+                    thread.latestTurn.completedAt === null &&
+                    session.status !== "starting"
+                  ? {
+                      ...thread.latestTurn,
+                      state:
+                        session.status === "error" ? ("error" as const) : ("completed" as const),
+                      completedAt: event.occurredAt,
+                      ...("turnUsage" in payload && (payload as Record<string, unknown>).turnUsage
+                        ? { usage: (payload as Record<string, unknown>).turnUsage }
+                        : {}),
+                    }
+                  : thread.latestTurn,
             updatedAt: event.occurredAt,
           }),
         };

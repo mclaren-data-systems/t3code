@@ -3,6 +3,7 @@ import { createRef } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { LegendListRef } from "@legendapp/list/react";
+import { formatFullTimestamp } from "../../timestampFormat";
 
 vi.mock("@legendapp/list/react", async () => {
   const React = await import("react");
@@ -40,6 +41,12 @@ function matchMedia() {
 }
 
 beforeAll(() => {
+  const localStorage = {
+    getItem: () => null,
+    setItem: () => {},
+    removeItem: () => {},
+    clear: () => {},
+  };
   const classList = {
     add: () => {},
     remove: () => {},
@@ -47,12 +54,7 @@ beforeAll(() => {
     contains: () => false,
   };
 
-  vi.stubGlobal("localStorage", {
-    getItem: () => null,
-    setItem: () => {},
-    removeItem: () => {},
-    clear: () => {},
-  });
+  vi.stubGlobal("localStorage", localStorage);
   vi.stubGlobal("window", {
     matchMedia,
     addEventListener: () => {},
@@ -63,6 +65,7 @@ beforeAll(() => {
     },
     cancelAnimationFrame: () => {},
     desktopBridge: undefined,
+    localStorage,
   });
   vi.stubGlobal("document", {
     documentElement: {
@@ -150,6 +153,7 @@ describe("MessagesTimeline", () => {
               createdAt: "2026-03-17T19:12:28.000Z",
               label: "Context compacted",
               tone: "info",
+              activityKind: "context.compacted",
             },
           },
         ]}
@@ -176,6 +180,7 @@ describe("MessagesTimeline", () => {
               label: "Updated files",
               tone: "tool",
               changedFiles: ["C:/Users/mike/dev-stuff/t3code/apps/web/src/session-logic.ts"],
+              activityKind: "tool.completed",
             },
           },
         ]}
@@ -185,5 +190,48 @@ describe("MessagesTimeline", () => {
 
     expect(markup).toContain("t3code/apps/web/src/session-logic.ts");
     expect(markup).not.toContain("C:/Users/mike/dev-stuff/t3code/apps/web/src/session-logic.ts");
+  });
+
+  it("shows full absolute dates when hovering chat timestamps", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const userCreatedAt = "2026-03-17T19:12:28.000Z";
+    const assistantCreatedAt = "2026-03-17T19:12:32.000Z";
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            id: "entry-1",
+            kind: "message",
+            createdAt: userCreatedAt,
+            message: {
+              id: MessageId.make("message-1"),
+              role: "user",
+              text: "When did this run?",
+              createdAt: userCreatedAt,
+              streaming: false,
+            },
+          },
+          {
+            id: "entry-2",
+            kind: "message",
+            createdAt: assistantCreatedAt,
+            message: {
+              id: MessageId.make("message-2"),
+              role: "assistant",
+              text: "Just now.",
+              createdAt: assistantCreatedAt,
+              completedAt: "2026-03-17T19:12:40.000Z",
+              streaming: false,
+            },
+          },
+        ]}
+      />,
+    );
+
+    const userTitle = `title="${formatFullTimestamp(userCreatedAt)}"`;
+    const assistantTitle = `title="${formatFullTimestamp(assistantCreatedAt)}"`;
+    expect(markup).toContain(userTitle);
+    expect(markup).toContain(assistantTitle);
   });
 });

@@ -30,10 +30,6 @@ import {
   toJsonSchemaObject,
 } from "../Utils.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
-import {
-  getModelSelectionBooleanOptionValue,
-  getModelSelectionStringOptionValue,
-} from "@t3tools/shared/model";
 
 const CODEX_GIT_TEXT_GENERATION_REASONING_EFFORT = "low";
 const CODEX_TIMEOUT_MS = 180_000;
@@ -159,8 +155,7 @@ const makeCodexTextGeneration = Effect.gen(function* () {
 
     const runCodexCommand = Effect.fn("runCodexJson.runCodexCommand")(function* () {
       const reasoningEffort =
-        getModelSelectionStringOptionValue(modelSelection, "reasoningEffort") ??
-        CODEX_GIT_TEXT_GENERATION_REASONING_EFFORT;
+        modelSelection.options?.reasoningEffort ?? CODEX_GIT_TEXT_GENERATION_REASONING_EFFORT;
       const command = ChildProcess.make(
         codexSettings?.binaryPath || "codex",
         [
@@ -173,9 +168,7 @@ const makeCodexTextGeneration = Effect.gen(function* () {
           modelSelection.model,
           "--config",
           `model_reasoning_effort="${reasoningEffort}"`,
-          ...(getModelSelectionBooleanOptionValue(modelSelection, "fastMode") === true
-            ? ["--config", `service_tier="fast"`]
-            : []),
+          ...(modelSelection.options?.fastMode ? ["--config", `service_tier="fast"`] : []),
           "--output-schema",
           schemaPath,
           "--output-last-message",

@@ -7,17 +7,19 @@
  * @module Open
  */
 import { spawn } from "node:child_process";
+import { existsSync, statSync } from "node:fs";
+import os from "node:os";
+import { dirname } from "node:path";
 
 import { EDITORS, OpenError, type EditorId } from "@t3tools/contracts";
-import { isCommandAvailable, type CommandAvailabilityOptions } from "@t3tools/shared/shell";
 import { Context, Effect, Layer } from "effect";
+import { isCommandAvailable, type CommandAvailabilityOptions } from "./commandPath.ts";
 
 // ==============================
 // Definitions
 // ==============================
 
 export { OpenError };
-export { isCommandAvailable } from "@t3tools/shared/shell";
 
 export interface OpenInEditorInput {
   readonly cwd: string;
@@ -78,6 +80,56 @@ function resolveEditorArgs(
   return [...baseArgs, ...resolveCommandEditorArgs(editor, target)];
 }
 
+/** Editors that are terminals requiring --working-directory instead of a positional path arg. */
+const WORKING_DIRECTORY_EDITORS = new Set<EditorId>(["ghostty"]);
+
+const LINE_COLUMN_SUFFIX_PATTERN = /:\d+(?::\d+)?$/;
+
+function stripLineColumnSuffix(target: string): string {
+  return target.replace(LINE_COLUMN_SUFFIX_PATTERN, "");
+}
+
+function resolveWorkingDirectoryTarget(target: string): string {
+  const normalizedTarget = stripLineColumnSuffix(target);
+
+  try {
+    const stats = statSync(normalizedTarget);
+    return stats.isDirectory() ? normalizedTarget : dirname(normalizedTarget);
+  } catch {
+    if (normalizedTarget !== target) {
+      return dirname(normalizedTarget);
+    }
+    return normalizedTarget;
+  }
+}
+
+/**
+ * Map of editor IDs to their macOS application names.
+ * Used both for `open -a <name>` launching and for detecting availability
+ * when the CLI tool isn't in PATH but the `.app` bundle is installed.
+ */
+const MAC_APP_NAMES: Partial<Record<EditorId, string>> = {
+  cursor: "Cursor",
+  windsurf: "Windsurf",
+  vscode: "Visual Studio Code",
+  "vscode-insiders": "Visual Studio Code - Insiders",
+  vscodium: "VSCodium",
+  zed: "Zed",
+  positron: "Positron",
+  sublime: "Sublime Text",
+  webstorm: "WebStorm",
+  idea: "IntelliJ IDEA",
+  fleet: "Fleet",
+  ghostty: "Ghostty",
+};
+
+function isMacAppInstalled(appName: string): boolean {
+  return (
+    existsSync(`/Applications/${appName}.app`) ||
+    existsSync(`${os.homedir()}/Applications/${appName}.app`)
+  );
+}
+
 function resolveAvailableCommand(
   commands: ReadonlyArray<string>,
   options: CommandAvailabilityOptions = {},
@@ -101,6 +153,8 @@ function fileManagerCommandForPlatform(platform: NodeJS.Platform): string {
   }
 }
 
+export { isCommandAvailable };
+
 export function resolveAvailableEditors(
   platform: NodeJS.Platform = process.platform,
   env: NodeJS.ProcessEnv = process.env,
@@ -119,6 +173,15 @@ export function resolveAvailableEditors(
     const command = resolveAvailableCommand(editor.commands, { platform, env });
     if (command !== null) {
       available.push(editor.id);
+      continue;
+    }
+    // On macOS, also check for installed .app bundles when the CLI tool is
+    // not in PATH (e.g. Ghostty installed via DMG without shell integration).
+    if (platform === "darwin") {
+      const macApp = MAC_APP_NAMES[editor.id];
+      if (macApp && isMacAppInstalled(macApp)) {
+        available.push(editor.id);
+      }
     }
   }
 
@@ -158,7 +221,7 @@ export const resolveEditorLaunch = Effect.fn("resolveEditorLaunch")(function* (
 ): Effect.fn.Return<EditorLaunch, OpenError> {
   yield* Effect.annotateCurrentSpan({
     "open.editor": input.editor,
-    "open.cwd": input.cwd,
+    "open.target.hasPosition": /:\d+/.test(input.cwd),
     "open.platform": platform,
   });
   const editorDef = EDITORS.find((editor) => editor.id === input.editor);
@@ -169,10 +232,33 @@ export const resolveEditorLaunch = Effect.fn("resolveEditorLaunch")(function* (
   if (editorDef.commands) {
     const command =
       resolveAvailableCommand(editorDef.commands, { platform, env }) ?? editorDef.commands[0];
-    return {
-      command,
-      args: resolveEditorArgs(editorDef, input.cwd),
-    };
+
+    if (WORKING_DIRECTORY_EDITORS.has(editorDef.id)) {
+      const workingDirectory = resolveWorkingDirectoryTarget(input.cwd);
+      if (platform === "darwin") {
+        const macApp = MAC_APP_NAMES[editorDef.id];
+        if (macApp) {
+          return {
+            command: "open",
+            args: ["-na", macApp, "--args", `--working-directory=${workingDirectory}`],
+          };
+        }
+      }
+      return { command, args: [`--working-directory=${workingDirectory}`] };
+    }
+
+    const args = resolveEditorArgs(editorDef, input.cwd);
+
+    // On macOS, fall back to `open -a` when the CLI tool isn't in PATH
+    // but the .app bundle is installed.
+    if (platform === "darwin" && !isCommandAvailable(command, { platform, env })) {
+      const macApp = MAC_APP_NAMES[editorDef.id];
+      if (macApp && isMacAppInstalled(macApp)) {
+        return { command: "open", args: ["-a", macApp, "--args", ...args] };
+      }
+    }
+
+    return { command, args };
   }
 
   if (editorDef.id !== "file-manager") {

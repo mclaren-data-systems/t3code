@@ -13,6 +13,9 @@ export const ObservabilityLive = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig;
 
+    const otlpTracesUrl = config.otlpTracesUrl?.trim() || undefined;
+    const otlpMetricsUrl = config.otlpMetricsUrl?.trim() || undefined;
+
     const traceReferencesLayer = Layer.mergeAll(
       Layer.succeed(Tracer.MinimumTraceLevel, config.traceMinLevel),
       Layer.succeed(References.TracerTimingEnabled, config.traceTimingEnabled),
@@ -27,10 +30,10 @@ export const ObservabilityLive = Layer.unwrap(
           batchWindowMs: config.traceBatchWindowMs,
         });
         const delegate =
-          config.otlpTracesUrl === undefined
+          otlpTracesUrl === undefined
             ? undefined
             : yield* OtlpTracer.make({
-                url: config.otlpTracesUrl,
+                url: otlpTracesUrl,
                 exportInterval: `${config.otlpExportIntervalMs} millis`,
                 resource: {
                   serviceName: config.otlpServiceName,
@@ -65,10 +68,10 @@ export const ObservabilityLive = Layer.unwrap(
     ).pipe(Layer.provideMerge(otlpSerializationLayer));
 
     const metricsLayer =
-      config.otlpMetricsUrl === undefined
+      otlpMetricsUrl === undefined
         ? Layer.empty
         : OtlpMetrics.layer({
-            url: config.otlpMetricsUrl,
+            url: otlpMetricsUrl,
             exportInterval: `${config.otlpExportIntervalMs} millis`,
             resource: {
               serviceName: config.otlpServiceName,

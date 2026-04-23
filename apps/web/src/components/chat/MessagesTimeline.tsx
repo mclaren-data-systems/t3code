@@ -12,6 +12,7 @@ import {
 } from "react";
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { deriveTimelineEntries, formatElapsed } from "../../session-logic";
+import { useAppSettings } from "../../appSettings";
 import { type TurnDiffSummary } from "../../types";
 import { summarizeTurnDiffStats } from "../../lib/turnDiffTree";
 import ChatMarkdown from "../ChatMarkdown";
@@ -53,7 +54,7 @@ import {
 import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
-import { formatTimestamp } from "../../timestampFormat";
+import { formatFullTimestamp, formatTimestamp } from "../../timestampFormat";
 
 import {
   buildInlineTerminalContextText,
@@ -81,6 +82,7 @@ interface TimelineRowSharedState {
   resolvedTheme: "light" | "dark";
   workspaceRoot: string | undefined;
   activeThreadEnvironmentId: EnvironmentId;
+  showCommandOutput: boolean;
   onRevertUserMessage: (messageId: MessageId) => void;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
@@ -143,6 +145,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   workspaceRoot,
   onIsAtEndChange,
 }: MessagesTimelineProps) {
+  const { settings } = useAppSettings();
+  const showCommandOutput = settings.showCommandOutput;
+
   const rawRows = useMemo(
     () =>
       deriveMessagesTimelineRows({
@@ -204,6 +209,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       resolvedTheme,
       workspaceRoot,
       activeThreadEnvironmentId,
+      showCommandOutput,
       onRevertUserMessage,
       onImageExpand,
       onOpenTurnDiff,
@@ -220,6 +226,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       resolvedTheme,
       workspaceRoot,
       activeThreadEnvironmentId,
+      showCommandOutput,
       onRevertUserMessage,
       onImageExpand,
       onOpenTurnDiff,
@@ -367,7 +374,10 @@ function TimelineRowContent({ row }: { row: TimelineRow }) {
                       </Button>
                     )}
                   </div>
-                  <p className="text-right text-xs text-muted-foreground/50">
+                  <p
+                    className="text-right text-xs text-muted-foreground/50"
+                    title={formatFullTimestamp(row.message.createdAt)}
+                  >
                     {formatTimestamp(row.message.createdAt, ctx.timestampFormat)}
                   </p>
                 </div>
@@ -414,7 +424,10 @@ function TimelineRowContent({ row }: { row: TimelineRow }) {
                   onOpenTurnDiff={ctx.onOpenTurnDiff}
                 />
                 <div className="mt-1.5 flex items-center gap-2">
-                  <p className="text-[10px] text-muted-foreground/30">
+                  <p
+                    className="text-[10px] text-muted-foreground/30"
+                    title={formatFullTimestamp(row.message.createdAt)}
+                  >
                     {row.message.streaming ? (
                       <LiveMessageMeta
                         createdAt={row.message.createdAt}
@@ -529,7 +542,7 @@ const WorkGroupSection = memo(function WorkGroupSection({
 }: {
   groupedEntries: Extract<MessagesTimelineRow, { kind: "work" }>["groupedEntries"];
 }) {
-  const { workspaceRoot } = use(TimelineRowCtx);
+  const { workspaceRoot, showCommandOutput } = use(TimelineRowCtx);
   const [isExpanded, setIsExpanded] = useState(false);
   const hasOverflow = groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES;
   const visibleEntries =
@@ -565,6 +578,7 @@ const WorkGroupSection = memo(function WorkGroupSection({
             key={`work-row:${workEntry.id}`}
             workEntry={workEntry}
             workspaceRoot={workspaceRoot}
+            showCommandOutput={showCommandOutput}
           />
         ))}
       </div>
@@ -933,46 +947,76 @@ function toolWorkEntryHeading(workEntry: TimelineWorkEntry): string {
 const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   workEntry: TimelineWorkEntry;
   workspaceRoot: string | undefined;
+  showCommandOutput: boolean;
 }) {
-  const { workEntry, workspaceRoot } = props;
+  const { workEntry, workspaceRoot, showCommandOutput } = props;
+  const [expanded, setExpanded] = useState(false);
   const iconConfig = workToneIcon(workEntry.tone);
   const EntryIcon = workEntryIcon(workEntry);
   const heading = toolWorkEntryHeading(workEntry);
   const rawPreview = workEntryPreview(workEntry, workspaceRoot);
+  // When showCommandOutput is off, suppress command/detail previews but still show changed-file previews.
+  const gatedPreview = showCommandOutput
+    ? rawPreview
+    : !workEntry.command && !workEntry.detail
+      ? rawPreview
+      : null;
+  // Suppress previews that are effectively the same label as the heading.
   const preview =
-    rawPreview &&
-    normalizeCompactToolLabel(rawPreview).toLowerCase() ===
+    gatedPreview &&
+    normalizeCompactToolLabel(gatedPreview).toLowerCase() ===
       normalizeCompactToolLabel(heading).toLowerCase()
       ? null
-      : rawPreview;
+      : gatedPreview;
   const rawCommand = workEntryRawCommand(workEntry);
   const displayText = preview ? `${heading} - ${preview}` : heading;
   const hasChangedFiles = (workEntry.changedFiles?.length ?? 0) > 0;
   const previewIsChangedFiles = hasChangedFiles && !workEntry.command && !workEntry.detail;
+  const isExpandable = !!preview;
 
   return (
-    <div className="rounded-lg px-1 py-1">
-      <div className="flex items-center gap-2 transition-[opacity,translate] duration-200">
+    <div
+      className={cn("rounded-lg px-1 py-1", isExpandable && "cursor-pointer")}
+      role={isExpandable ? "button" : undefined}
+      tabIndex={isExpandable ? 0 : undefined}
+      aria-expanded={isExpandable ? expanded : undefined}
+      onClick={isExpandable ? () => setExpanded((prev) => !prev) : undefined}
+      onKeyDown={
+        isExpandable
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setExpanded((prev) => !prev);
+              }
+            }
+          : undefined
+      }
+    >
+      <div className="flex items-start gap-2 transition-[opacity,translate] duration-200">
         <span
-          className={cn("flex size-5 shrink-0 items-center justify-center", iconConfig.className)}
+          className={cn(
+            "mt-0.5 flex size-5 shrink-0 items-center justify-center",
+            iconConfig.className,
+          )}
         >
           <EntryIcon className="size-3" />
         </span>
         <div className="min-w-0 flex-1 overflow-hidden">
-          {rawCommand ? (
-            <div className="max-w-full">
-              <p
-                className={cn(
-                  "truncate text-xs leading-5",
-                  workToneClass(workEntry.tone),
-                  preview ? "text-muted-foreground/70" : "",
-                )}
-                title={displayText}
-              >
-                <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
-                  {heading}
-                </span>
-                {preview && (
+          <div className="max-w-full">
+            <p
+              className={cn(
+                "text-[11px] leading-5",
+                expanded ? "whitespace-pre-wrap break-words" : "truncate",
+                workToneClass(workEntry.tone),
+                preview ? "text-muted-foreground/70" : "",
+              )}
+              title={rawCommand ? undefined : displayText}
+            >
+              <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
+                {heading}
+              </span>
+              {preview &&
+                (rawCommand ? (
                   <Tooltip>
                     <TooltipTrigger
                       closeDelay={0}
@@ -994,36 +1038,11 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                       </div>
                     </TooltipPopup>
                   </Tooltip>
-                )}
-              </p>
-            </div>
-          ) : (
-            <Tooltip>
-              <TooltipTrigger
-                className="block min-w-0 w-full text-left"
-                title={displayText}
-                aria-label={displayText}
-              >
-                <p
-                  className={cn(
-                    "truncate text-[11px] leading-5",
-                    workToneClass(workEntry.tone),
-                    preview ? "text-muted-foreground/70" : "",
-                  )}
-                >
-                  <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
-                    {heading}
-                  </span>
-                  {preview && <span className="text-muted-foreground/55"> - {preview}</span>}
-                </p>
-              </TooltipTrigger>
-              <TooltipPopup className="max-w-[min(720px,calc(100vw-2rem))]">
-                <p className="whitespace-pre-wrap wrap-break-word text-xs leading-5">
-                  {displayText}
-                </p>
-              </TooltipPopup>
-            </Tooltip>
-          )}
+                ) : (
+                  <span className="text-muted-foreground/55"> - {preview}</span>
+                ))}
+            </p>
+          </div>
         </div>
       </div>
       {hasChangedFiles && !previewIsChangedFiles && (

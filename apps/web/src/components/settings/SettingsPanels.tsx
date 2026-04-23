@@ -11,7 +11,9 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
 import {
+  PROVIDER_DISPLAY_NAMES,
   type DesktopUpdateChannel,
+  type ModelSelection,
   type ScopedThreadRef,
   type ProviderKind,
   type ServerProvider,
@@ -19,7 +21,8 @@ import {
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime";
 import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
-import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model";
+import { normalizeModelSlug } from "@t3tools/shared/model";
+import { createModelSelection } from "@t3tools/shared/model";
 import { Equal } from "effect";
 import { APP_VERSION } from "../../branding";
 import {
@@ -30,6 +33,11 @@ import {
   resolveDesktopUpdateButtonAction,
 } from "../../components/desktopUpdate.logic";
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
+import {
+  buildModelOptionsByProvider,
+  mergeDiscoveredModels,
+  type ModelOptionEntry,
+} from "../../providerModelOptions";
 import { TraitsPicker } from "../chat/TraitsPicker";
 import { resolveAndPersistPreferredEditor } from "../../editorPreferences";
 import { isElectron } from "../../env";
@@ -61,7 +69,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "..
 import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
-import { stackedThreadToast, toastManager } from "../ui/toast";
+import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   SettingResetButton,
@@ -77,7 +85,6 @@ import {
   useServerObservability,
   useServerProviders,
 } from "../../rpc/serverState";
-import { formatProviderKindLabel } from "../../providerModels";
 
 const THEME_OPTIONS = [
   {
@@ -106,13 +113,16 @@ type InstallProviderSettings = {
   badgeLabel?: string;
   binaryPlaceholder: string;
   binaryDescription: ReactNode;
+  homePathKey?: "codexHomePath";
+  homePlaceholder?: string;
+  homeDescription?: ReactNode;
+  customModelExample: string;
+  apiEndpointPlaceholder?: string;
+  apiEndpointDescription?: ReactNode;
   serverUrlPlaceholder?: string;
   serverUrlDescription?: ReactNode;
   serverPasswordPlaceholder?: string;
   serverPasswordDescription?: ReactNode;
-  homePathKey?: "codexHomePath";
-  homePlaceholder?: string;
-  homeDescription?: ReactNode;
 };
 
 const PROVIDER_SETTINGS: readonly InstallProviderSettings[] = [
@@ -124,30 +134,64 @@ const PROVIDER_SETTINGS: readonly InstallProviderSettings[] = [
     homePathKey: "codexHomePath",
     homePlaceholder: "CODEX_HOME",
     homeDescription: "Optional custom Codex home and config directory.",
+    customModelExample: "gpt-6.7-codex-ultra-preview",
+  },
+  {
+    provider: "copilot",
+    title: "GitHub Copilot",
+    binaryPlaceholder: "Copilot binary path",
+    binaryDescription: "Path to the Copilot CLI binary",
+    customModelExample: "gpt-4o-copilot",
   },
   {
     provider: "claudeAgent",
-    title: "Claude",
+    title: "Claude Code",
     binaryPlaceholder: "Claude binary path",
     binaryDescription: "Path to the Claude binary",
+    customModelExample: "claude-sonnet-5-0",
   },
   {
     provider: "cursor",
-    title: "Cursor",
+    title: "Cursor Agent",
     badgeLabel: "Early Access",
-    binaryPlaceholder: "Cursor agent binary path",
-    binaryDescription: "Path to the Cursor agent binary",
+    binaryPlaceholder: "Cursor binary path",
+    binaryDescription: "Path to the Cursor Agent binary",
+    customModelExample: "cursor-fast",
+    apiEndpointPlaceholder: "https://cursor.example.com/api",
+    apiEndpointDescription: "Optional custom Cursor API endpoint",
   },
   {
     provider: "opencode",
     title: "OpenCode",
     binaryPlaceholder: "OpenCode binary path",
     binaryDescription: "Path to the OpenCode binary",
+    customModelExample: "opencode-pro",
     serverUrlPlaceholder: "http://127.0.0.1:4096",
     serverUrlDescription: "Leave blank to let T3 Code spawn the server when needed",
-    serverPasswordPlaceholder: "Server password (optional)",
+    serverPasswordPlaceholder: "Server password",
     serverPasswordDescription:
       "If your OpenCode server requires authentication, enter the password here. NOTE: Stored in plain text on disk",
+  },
+  {
+    provider: "geminiCli",
+    title: "Gemini CLI",
+    binaryPlaceholder: "Gemini CLI binary path",
+    binaryDescription: "Path to the Gemini CLI binary",
+    customModelExample: "gemini-2.0-ultra",
+  },
+  {
+    provider: "amp",
+    title: "AMPcode",
+    binaryPlaceholder: "AMPcode binary path",
+    binaryDescription: "Path to the AMPcode binary",
+    customModelExample: "amp-pro",
+  },
+  {
+    provider: "kilo",
+    title: "Kilo",
+    binaryPlaceholder: "Kilo binary path",
+    binaryDescription: "Path to the Kilo binary",
+    customModelExample: "kilo-advanced",
   },
 ] as const;
 
@@ -166,11 +210,18 @@ const PROVIDER_STATUS_STYLES = {
   },
 } as const;
 
-function getProviderSummary(provider: ServerProvider | undefined) {
+function getProviderSummary(provider: ServerProvider | undefined, enabled: boolean) {
   if (!provider) {
+    if (!enabled) {
+      return {
+        headline: "Disabled",
+        detail: "This provider is disabled for new sessions in T3 Code.",
+      };
+    }
     return {
-      headline: "Checking provider status",
-      detail: "Waiting for the server to report installation and authentication details.",
+      headline: "Status unavailable",
+      detail:
+        "Live installation and authentication status has not been published for this provider yet.",
     };
   }
   if (!provider.enabled) {
@@ -281,13 +332,11 @@ function AboutVersionSection() {
           setDesktopUpdateStateQueryData(queryClient, state);
         })
         .catch((error: unknown) => {
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Could not change update track",
-              description: error instanceof Error ? error.message : "Update track change failed.",
-            }),
-          );
+          toastManager.add({
+            type: "error",
+            title: "Could not change update track",
+            description: error instanceof Error ? error.message : "Update track change failed.",
+          });
         })
         .finally(() => {
           setIsChangingUpdateChannel(false);
@@ -309,13 +358,11 @@ function AboutVersionSection() {
           setDesktopUpdateStateQueryData(queryClient, result.state);
         })
         .catch((error: unknown) => {
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Could not download update",
-              description: error instanceof Error ? error.message : "Download failed.",
-            }),
-          );
+          toastManager.add({
+            type: "error",
+            title: "Could not download update",
+            description: error instanceof Error ? error.message : "Download failed.",
+          });
         });
       return;
     }
@@ -333,13 +380,11 @@ function AboutVersionSection() {
           setDesktopUpdateStateQueryData(queryClient, result.state);
         })
         .catch((error: unknown) => {
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Could not install update",
-              description: error instanceof Error ? error.message : "Install failed.",
-            }),
-          );
+          toastManager.add({
+            type: "error",
+            title: "Could not install update",
+            description: error instanceof Error ? error.message : "Install failed.",
+          });
         });
       return;
     }
@@ -349,25 +394,21 @@ function AboutVersionSection() {
       .checkForUpdate()
       .then((result) => {
         setDesktopUpdateStateQueryData(queryClient, result.state);
-        if (!result.checked) {
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Could not check for updates",
-              description:
-                result.state.message ?? "Automatic updates are not available in this build.",
-            }),
-          );
+        if (result.state.status === "error") {
+          toastManager.add({
+            type: "error",
+            title: "Could not check for updates",
+            description:
+              result.state.message ?? "Automatic updates are not available in this build.",
+          });
         }
       })
       .catch((error: unknown) => {
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Could not check for updates",
-            description: error instanceof Error ? error.message : "Update check failed.",
-          }),
-        );
+        toastManager.add({
+          type: "error",
+          title: "Could not check for updates",
+          description: error instanceof Error ? error.message : "Update check failed.",
+        });
       });
   }, [queryClient, updateState]);
 
@@ -548,9 +589,12 @@ export function GeneralSettingsPanel() {
       settings.providers.claudeAgent.customModels.length > 0 ||
       settings.providers.claudeAgent.launchArgs !== "",
     ),
+    copilot: false,
     cursor: Boolean(
       settings.providers.cursor.binaryPath !==
         DEFAULT_UNIFIED_SETTINGS.providers.cursor.binaryPath ||
+      settings.providers.cursor.apiEndpoint !==
+        DEFAULT_UNIFIED_SETTINGS.providers.cursor.apiEndpoint ||
       settings.providers.cursor.customModels.length > 0,
     ),
     opencode: Boolean(
@@ -562,14 +606,21 @@ export function GeneralSettingsPanel() {
         DEFAULT_UNIFIED_SETTINGS.providers.opencode.serverPassword ||
       settings.providers.opencode.customModels.length > 0,
     ),
+    geminiCli: false,
+    amp: false,
+    kilo: false,
   });
   const [customModelInputByProvider, setCustomModelInputByProvider] = useState<
     Record<ProviderKind, string>
   >({
     codex: "",
     claudeAgent: "",
+    copilot: "",
     cursor: "",
     opencode: "",
+    geminiCli: "",
+    amp: "",
+    kilo: "",
   });
   const [customModelErrorByProvider, setCustomModelErrorByProvider] = useState<
     Partial<Record<ProviderKind, string | null>>
@@ -619,6 +670,38 @@ export function GeneralSettingsPanel() {
   const textGenProvider = textGenerationModelSelection.provider;
   const textGenModel = textGenerationModelSelection.model;
   const textGenModelOptions = textGenerationModelSelection.options;
+  const staticProviderModelOptions = useMemo(
+    () =>
+      buildModelOptionsByProvider({
+        customCodexModels: settings.providers.codex.customModels,
+        customCopilotModels: settings.providers.copilot.customModels,
+        customClaudeModels: settings.providers.claudeAgent.customModels,
+        customCursorModels: settings.providers.cursor.customModels,
+        customOpencodeModels: settings.providers.opencode.customModels,
+        customGeminiCliModels: settings.providers.geminiCli.customModels,
+        customAmpModels: settings.providers.amp.customModels,
+        customKiloModels: settings.providers.kilo.customModels,
+      }),
+    [settings.providers],
+  );
+  const discoveredProviderModelOptions = useMemo(
+    () =>
+      Object.fromEntries(
+        serverProviders.map((provider) => [
+          provider.provider,
+          provider.models.map((model) => ({
+            slug: model.slug,
+            name: model.name,
+            isCustom: model.isCustom,
+          })),
+        ]),
+      ) as Partial<Record<ProviderKind, (typeof staticProviderModelOptions)[ProviderKind]>>,
+    [serverProviders],
+  );
+  const providerModelOptions = useMemo(
+    () => mergeDiscoveredModels(staticProviderModelOptions, discoveredProviderModelOptions),
+    [discoveredProviderModelOptions, staticProviderModelOptions],
+  );
   const gitModelOptionsByProvider = getCustomModelOptionsByProvider(
     settings,
     serverProviders,
@@ -772,15 +855,21 @@ export function GeneralSettingsPanel() {
     const providerConfig = settings.providers[providerSettings.provider];
     const defaultProviderConfig = DEFAULT_UNIFIED_SETTINGS.providers[providerSettings.provider];
     const statusKey = liveProvider?.status ?? (providerConfig.enabled ? "warning" : "disabled");
-    const summary = getProviderSummary(liveProvider);
-    const models: ReadonlyArray<ServerProviderModel> =
-      liveProvider?.models ??
-      providerConfig.customModels.map((slug) => ({
-        slug,
-        name: slug,
-        isCustom: true,
-        capabilities: null,
-      }));
+    const summary = getProviderSummary(liveProvider, providerConfig.enabled);
+    const liveModelsBySlug = new Map(
+      (liveProvider?.models ?? []).map((model) => [model.slug, model]),
+    );
+    const models: ReadonlyArray<ServerProviderModel> = providerModelOptions[
+      providerSettings.provider
+    ].map(
+      (modelOption: ModelOptionEntry) =>
+        liveModelsBySlug.get(modelOption.slug) ?? {
+          slug: modelOption.slug,
+          name: modelOption.name,
+          isCustom: modelOption.isCustom ?? false,
+          capabilities: null,
+        },
+    );
 
     return {
       provider: providerSettings.provider,
@@ -788,16 +877,22 @@ export function GeneralSettingsPanel() {
       badgeLabel: providerSettings.badgeLabel,
       binaryPlaceholder: providerSettings.binaryPlaceholder,
       binaryDescription: providerSettings.binaryDescription,
+      homePathKey: providerSettings.homePathKey,
+      homePlaceholder: providerSettings.homePlaceholder,
+      homeDescription: providerSettings.homeDescription,
+      apiEndpointPlaceholder: providerSettings.apiEndpointPlaceholder,
+      apiEndpointDescription: providerSettings.apiEndpointDescription,
       serverUrlPlaceholder: providerSettings.serverUrlPlaceholder,
       serverUrlDescription: providerSettings.serverUrlDescription,
       serverPasswordPlaceholder: providerSettings.serverPasswordPlaceholder,
       serverPasswordDescription: providerSettings.serverPasswordDescription,
-      homePathKey: providerSettings.homePathKey,
-      homePlaceholder: providerSettings.homePlaceholder,
-      homeDescription: providerSettings.homeDescription,
+      apiEndpointValue:
+        "apiEndpoint" in providerConfig ? (providerConfig.apiEndpoint as string) : "",
+      serverUrlValue: "serverUrl" in providerConfig ? (providerConfig.serverUrl as string) : "",
+      serverPasswordValue:
+        "serverPassword" in providerConfig ? (providerConfig.serverPassword as string) : "",
+      customModelExample: providerSettings.customModelExample,
       binaryPathValue: providerConfig.binaryPath,
-      serverUrlValue: "serverUrl" in providerConfig ? providerConfig.serverUrl : "",
-      serverPasswordValue: "serverPassword" in providerConfig ? providerConfig.serverPassword : "",
       isDirty: !Equal.equals(providerConfig, defaultProviderConfig),
       liveProvider,
       models,
@@ -1088,7 +1183,6 @@ export function GeneralSettingsPanel() {
                 provider={textGenProvider}
                 model={textGenModel}
                 lockedProvider={null}
-                providers={serverProviders}
                 modelOptionsByProvider={gitModelOptionsByProvider}
                 triggerVariant="outline"
                 triggerClassName="min-w-0 max-w-none shrink-0 text-foreground/90 hover:text-foreground"
@@ -1171,9 +1265,7 @@ export function GeneralSettingsPanel() {
           const customModelInput = customModelInputByProvider[providerCard.provider];
           const customModelError = customModelErrorByProvider[providerCard.provider] ?? null;
           const providerDisplayName =
-            providerCard.liveProvider?.displayName?.trim() ||
-            providerCard.title ||
-            formatProviderKindLabel(providerCard.provider);
+            PROVIDER_DISPLAY_NAMES[providerCard.provider] ?? providerCard.title;
 
           return (
             <div key={providerCard.provider} className="border-t border-border first:border-t-0">
@@ -1312,95 +1404,17 @@ export function GeneralSettingsPanel() {
                       </label>
                     </div>
 
-                    {providerCard.serverUrlPlaceholder ? (
-                      <div className="border-t border-border/60 px-4 py-3 sm:px-5">
-                        <label
-                          htmlFor={`provider-install-${providerCard.provider}-server-url`}
-                          className="block"
-                        >
-                          <span className="text-xs font-medium text-foreground">
-                            {providerDisplayName} server URL
-                          </span>
-                          <Input
-                            id={`provider-install-${providerCard.provider}-server-url`}
-                            className="mt-1.5"
-                            value={providerCard.serverUrlValue}
-                            onChange={(event) =>
-                              updateSettings({
-                                providers: {
-                                  ...settings.providers,
-                                  [providerCard.provider]: {
-                                    ...settings.providers[providerCard.provider],
-                                    ...(providerCard.provider === "opencode"
-                                      ? { serverUrl: event.target.value }
-                                      : {}),
-                                  },
-                                },
-                              })
-                            }
-                            placeholder={providerCard.serverUrlPlaceholder}
-                            spellCheck={false}
-                          />
-                          {providerCard.serverUrlDescription ? (
-                            <span className="mt-1 block text-xs text-muted-foreground">
-                              {providerCard.serverUrlDescription}
-                            </span>
-                          ) : null}
-                        </label>
-                      </div>
-                    ) : null}
-
-                    {providerCard.serverPasswordPlaceholder ? (
-                      <div className="border-t border-border/60 px-4 py-3 sm:px-5">
-                        <label
-                          htmlFor={`provider-install-${providerCard.provider}-server-password`}
-                          className="block"
-                        >
-                          <span className="text-xs font-medium text-foreground">
-                            {providerDisplayName} server password
-                          </span>
-                          <Input
-                            id={`provider-install-${providerCard.provider}-server-password`}
-                            className="mt-1.5"
-                            type="password"
-                            autoComplete="off"
-                            value={providerCard.serverPasswordValue}
-                            onChange={(event) =>
-                              updateSettings({
-                                providers: {
-                                  ...settings.providers,
-                                  [providerCard.provider]: {
-                                    ...settings.providers[providerCard.provider],
-                                    ...(providerCard.provider === "opencode"
-                                      ? { serverPassword: event.target.value }
-                                      : {}),
-                                  },
-                                },
-                              })
-                            }
-                            placeholder={providerCard.serverPasswordPlaceholder}
-                            spellCheck={false}
-                          />
-                          {providerCard.serverPasswordDescription ? (
-                            <span className="mt-1 block text-xs text-muted-foreground">
-                              {providerCard.serverPasswordDescription}
-                            </span>
-                          ) : null}
-                        </label>
-                      </div>
-                    ) : null}
-
                     {providerCard.homePathKey ? (
                       <div className="border-t border-border/60 px-4 py-3 sm:px-5">
                         <label
-                          htmlFor={`provider-install-${providerCard.homePathKey}`}
+                          htmlFor={`provider-install-${providerCard.provider}-home-path`}
                           className="block"
                         >
                           <span className="text-xs font-medium text-foreground">
                             CODEX_HOME path
                           </span>
                           <Input
-                            id={`provider-install-${providerCard.homePathKey}`}
+                            id={`provider-install-${providerCard.provider}-home-path`}
                             className="mt-1.5"
                             value={codexHomePath}
                             onChange={(event) =>
@@ -1457,6 +1471,114 @@ export function GeneralSettingsPanel() {
                       </div>
                     ) : null}
 
+                    {providerCard.apiEndpointPlaceholder && providerCard.provider === "cursor" ? (
+                      <div className="border-t border-border/60 px-4 py-3 sm:px-5">
+                        <label
+                          htmlFor={`provider-install-${providerCard.provider}-api-endpoint`}
+                          className="block"
+                        >
+                          <span className="text-xs font-medium text-foreground">API endpoint</span>
+                          <Input
+                            id={`provider-install-${providerCard.provider}-api-endpoint`}
+                            className="mt-1.5"
+                            value={providerCard.apiEndpointValue}
+                            onChange={(event) =>
+                              updateSettings({
+                                providers: {
+                                  ...settings.providers,
+                                  cursor: {
+                                    ...settings.providers.cursor,
+                                    apiEndpoint: event.target.value,
+                                  },
+                                },
+                              })
+                            }
+                            placeholder={providerCard.apiEndpointPlaceholder}
+                            spellCheck={false}
+                          />
+                          {providerCard.apiEndpointDescription ? (
+                            <span className="mt-1 block text-xs text-muted-foreground">
+                              {providerCard.apiEndpointDescription}
+                            </span>
+                          ) : null}
+                        </label>
+                      </div>
+                    ) : null}
+
+                    {providerCard.serverUrlPlaceholder && providerCard.provider === "opencode" ? (
+                      <div className="border-t border-border/60 px-4 py-3 sm:px-5">
+                        <label
+                          htmlFor={`provider-install-${providerCard.provider}-server-url`}
+                          className="block"
+                        >
+                          <span className="text-xs font-medium text-foreground">
+                            {providerCard.title} server URL
+                          </span>
+                          <Input
+                            id={`provider-install-${providerCard.provider}-server-url`}
+                            className="mt-1.5"
+                            value={providerCard.serverUrlValue}
+                            onChange={(event) =>
+                              updateSettings({
+                                providers: {
+                                  ...settings.providers,
+                                  opencode: {
+                                    ...settings.providers.opencode,
+                                    serverUrl: event.target.value,
+                                  },
+                                },
+                              })
+                            }
+                            placeholder={providerCard.serverUrlPlaceholder}
+                            spellCheck={false}
+                          />
+                          {providerCard.serverUrlDescription ? (
+                            <span className="mt-1 block text-xs text-muted-foreground">
+                              {providerCard.serverUrlDescription}
+                            </span>
+                          ) : null}
+                        </label>
+                      </div>
+                    ) : null}
+
+                    {providerCard.serverPasswordPlaceholder &&
+                    providerCard.provider === "opencode" ? (
+                      <div className="border-t border-border/60 px-4 py-3 sm:px-5">
+                        <label
+                          htmlFor={`provider-install-${providerCard.provider}-server-password`}
+                          className="block"
+                        >
+                          <span className="text-xs font-medium text-foreground">
+                            {providerCard.title} server password
+                          </span>
+                          <Input
+                            id={`provider-install-${providerCard.provider}-server-password`}
+                            className="mt-1.5"
+                            type="password"
+                            value={providerCard.serverPasswordValue}
+                            onChange={(event) =>
+                              updateSettings({
+                                providers: {
+                                  ...settings.providers,
+                                  opencode: {
+                                    ...settings.providers.opencode,
+                                    serverPassword: event.target.value,
+                                  },
+                                },
+                              })
+                            }
+                            placeholder={providerCard.serverPasswordPlaceholder}
+                            spellCheck={false}
+                          />
+                          {providerCard.serverPasswordDescription ? (
+                            <span className="mt-1 block text-xs text-muted-foreground">
+                              {providerCard.serverPasswordDescription}
+                            </span>
+                          ) : null}
+                        </label>
+                      </div>
+                    ) : null}
+
                     <div className="border-t border-border/60 px-4 py-3 sm:px-5">
                       <div className="text-xs font-medium text-foreground">Models</div>
                       <div className="mt-1 text-xs text-muted-foreground">
@@ -1472,22 +1594,11 @@ export function GeneralSettingsPanel() {
                         {providerCard.models.map((model) => {
                           const caps = model.capabilities;
                           const capLabels: string[] = [];
-                          const descriptors = caps?.optionDescriptors ?? [];
-                          if (descriptors.some((descriptor) => descriptor.id === "fastMode")) {
-                            capLabels.push("Fast mode");
-                          }
-                          if (descriptors.some((descriptor) => descriptor.id === "thinking")) {
-                            capLabels.push("Thinking");
-                          }
+                          if (caps?.supportsFastMode) capLabels.push("Fast mode");
+                          if (caps?.supportsThinkingToggle) capLabels.push("Thinking");
                           if (
-                            descriptors.some(
-                              (descriptor) =>
-                                descriptor.type === "select" &&
-                                (descriptor.id === "reasoningEffort" ||
-                                  descriptor.id === "effort" ||
-                                  descriptor.id === "reasoning" ||
-                                  descriptor.id === "variant"),
-                            )
+                            caps?.reasoningEffortLevels &&
+                            caps.reasoningEffortLevels.length > 0
                           ) {
                             capLabels.push("Reasoning");
                           }
@@ -1577,13 +1688,7 @@ export function GeneralSettingsPanel() {
                             event.preventDefault();
                             addCustomModel(providerCard.provider);
                           }}
-                          placeholder={
-                            providerCard.provider === "codex"
-                              ? "gpt-6.7-codex-ultra-preview"
-                              : providerCard.provider === "opencode"
-                                ? "openai/gpt-5"
-                                : "claude-sonnet-5-0"
-                          }
+                          placeholder={providerCard.customModelExample}
                           spellCheck={false}
                         />
                         <Button
@@ -1710,13 +1815,11 @@ export function ArchivedThreadsPanel() {
         try {
           await unarchiveThread(threadRef);
         } catch (error) {
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Failed to unarchive thread",
-              description: error instanceof Error ? error.message : "An error occurred.",
-            }),
-          );
+          toastManager.add({
+            type: "error",
+            title: "Failed to unarchive thread",
+            description: error instanceof Error ? error.message : "An error occurred.",
+          });
         }
         return;
       }
@@ -1780,14 +1883,12 @@ export function ArchivedThreadsPanel() {
                   onClick={() =>
                     void unarchiveThread(scopeThreadRef(thread.environmentId, thread.id)).catch(
                       (error) => {
-                        toastManager.add(
-                          stackedThreadToast({
-                            type: "error",
-                            title: "Failed to unarchive thread",
-                            description:
-                              error instanceof Error ? error.message : "An error occurred.",
-                          }),
-                        );
+                        toastManager.add({
+                          type: "error",
+                          title: "Failed to unarchive thread",
+                          description:
+                            error instanceof Error ? error.message : "An error occurred.",
+                        });
                       },
                     )
                   }

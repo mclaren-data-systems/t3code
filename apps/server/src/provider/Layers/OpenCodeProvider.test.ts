@@ -16,12 +16,9 @@ import {
 import { OpenCodeProviderLive } from "./OpenCodeProvider.ts";
 import type { OpenCodeInventory } from "../opencodeRuntime.ts";
 
-const DEFAULT_VERSION_STDOUT = "opencode 1.14.19\n";
-
 const runtimeMock = {
   state: {
     runVersionError: null as Error | null,
-    versionStdout: DEFAULT_VERSION_STDOUT,
     inventoryError: null as Error | null,
     inventory: {
       providerList: { connected: [] as string[], all: [] as unknown[], default: {} },
@@ -30,7 +27,6 @@ const runtimeMock = {
   },
   reset() {
     this.state.runVersionError = null;
-    this.state.versionStdout = DEFAULT_VERSION_STDOUT;
     this.state.inventoryError = null;
     this.state.inventory = {
       providerList: { connected: [], all: [] as unknown[], default: {} },
@@ -60,7 +56,7 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
             cause: runtimeMock.state.runVersionError,
           }),
         )
-      : Effect.succeed({ stdout: runtimeMock.state.versionStdout, stderr: "", code: 0 }),
+      : Effect.succeed({ stdout: "opencode 1.0.0\n", stderr: "", code: 0 }),
   createOpenCodeSdkClient: () =>
     ({}) as unknown as ReturnType<OpenCodeRuntimeShape["createOpenCodeSdkClient"]>,
   loadOpenCodeInventory: () =>
@@ -112,33 +108,6 @@ it.layer(makeTestLayer())("OpenCodeProviderLive", (it) => {
     }),
   );
 
-  it.effect("refuses to probe when opencode is older than the required minimum", () =>
-    Effect.gen(function* () {
-      runtimeMock.state.versionStdout = "opencode 1.4.7\n";
-      const provider = yield* OpenCodeProvider;
-      const snapshot = yield* provider.refresh;
-
-      assert.equal(snapshot.status, "error");
-      assert.equal(snapshot.installed, true);
-      assert.equal(snapshot.version, "1.4.7");
-      assert.ok(snapshot.message?.includes("1.14.19"));
-      assert.ok(snapshot.message?.toLowerCase().includes("upgrade"));
-    }),
-  );
-
-  it.effect("refuses to probe when opencode --version output is unparseable", () =>
-    Effect.gen(function* () {
-      runtimeMock.state.versionStdout = "garbled binary output\n";
-      const provider = yield* OpenCodeProvider;
-      const snapshot = yield* provider.refresh;
-
-      assert.equal(snapshot.status, "error");
-      assert.equal(snapshot.installed, true);
-      assert.equal(snapshot.version, null);
-      assert.ok(snapshot.message?.includes("1.14.19"));
-    }),
-  );
-
   it.effect("emits OpenCode variant defaults so trait picker can resolve a visible selection", () =>
     Effect.gen(function* () {
       runtimeMock.state.inventory = {
@@ -176,16 +145,14 @@ it.layer(makeTestLayer())("OpenCodeProviderLive", (it) => {
       const model = snapshot.models.find((entry) => entry.slug === "openai/gpt-5.4");
 
       assert.ok(model);
-      const variantDescriptor = model.capabilities?.optionDescriptors?.find(
-        (descriptor) => descriptor.id === "variant" && descriptor.type === "select",
+      assert.equal(
+        model.capabilities?.variantOptions?.find((option) => option.isDefault)?.value,
+        "medium",
       );
-      assert.ok(variantDescriptor && variantDescriptor.type === "select");
-      assert.equal(variantDescriptor.options.find((option) => option.isDefault)?.id, "medium");
-      const agentDescriptor = model.capabilities?.optionDescriptors?.find(
-        (descriptor) => descriptor.id === "agent" && descriptor.type === "select",
+      assert.equal(
+        model.capabilities?.agentOptions?.find((option) => option.isDefault)?.value,
+        "build",
       );
-      assert.ok(agentDescriptor && agentDescriptor.type === "select");
-      assert.equal(agentDescriptor.options.find((option) => option.isDefault)?.id, "build");
     }),
   );
 });

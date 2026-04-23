@@ -328,6 +328,10 @@ const createDesktopBridgeStub = (overrides?: {
       .fn()
       .mockResolvedValue({ accepted: false, completed: false, state: idleUpdateState }),
     onUpdateState: () => () => {},
+    getLogDir: vi.fn().mockResolvedValue("/tmp/logs"),
+    listLogFiles: vi.fn().mockResolvedValue([]),
+    readLogFile: vi.fn().mockResolvedValue(""),
+    openLogDir: vi.fn().mockResolvedValue(undefined),
   };
 };
 

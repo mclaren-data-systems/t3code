@@ -75,7 +75,6 @@ import {
 } from "./updateMachine.ts";
 import { isArm64HostRunningIntelBuild, resolveDesktopRuntimeInfo } from "./runtimeArch.ts";
 import { resolveDesktopAppBranding } from "./appBranding.ts";
-import { bindFirstRevealTrigger, type RevealSubscription } from "./windowReveal.ts";
 
 syncShellEnvironment();
 
@@ -91,6 +90,11 @@ const UPDATE_SET_CHANNEL_CHANNEL = "desktop:update-set-channel";
 const UPDATE_DOWNLOAD_CHANNEL = "desktop:update-download";
 const UPDATE_INSTALL_CHANNEL = "desktop:update-install";
 const UPDATE_CHECK_CHANNEL = "desktop:update-check";
+const LOG_DIR_CHANNEL = "desktop:log-dir";
+const LOG_LIST_CHANNEL = "desktop:log-list";
+const LOG_READ_CHANNEL = "desktop:log-read";
+const LOG_OPEN_DIR_CHANNEL = "desktop:log-open-dir";
+const GET_WS_URL_CHANNEL = "desktop:get-ws-url";
 const GET_APP_BRANDING_CHANNEL = "desktop:get-app-branding";
 const GET_LOCAL_ENVIRONMENT_BOOTSTRAP_CHANNEL = "desktop:get-local-environment-bootstrap";
 const GET_CLIENT_SETTINGS_CHANNEL = "desktop:get-client-settings";
@@ -1212,15 +1216,8 @@ async function installDownloadedUpdate(): Promise<{ accepted: boolean; completed
   clearUpdatePollTimer();
   try {
     await stopBackendAndWaitForExit();
-    // Destroy all windows before launching the NSIS installer to avoid the installer finding live windows it needs to close.
-    for (const win of BrowserWindow.getAllWindows()) {
-      win.destroy();
-    }
-    // `quitAndInstall()` only starts the handoff to the updater. The actual
-    // install may still fail asynchronously, so keep the action incomplete
-    // until we either quit or receive an updater error.
-    autoUpdater.quitAndInstall(true, true);
-    return { accepted: true, completed: false };
+    autoUpdater.quitAndInstall();
+    return { accepted: true, completed: true };
   } catch (error: unknown) {
     const message = formatErrorMessage(error);
     updateInstallInFlight = false;
@@ -1305,13 +1302,6 @@ function configureAutoUpdater(): void {
   });
   autoUpdater.on("error", (error) => {
     const message = formatErrorMessage(error);
-    if (updateInstallInFlight) {
-      updateInstallInFlight = false;
-      isQuitting = false;
-      setUpdateState(reduceDesktopUpdateStateOnInstallFailure(updateState, message));
-      console.error(`[desktop-updater] Updater error: ${message}`);
-      return;
-    }
     if (!updateCheckInFlight && !updateDownloadInFlight) {
       setUpdateState({
         status: "error",
@@ -1865,6 +1855,43 @@ function registerIpcHandlers(): void {
       state: updateState,
     } satisfies DesktopUpdateCheckResult;
   });
+
+  ipcMain.removeHandler(LOG_DIR_CHANNEL);
+  ipcMain.handle(LOG_DIR_CHANNEL, () => LOG_DIR);
+
+  ipcMain.removeHandler(LOG_LIST_CHANNEL);
+  ipcMain.handle(LOG_LIST_CHANNEL, async () => {
+    try {
+      const entries = await FS.promises.readdir(LOG_DIR);
+      return entries.filter((f) => f.endsWith(".log")).toSorted();
+    } catch {
+      return [];
+    }
+  });
+
+  ipcMain.removeHandler(LOG_READ_CHANNEL);
+  ipcMain.handle(LOG_READ_CHANNEL, async (_event, rawFilename: unknown) => {
+    if (typeof rawFilename !== "string") return "";
+    // Prevent path traversal
+    const basename = Path.basename(rawFilename);
+    if (basename !== rawFilename || !basename.endsWith(".log")) return "";
+    const filePath = Path.join(LOG_DIR, basename);
+    try {
+      return await FS.promises.readFile(filePath, "utf-8");
+    } catch {
+      return "";
+    }
+  });
+
+  ipcMain.removeHandler(LOG_OPEN_DIR_CHANNEL);
+  ipcMain.handle(LOG_OPEN_DIR_CHANNEL, async () => {
+    try {
+      await FS.promises.mkdir(LOG_DIR, { recursive: true });
+      await shell.openPath(LOG_DIR);
+    } catch {
+      // Silently ignore
+    }
+  });
 }
 
 function getIconOption(): { icon: string } | Record<string, never> {
@@ -1999,17 +2026,16 @@ function createWindow(): BrowserWindow {
     emitUpdateState();
   });
 
-  // On Linux/Wayland with `show: false`, Electron's `ready-to-show` only
-  // fires after `show()` is called, deadlocking the standard "wait for
-  // ready, then show" pattern. Add `did-finish-load` as a Linux-only
-  // fallback so the window still surfaces once the renderer has loaded
-  // the page. Other platforms keep the no-flash `ready-to-show` path,
-  // since `did-finish-load` typically fires before the first paint there.
-  const revealSubscribers: RevealSubscription[] = [(fire) => window.once("ready-to-show", fire)];
-  if (process.platform === "linux") {
-    revealSubscribers.push((fire) => window.webContents.once("did-finish-load", fire));
-  }
-  bindFirstRevealTrigger(revealSubscribers, () => revealWindow(window));
+  let initialRevealScheduled = false;
+  const revealInitialWindow = () => {
+    if (initialRevealScheduled) {
+      return;
+    }
+    initialRevealScheduled = true;
+    revealWindow(window);
+  };
+
+  window.once("ready-to-show", revealInitialWindow);
 
   if (isDevelopment) {
     void window.loadURL(resolveDesktopDevServerUrl());
@@ -2105,7 +2131,6 @@ async function bootstrap(): Promise<void> {
 
 app.on("before-quit", () => {
   isQuitting = true;
-  updateInstallInFlight = false;
   writeDesktopLogHeader("before-quit received");
   clearUpdatePollTimer();
   cancelBackendReadinessWait();
@@ -2146,7 +2171,7 @@ app
   });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin" && !isQuitting) {
+  if (process.platform !== "darwin") {
     app.quit();
   }
 });

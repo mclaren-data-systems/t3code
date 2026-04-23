@@ -46,7 +46,6 @@ import {
 } from "effect";
 import * as Semaphore from "effect/Semaphore";
 import { ServerConfig } from "./config.ts";
-import { writeFileStringAtomically } from "./atomicWrite.ts";
 import { fromLenientJson } from "@t3tools/shared/schemaJson";
 
 type WhenToken =
@@ -525,6 +524,13 @@ export interface KeybindingsShape {
   readonly upsertKeybindingRule: (
     rule: KeybindingRule,
   ) => Effect.Effect<ResolvedKeybindingsConfig, KeybindingsConfigError>;
+
+  /**
+   * Remove all keybinding rules for the given command and persist the result.
+   */
+  readonly removeKeybindingForCommand: (
+    command: KeybindingRule["command"],
+  ) => Effect.Effect<ResolvedKeybindingsConfig, KeybindingsConfigError>;
 }
 
 /**
@@ -542,8 +548,8 @@ const makeKeybindings = Effect.gen(function* () {
   const resolvedConfigCacheKey = "resolved" as const;
   const changesPubSub = yield* PubSub.unbounded<KeybindingsChangeEvent>();
   const startedRef = yield* Ref.make(false);
-  const startedDeferred = yield* Deferred.make<void, KeybindingsConfigError>();
-  const watcherScope = yield* Scope.make("sequential");
+  let startedDeferred = yield* Deferred.make<void, KeybindingsConfigError>();
+  let watcherScope = yield* Scope.make("sequential");
   yield* Effect.addFinalizer(() => Scope.close(watcherScope, Exit.void));
   const emitChange = (configState: KeybindingsConfigState) =>
     PubSub.publish(changesPubSub, configState).pipe(Effect.asVoid);
@@ -671,17 +677,14 @@ const makeKeybindings = Effect.gen(function* () {
   });
 
   const writeConfigAtomically = (rules: readonly KeybindingRule[]) => {
+    const tempPath = `${keybindingsConfigPath}.${process.pid}.${Date.now()}.tmp`;
+
     return Schema.encodeEffect(KeybindingsConfigPrettyJson)(rules).pipe(
       Effect.map((encoded) => `${encoded}\n`),
-      Effect.flatMap((encoded) =>
-        writeFileStringAtomically({
-          filePath: keybindingsConfigPath,
-          contents: encoded,
-        }).pipe(
-          Effect.provideService(FileSystem.FileSystem, fs),
-          Effect.provideService(Path.Path, path),
-        ),
-      ),
+      Effect.tap(() => fs.makeDirectory(path.dirname(keybindingsConfigPath), { recursive: true })),
+      Effect.tap((encoded) => fs.writeFileString(tempPath, encoded)),
+      Effect.flatMap(() => fs.rename(tempPath, keybindingsConfigPath)),
+      Effect.ensuring(fs.remove(tempPath, { force: true }).pipe(Effect.ignore({ log: true }))),
       Effect.mapError(
         (cause) =>
           new KeybindingsConfigError({
@@ -849,12 +852,11 @@ const makeKeybindings = Effect.gen(function* () {
   });
 
   const start = Effect.gen(function* () {
-    const alreadyStarted = yield* Ref.get(startedRef);
+    const alreadyStarted = yield* Ref.getAndSet(startedRef, true);
     if (alreadyStarted) {
       return yield* Deferred.await(startedDeferred);
     }
 
-    yield* Ref.set(startedRef, true);
     const startup = Effect.gen(function* () {
       yield* startWatcher;
       yield* syncDefaultKeybindingsOnStartup;
@@ -864,7 +866,15 @@ const makeKeybindings = Effect.gen(function* () {
 
     const startupExit = yield* Effect.exit(startup);
     if (startupExit._tag === "Failure") {
+      // Close the watcher scope to stop any forked watcher fibers from this attempt
+      yield* Scope.close(watcherScope, Exit.void);
+      watcherScope = yield* Scope.make("sequential");
+      // Reset the gate so subsequent callers can retry
+      yield* Ref.set(startedRef, false);
       yield* Deferred.failCause(startedDeferred, startupExit.cause).pipe(Effect.orDie);
+      // Replace the deferred so new callers get a fresh one
+      const nextDeferred = yield* Deferred.make<void, KeybindingsConfigError>();
+      startedDeferred = nextDeferred;
       return yield* Effect.failCause(startupExit.cause);
     }
 
@@ -873,7 +883,7 @@ const makeKeybindings = Effect.gen(function* () {
 
   return {
     start,
-    ready: Deferred.await(startedDeferred),
+    ready: Effect.suspend(() => Deferred.await(startedDeferred)),
     syncDefaultKeybindingsOnStartup,
     loadConfigState: loadConfigStateFromCacheOrDisk,
     getSnapshot: loadConfigStateFromCacheOrDisk,
@@ -901,6 +911,31 @@ const makeKeybindings = Effect.gen(function* () {
           yield* writeConfigAtomically(cappedConfig);
           const nextResolved = mergeWithDefaultKeybindings(
             compileResolvedKeybindingsConfig(cappedConfig),
+          );
+          yield* Cache.set(resolvedConfigCache, resolvedConfigCacheKey, {
+            keybindings: nextResolved,
+            issues: [],
+          });
+          yield* emitChange({
+            keybindings: nextResolved,
+            issues: [],
+          });
+          return nextResolved;
+        }),
+      ),
+    removeKeybindingForCommand: (command) =>
+      upsertSemaphore.withPermits(1)(
+        Effect.gen(function* () {
+          const customConfig = yield* loadWritableCustomKeybindingsConfig();
+          const nextConfig = customConfig.filter((entry) => entry.command !== command);
+          if (nextConfig.length === customConfig.length) {
+            // No matching entry found — return current resolved config unchanged.
+            const current = yield* loadConfigStateFromCacheOrDisk;
+            return current.keybindings;
+          }
+          yield* writeConfigAtomically(nextConfig);
+          const nextResolved = mergeWithDefaultKeybindings(
+            compileResolvedKeybindingsConfig(nextConfig),
           );
           yield* Cache.set(resolvedConfigCache, resolvedConfigCacheKey, {
             keybindings: nextResolved,

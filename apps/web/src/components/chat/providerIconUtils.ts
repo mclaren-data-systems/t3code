@@ -1,12 +1,26 @@
 import { type ProviderKind, PROVIDER_DISPLAY_NAMES } from "@t3tools/contracts";
-import { ClaudeAI, CursorIcon, Icon, OpenAI, OpenCodeIcon } from "../Icons";
+import {
+  AmpIcon,
+  ClaudeAI,
+  CursorIcon,
+  Gemini,
+  GithubCopilotIcon,
+  Icon,
+  KiloIcon,
+  OpenAI,
+  OpenCodeIcon,
+} from "../Icons";
 import { PROVIDER_OPTIONS } from "../../session-logic";
 
 export const PROVIDER_ICON_BY_PROVIDER: Record<ProviderKind, Icon> = {
   codex: OpenAI,
+  copilot: GithubCopilotIcon,
   claudeAgent: ClaudeAI,
-  opencode: OpenCodeIcon,
   cursor: CursorIcon,
+  opencode: OpenCodeIcon,
+  geminiCli: Gemini,
+  amp: AmpIcon,
+  kilo: KiloIcon,
 };
 
 function isAvailableProviderOption(option: (typeof PROVIDER_OPTIONS)[number]): option is {

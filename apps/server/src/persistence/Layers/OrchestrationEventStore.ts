@@ -15,6 +15,8 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 import { Effect, Layer, Schema, Stream } from "effect";
 
+import { redactEventForBoundary } from "../../orchestration/redactEvent.ts";
+import { normalizePersistedProviderKindName } from "../../provider/providerKind.ts";
 import {
   toPersistenceDecodeError,
   toPersistenceSqlError,
@@ -25,7 +27,63 @@ import {
   type OrchestrationEventStoreShape,
 } from "../Services/OrchestrationEventStore.ts";
 
-const decodeEvent = Schema.decodeUnknownEffect(OrchestrationEvent);
+const decodeEventRaw = Schema.decodeUnknownEffect(OrchestrationEvent);
+
+/**
+ * Normalize legacy provider names in event payloads before Schema decoding.
+ * This handles data written before provider renames that migrations may not
+ * have caught.
+ */
+function normalizeLegacyProviderNames(row: unknown): unknown {
+  if (typeof row !== "object" || row === null) return row;
+  const obj = row as Record<string, unknown>;
+  const payload = obj.payload;
+  if (typeof payload !== "object" || payload === null) return row;
+  const p = payload as Record<string, unknown>;
+  let patched = false;
+  const patchStringProvider = (field: string) => {
+    const value = p[field];
+    if (typeof value !== "string") {
+      return;
+    }
+    const normalizedProvider = normalizePersistedProviderKindName(value);
+    if (normalizedProvider === null || normalizedProvider === value) {
+      return;
+    }
+    p[field] = normalizedProvider;
+    patched = true;
+  };
+  const patchProvider = (field: string) => {
+    const sel = p[field] as Record<string, unknown> | undefined;
+    if (!sel || typeof sel !== "object" || typeof sel.provider !== "string") {
+      return;
+    }
+    const normalizedProvider = normalizePersistedProviderKindName(sel.provider);
+    if (normalizedProvider === null) {
+      return;
+    }
+    if (normalizedProvider !== sel.provider) {
+      p[field] = { ...sel, provider: normalizedProvider };
+      patched = true;
+    }
+  };
+  patchProvider("modelSelection");
+  patchProvider("defaultModelSelection");
+  patchStringProvider("provider");
+  patchStringProvider("defaultProvider");
+  patchStringProvider("providerName");
+  patchStringProvider("defaultProviderName");
+  patchStringProvider("providerKind");
+  patchStringProvider("defaultProviderKind");
+  patchStringProvider("sessionProvider");
+  patchStringProvider("selectedProvider");
+  patchStringProvider("activeProvider");
+  patchStringProvider("stickyProvider");
+  patchStringProvider("stickyActiveProvider");
+  return patched ? { ...obj, payload: { ...p } } : row;
+}
+
+const decodeEvent = (row: unknown) => decodeEventRaw(normalizeLegacyProviderNames(row));
 const UnknownFromJsonString = Schema.fromJsonString(Schema.Unknown);
 const EventMetadataFromJsonString = Schema.fromJsonString(OrchestrationEventMetadata);
 
@@ -178,19 +236,20 @@ const makeEventStore = Effect.gen(function* () {
       `,
   });
 
-  const append: OrchestrationEventStoreShape["append"] = (event) =>
-    appendEventRow({
-      eventId: event.eventId,
-      aggregateKind: event.aggregateKind,
-      streamId: event.aggregateId,
-      type: event.type,
-      causationEventId: event.causationEventId,
-      correlationId: event.correlationId,
-      actorKind: inferActorKind(event),
-      occurredAt: event.occurredAt,
-      commandId: event.commandId,
-      payloadJson: event.payload,
-      metadataJson: event.metadata,
+  const append: OrchestrationEventStoreShape["append"] = (event) => {
+    const safeEvent = redactEventForBoundary(event);
+    return appendEventRow({
+      eventId: safeEvent.eventId,
+      aggregateKind: safeEvent.aggregateKind,
+      streamId: safeEvent.aggregateId,
+      type: safeEvent.type,
+      causationEventId: safeEvent.causationEventId,
+      correlationId: safeEvent.correlationId,
+      actorKind: inferActorKind(safeEvent),
+      occurredAt: safeEvent.occurredAt,
+      commandId: safeEvent.commandId,
+      payloadJson: safeEvent.payload,
+      metadataJson: safeEvent.metadata,
     }).pipe(
       Effect.mapError(
         toPersistenceSqlOrDecodeError(
@@ -204,6 +263,7 @@ const makeEventStore = Effect.gen(function* () {
         ),
       ),
     );
+  };
 
   const readFromSequence: OrchestrationEventStoreShape["readFromSequence"] = (
     sequenceExclusive,

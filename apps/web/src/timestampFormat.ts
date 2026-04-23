@@ -21,6 +21,7 @@ export function getTimestampFormatOptions(
 }
 
 const timestampFormatterCache = new Map<string, Intl.DateTimeFormat>();
+let fullTimestampFormatter: Intl.DateTimeFormat | null = null;
 
 function getTimestampFormatter(
   timestampFormat: TimestampFormat,
@@ -48,6 +49,14 @@ export function formatShortTimestamp(isoDate: string, timestampFormat: Timestamp
   return getTimestampFormatter(timestampFormat, false).format(new Date(isoDate));
 }
 
+export function formatFullTimestamp(isoDate: string): string {
+  fullTimestampFormatter ??= new Intl.DateTimeFormat(undefined, {
+    dateStyle: "full",
+    timeStyle: "medium",
+  });
+  return fullTimestampFormatter.format(new Date(isoDate));
+}
+
 /**
  * Format a relative time string from an ISO date.
  * Returns `{ value: "20s", suffix: "ago" }` or `{ value: "just now", suffix: null }`
@@ -66,9 +75,9 @@ export function formatRelativeTime(isoDate: string): { value: string; suffix: st
   return { value: `${days}d`, suffix: "ago" };
 }
 
-export function formatRelativeTimeLabel(isoDate: string) {
-  const relative = formatRelativeTime(isoDate);
-  return relative.suffix ? `${relative.value} ${relative.suffix}` : relative.value;
+export function formatRelativeTimeLabel(isoDate: string): string {
+  const { value, suffix } = formatRelativeTime(isoDate);
+  return suffix ? `${value} ${suffix}` : value;
 }
 
 /**

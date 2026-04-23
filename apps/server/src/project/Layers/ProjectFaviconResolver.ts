@@ -27,7 +27,6 @@ const FAVICON_CANDIDATES = [
   "assets/icon.png",
   "assets/logo.svg",
   "assets/logo.png",
-  ".idea/icon.svg",
 ] as const;
 
 // Files that may contain a <link rel="icon"> or icon metadata declaration.
@@ -73,6 +72,12 @@ export const makeProjectFaviconResolver = Effect.gen(function* () {
     projectCwd: string,
     candidates: ReadonlyArray<string>,
   ): Effect.fn.Return<string | null> {
+    // Resolve the project root's real path once so symlink targets are compared
+    // against the canonical root, not the possibly-symlinked one.
+    const realProjectCwd = yield* fileSystem
+      .realPath(projectCwd)
+      .pipe(Effect.catch(() => Effect.succeed(projectCwd)));
+
     for (const candidate of candidates) {
       if (!isPathWithinProject(projectCwd, candidate)) {
         continue;
@@ -80,9 +85,18 @@ export const makeProjectFaviconResolver = Effect.gen(function* () {
       const stats = yield* fileSystem
         .stat(candidate)
         .pipe(Effect.catch(() => Effect.succeed(null)));
-      if (stats?.type === "File") {
-        return candidate;
+      if (stats?.type !== "File") {
+        continue;
       }
+      // Resolve the candidate's real path to guard against symlinks that escape
+      // the project directory (e.g. favicon.svg -> /etc/passwd).
+      const realCandidate = yield* fileSystem
+        .realPath(candidate)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (!realCandidate || !isPathWithinProject(realProjectCwd, realCandidate)) {
+        continue;
+      }
+      return candidate;
     }
     return null;
   });

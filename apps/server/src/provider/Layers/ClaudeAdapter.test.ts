@@ -17,7 +17,6 @@ import {
   type RuntimeMode,
   ThreadId,
 } from "@t3tools/contracts";
-import { createModelSelection } from "@t3tools/shared/model";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Fiber, Layer, Random, Stream } from "effect";
 
@@ -210,10 +209,11 @@ async function readFirstPromptText(
   if (next.done) {
     return undefined;
   }
-  if (typeof next.value.message.content === "string") {
-    return next.value.message.content;
+  const msg = next.value.message as any;
+  if (typeof msg.content === "string") {
+    return msg.content;
   }
-  const content = next.value.message.content[0];
+  const content = msg.content[0];
   if (!content || content.type !== "text") {
     return undefined;
   }
@@ -334,9 +334,13 @@ describe("ClaudeAdapterLive", () => {
       yield* adapter.startSession({
         threadId: THREAD_ID,
         provider: "claudeAgent",
-        modelSelection: createModelSelection("claudeAgent", "claude-opus-4-6", [
-          { id: "effort", value: "max" },
-        ]),
+        modelSelection: {
+          provider: "claudeAgent",
+          model: "claude-opus-4-6",
+          options: {
+            effort: "max",
+          },
+        },
         runtimeMode: "full-access",
       });
 
@@ -377,9 +381,13 @@ describe("ClaudeAdapterLive", () => {
       yield* adapter.startSession({
         threadId: THREAD_ID,
         provider: "claudeAgent",
-        modelSelection: createModelSelection("claudeAgent", "claude-opus-4-7", [
-          { id: "effort", value: "xhigh" },
-        ]),
+        modelSelection: {
+          provider: "claudeAgent",
+          model: "claude-opus-4-7",
+          options: {
+            effort: "xhigh",
+          },
+        },
         runtimeMode: "full-access",
       });
 
@@ -398,9 +406,13 @@ describe("ClaudeAdapterLive", () => {
       yield* adapter.startSession({
         threadId: THREAD_ID,
         provider: "claudeAgent",
-        modelSelection: createModelSelection("claudeAgent", "claude-sonnet-4-6", [
-          { id: "effort", value: "max" },
-        ]),
+        modelSelection: {
+          provider: "claudeAgent",
+          model: "claude-sonnet-4-6",
+          options: {
+            effort: "max",
+          },
+        },
         runtimeMode: "full-access",
       });
 
@@ -419,9 +431,13 @@ describe("ClaudeAdapterLive", () => {
       yield* adapter.startSession({
         threadId: THREAD_ID,
         provider: "claudeAgent",
-        modelSelection: createModelSelection("claudeAgent", "claude-haiku-4-5", [
-          { id: "effort", value: "high" },
-        ]),
+        modelSelection: {
+          provider: "claudeAgent",
+          model: "claude-haiku-4-5",
+          options: {
+            effort: "high",
+          },
+        },
         runtimeMode: "full-access",
       });
 
@@ -440,9 +456,13 @@ describe("ClaudeAdapterLive", () => {
       yield* adapter.startSession({
         threadId: THREAD_ID,
         provider: "claudeAgent",
-        modelSelection: createModelSelection("claudeAgent", "claude-haiku-4-5", [
-          { id: "thinking", value: false },
-        ]),
+        modelSelection: {
+          provider: "claudeAgent",
+          model: "claude-haiku-4-5",
+          options: {
+            thinking: false,
+          },
+        },
         runtimeMode: "full-access",
       });
 
@@ -463,9 +483,13 @@ describe("ClaudeAdapterLive", () => {
       yield* adapter.startSession({
         threadId: THREAD_ID,
         provider: "claudeAgent",
-        modelSelection: createModelSelection("claudeAgent", "claude-sonnet-4-6", [
-          { id: "thinking", value: false },
-        ]),
+        modelSelection: {
+          provider: "claudeAgent",
+          model: "claude-sonnet-4-6",
+          options: {
+            thinking: false,
+          },
+        },
         runtimeMode: "full-access",
       });
 
@@ -484,9 +508,13 @@ describe("ClaudeAdapterLive", () => {
       yield* adapter.startSession({
         threadId: THREAD_ID,
         provider: "claudeAgent",
-        modelSelection: createModelSelection("claudeAgent", "claude-opus-4-6", [
-          { id: "fastMode", value: true },
-        ]),
+        modelSelection: {
+          provider: "claudeAgent",
+          model: "claude-opus-4-6",
+          options: {
+            fastMode: true,
+          },
+        },
         runtimeMode: "full-access",
       });
 
@@ -507,9 +535,13 @@ describe("ClaudeAdapterLive", () => {
       yield* adapter.startSession({
         threadId: THREAD_ID,
         provider: "claudeAgent",
-        modelSelection: createModelSelection("claudeAgent", "claude-sonnet-4-6", [
-          { id: "fastMode", value: true },
-        ]),
+        modelSelection: {
+          provider: "claudeAgent",
+          model: "claude-sonnet-4-6",
+          options: {
+            fastMode: true,
+          },
+        },
         runtimeMode: "full-access",
       });
 
@@ -528,9 +560,13 @@ describe("ClaudeAdapterLive", () => {
       const session = yield* adapter.startSession({
         threadId: THREAD_ID,
         provider: "claudeAgent",
-        modelSelection: createModelSelection("claudeAgent", "claude-sonnet-4-6", [
-          { id: "effort", value: "ultrathink" },
-        ]),
+        modelSelection: {
+          provider: "claudeAgent",
+          model: "claude-sonnet-4-6",
+          options: {
+            effort: "ultrathink",
+          },
+        },
         runtimeMode: "full-access",
       });
 
@@ -538,9 +574,13 @@ describe("ClaudeAdapterLive", () => {
         threadId: session.threadId,
         input: "Investigate the edge cases",
         attachments: [],
-        modelSelection: createModelSelection("claudeAgent", "claude-sonnet-4-6", [
-          { id: "effort", value: "ultrathink" },
-        ]),
+        modelSelection: {
+          provider: "claudeAgent",
+          model: "claude-sonnet-4-6",
+          options: {
+            effort: "ultrathink",
+          },
+        },
       });
 
       const createInput = harness.getLastCreateQueryInput();
@@ -598,7 +638,7 @@ describe("ClaudeAdapterLive", () => {
       const createInput = harness.getLastCreateQueryInput();
       const promptMessage = yield* Effect.promise(() => readFirstPromptMessage(createInput));
       assert.isDefined(promptMessage);
-      assert.deepEqual(promptMessage?.message.content, [
+      assert.deepEqual((promptMessage?.message as any).content, [
         {
           type: "text",
           text: "What's in this image?",
@@ -2755,9 +2795,13 @@ describe("ClaudeAdapterLive", () => {
       yield* adapter.sendTurn({
         threadId: session.threadId,
         input: "hello",
-        modelSelection: createModelSelection("claudeAgent", "claude-opus-4-6", [
-          { id: "contextWindow", value: "1m" },
-        ]),
+        modelSelection: {
+          provider: "claudeAgent",
+          model: "claude-opus-4-6",
+          options: {
+            contextWindow: "1m",
+          },
+        },
         attachments: [],
       });
       yield* adapter.sendTurn({

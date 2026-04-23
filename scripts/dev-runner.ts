@@ -109,7 +109,11 @@ function resolveBaseDir(baseDir: string | undefined): Effect.Effect<string, neve
     const configured = baseDir?.trim();
 
     if (configured) {
-      return path.resolve(configured);
+      const expanded =
+        configured.startsWith("~/") || configured === "~"
+          ? path.join(NodeOS.homedir(), configured.slice(1))
+          : configured;
+      return path.resolve(expanded);
     }
 
     return yield* DEFAULT_T3_HOME;
@@ -157,6 +161,10 @@ export function createDevRunnerEnv({
         `http://${isDesktopMode ? DESKTOP_DEV_LOOPBACK_HOST : "localhost"}:${webPort}`,
       T3CODE_HOME: resolvedBaseDir,
     };
+
+    // Always strip bootstrap fd — it refers to the parent's descriptor and
+    // must never leak into turbo/child processes regardless of mode.
+    delete output.T3CODE_BOOTSTRAP_FD;
 
     if (!isDesktopMode) {
       output.T3CODE_PORT = String(serverPort);

@@ -2,164 +2,83 @@ import {
   DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER,
   type ModelSelection,
   type ProviderKind,
+  type ProviderModelOptions,
   type ServerProvider,
 } from "@t3tools/contracts";
-import {
-  createModelSelection,
-  normalizeModelSlug,
-  resolveSelectableModel,
-} from "@t3tools/shared/model";
-import { getComposerProviderState } from "./components/chat/composerProviderState";
-import { UnifiedSettings } from "@t3tools/contracts/settings";
+import type { UnifiedSettings } from "@t3tools/contracts/settings";
+import { createModelSelection, resolveSelectableModel } from "@t3tools/shared/model";
+
+import { getComposerProviderState } from "./components/chat/composerProviderRegistry";
+import { getAppModelOptions, MAX_CUSTOM_MODEL_LENGTH } from "./customModels";
 import {
   getDefaultServerModel,
   getProviderModels,
   resolveSelectableProvider,
 } from "./providerModels";
-import { ModelEsque } from "./components/chat/providerIconUtils";
 
-const MAX_CUSTOM_MODEL_COUNT = 32;
-export const MAX_CUSTOM_MODEL_LENGTH = 256;
+export { MAX_CUSTOM_MODEL_LENGTH };
 
-export interface AppModelOption {
-  slug: string;
-  name: string;
-  shortName?: string;
-  subProvider?: string;
-  isCustom: boolean;
-}
-
-export function normalizeCustomModelSlugs(
-  models: Iterable<string | null | undefined>,
-  builtInModelSlugs: ReadonlySet<string>,
-  provider: ProviderKind = "codex",
-): string[] {
-  const normalizedModels: string[] = [];
-  const seen = new Set<string>();
-
-  for (const candidate of models) {
-    const normalized = normalizeModelSlug(candidate, provider);
-    if (
-      !normalized ||
-      normalized.length > MAX_CUSTOM_MODEL_LENGTH ||
-      builtInModelSlugs.has(normalized) ||
-      seen.has(normalized)
-    ) {
-      continue;
-    }
-
-    seen.add(normalized);
-    normalizedModels.push(normalized);
-    if (normalizedModels.length >= MAX_CUSTOM_MODEL_COUNT) {
-      break;
-    }
-  }
-
-  return normalizedModels;
-}
-
-export function getAppModelOptions(
+export function getCustomModelOptionsByProvider(
   settings: UnifiedSettings,
-  providers: ReadonlyArray<ServerProvider>,
-  provider: ProviderKind,
+  _providers?: ReadonlyArray<ServerProvider>,
+  selectedProvider?: ProviderKind | null,
   selectedModel?: string | null,
-): AppModelOption[] {
-  const options: AppModelOption[] = getProviderModels(providers, provider).map(
-    ({ slug, name, shortName, subProvider, isCustom }) => ({
-      slug,
-      name,
-      ...(shortName ? { shortName } : {}),
-      ...(subProvider ? { subProvider } : {}),
-      isCustom,
-    }),
-  );
-  const seen = new Set(options.map((option) => option.slug));
-  const trimmedSelectedModel = selectedModel?.trim().toLowerCase();
-  const builtInModelSlugs = new Set(
-    getProviderModels(providers, provider)
-      .filter((model) => !model.isCustom)
-      .map((model) => model.slug),
-  );
-
-  const customModels = settings.providers[provider].customModels;
-  for (const slug of normalizeCustomModelSlugs(customModels, builtInModelSlugs, provider)) {
-    if (seen.has(slug)) {
-      continue;
-    }
-
-    seen.add(slug);
-    options.push({
-      slug,
-      name: slug,
-      isCustom: true,
-    });
-  }
-
-  const normalizedSelectedModel = normalizeModelSlug(selectedModel, provider);
-  const selectedModelMatchesExistingName =
-    typeof trimmedSelectedModel === "string" &&
-    options.some((option) => option.name.toLowerCase() === trimmedSelectedModel);
-  if (
-    normalizedSelectedModel &&
-    !seen.has(normalizedSelectedModel) &&
-    !selectedModelMatchesExistingName
-  ) {
-    options.push({
-      slug: normalizedSelectedModel,
-      name: normalizedSelectedModel,
-      isCustom: true,
-    });
-  }
-
-  return options;
+) {
+  return {
+    codex: getAppModelOptions(
+      "codex",
+      settings.providers.codex.customModels,
+      selectedProvider === "codex" ? selectedModel : undefined,
+    ),
+    copilot: getAppModelOptions(
+      "copilot",
+      settings.providers.copilot.customModels,
+      selectedProvider === "copilot" ? selectedModel : undefined,
+    ),
+    claudeAgent: getAppModelOptions(
+      "claudeAgent",
+      settings.providers.claudeAgent.customModels,
+      selectedProvider === "claudeAgent" ? selectedModel : undefined,
+    ),
+    cursor: getAppModelOptions(
+      "cursor",
+      settings.providers.cursor.customModels,
+      selectedProvider === "cursor" ? selectedModel : undefined,
+    ),
+    opencode: getAppModelOptions(
+      "opencode",
+      settings.providers.opencode.customModels,
+      selectedProvider === "opencode" ? selectedModel : undefined,
+    ),
+    geminiCli: getAppModelOptions(
+      "geminiCli",
+      settings.providers.geminiCli.customModels,
+      selectedProvider === "geminiCli" ? selectedModel : undefined,
+    ),
+    amp: getAppModelOptions(
+      "amp",
+      settings.providers.amp.customModels,
+      selectedProvider === "amp" ? selectedModel : undefined,
+    ),
+    kilo: getAppModelOptions(
+      "kilo",
+      settings.providers.kilo.customModels,
+      selectedProvider === "kilo" ? selectedModel : undefined,
+    ),
+  } as const;
 }
 
 export function resolveAppModelSelection(
   provider: ProviderKind,
   settings: UnifiedSettings,
-  providers: ReadonlyArray<ServerProvider>,
-  selectedModel: string | null | undefined,
+  _providers: ReadonlyArray<ServerProvider>,
+  model: string | null | undefined,
 ): string {
-  const resolvedProvider = resolveSelectableProvider(providers, provider);
-  const options = getAppModelOptions(settings, providers, resolvedProvider, selectedModel);
+  const modelOptions = getCustomModelOptionsByProvider(settings, _providers, provider, model);
   return (
-    resolveSelectableModel(resolvedProvider, selectedModel, options) ??
-    getDefaultServerModel(providers, resolvedProvider)
+    resolveSelectableModel(provider, model, modelOptions[provider]) ??
+    getDefaultServerModel(_providers, provider)
   );
-}
-
-export function getCustomModelOptionsByProvider(
-  settings: UnifiedSettings,
-  providers: ReadonlyArray<ServerProvider>,
-  selectedProvider?: ProviderKind | null,
-  selectedModel?: string | null,
-): Record<ProviderKind, ReadonlyArray<ModelEsque>> {
-  return {
-    codex: getAppModelOptions(
-      settings,
-      providers,
-      "codex",
-      selectedProvider === "codex" ? selectedModel : undefined,
-    ),
-    claudeAgent: getAppModelOptions(
-      settings,
-      providers,
-      "claudeAgent",
-      selectedProvider === "claudeAgent" ? selectedModel : undefined,
-    ),
-    cursor: getAppModelOptions(
-      settings,
-      providers,
-      "cursor",
-      selectedProvider === "cursor" ? selectedModel : undefined,
-    ),
-    opencode: getAppModelOptions(
-      settings,
-      providers,
-      "opencode",
-      selectedProvider === "opencode" ? selectedModel : undefined,
-    ),
-  };
 }
 
 export function resolveAppModelSelectionState(
@@ -171,17 +90,24 @@ export function resolveAppModelSelectionState(
     model: DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER.codex,
   };
   const provider = resolveSelectableProvider(providers, selection.provider);
+  const modelOptionsByProvider = getCustomModelOptionsByProvider(settings);
 
-  // When the provider changed due to fallback (e.g. selected provider was disabled),
-  // don't carry over the old provider's model — use the fallback provider's default.
-  const selectedModel = provider === selection.provider ? selection.model : null;
-  const model = resolveAppModelSelection(provider, settings, providers, selectedModel);
+  const model =
+    resolveSelectableModel(
+      provider,
+      provider === selection.provider ? selection.model : null,
+      modelOptionsByProvider[provider],
+    ) ?? getDefaultServerModel(providers, provider);
+
+  const providerModelOptions: Partial<ProviderModelOptions> = {
+    [provider]: provider === selection.provider ? selection.options : undefined,
+  };
   const { modelOptionsForDispatch } = getComposerProviderState({
     provider,
     model,
     models: getProviderModels(providers, provider),
     prompt: "",
-    modelOptions: provider === selection.provider ? selection.options : undefined,
+    modelOptions: providerModelOptions,
   });
 
   return createModelSelection(provider, model, modelOptionsForDispatch);

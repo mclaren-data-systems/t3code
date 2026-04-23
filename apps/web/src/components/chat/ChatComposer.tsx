@@ -60,6 +60,7 @@ import {
   shouldUseCompactComposerFooter,
 } from "../composerFooterLayout";
 import { type ComposerPromptEditorHandle, ComposerPromptEditor } from "../ComposerPromptEditor";
+import { type ModelOptionEntry } from "../../providerModelOptions";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
@@ -71,10 +72,11 @@ import { ComposerPlanFollowUpBanner } from "./ComposerPlanFollowUpBanner";
 import { resolveComposerMenuActiveItemId } from "./composerMenuHighlight";
 import { searchSlashCommandItems } from "./composerSlashCommandSearch";
 import {
+  getComposerProviderControls,
   getComposerProviderState,
   renderProviderTraitsMenuContent,
   renderProviderTraitsPicker,
-} from "./composerProviderState";
+} from "./composerProviderRegistry";
 import { ContextWindowMeter } from "./ContextWindowMeter";
 import { buildExpandedImagePreview, type ExpandedImagePreview } from "./ExpandedImagePreview";
 import { basenameOfPath } from "../../vscode-icons";
@@ -95,11 +97,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { proposedPlanTitle } from "../../proposedPlan";
-import {
-  getProviderInteractionModeToggle,
-  getProviderModels,
-  resolveSelectableProvider,
-} from "../../providerModels";
+import { resolveSelectableProvider, getProviderModels } from "../../providerModels";
 import type { UnifiedSettings } from "@t3tools/contracts/settings";
 import type { SessionPhase, Thread } from "../../types";
 import type { PendingUserInputDraftAnswer } from "../../pendingUserInput";
@@ -598,7 +596,7 @@ export const ChatComposer = memo(
           model: selectedModel,
           models: selectedProviderModels,
           prompt,
-          modelOptions: composerModelOptions?.[selectedProvider],
+          modelOptions: composerModelOptions,
         }),
       [composerModelOptions, prompt, selectedModel, selectedProvider, selectedProviderModels],
     );
@@ -606,13 +604,8 @@ export const ChatComposer = memo(
     const selectedPromptEffort = composerProviderState.promptEffort;
     const selectedModelOptionsForDispatch = composerProviderState.modelOptionsForDispatch;
     const composerProviderControls = useMemo(
-      () => ({
-        showInteractionModeToggle: getProviderInteractionModeToggle(
-          providerStatuses,
-          selectedProvider,
-        ),
-      }),
-      [providerStatuses, selectedProvider],
+      () => getComposerProviderControls(selectedProvider),
+      [selectedProvider],
     );
     const selectedModelSelection = useMemo<ModelSelection>(
       () => createModelSelection(selectedProvider, selectedModel, selectedModelOptionsForDispatch),
@@ -620,18 +613,23 @@ export const ChatComposer = memo(
     );
     const selectedModelForPicker = selectedModel;
     const modelOptionsByProvider = useMemo<
-      Record<ProviderKind, ReadonlyArray<ServerProvider["models"][number]>>
-    >(
-      () => ({
-        codex: providerStatuses.find((provider) => provider.provider === "codex")?.models ?? [],
-        claudeAgent:
-          providerStatuses.find((provider) => provider.provider === "claudeAgent")?.models ?? [],
-        opencode:
-          providerStatuses.find((provider) => provider.provider === "opencode")?.models ?? [],
-        cursor: providerStatuses.find((provider) => provider.provider === "cursor")?.models ?? [],
-      }),
-      [providerStatuses],
-    );
+      Record<ProviderKind, ReadonlyArray<ModelOptionEntry>>
+    >(() => {
+      const modelsFor = (kind: ProviderKind): ReadonlyArray<ModelOptionEntry> =>
+        (providerStatuses.find((p) => p.provider === kind)?.models ?? []).map(
+          ({ slug, name, isCustom }) => ({ slug, name, isCustom }),
+        );
+      return {
+        codex: modelsFor("codex"),
+        claudeAgent: modelsFor("claudeAgent"),
+        copilot: modelsFor("copilot"),
+        cursor: modelsFor("cursor"),
+        opencode: modelsFor("opencode"),
+        geminiCli: modelsFor("geminiCli"),
+        amp: modelsFor("amp"),
+        kilo: modelsFor("kilo"),
+      };
+    }, [providerStatuses]);
     const selectedModelForPickerWithCustomFallback = useMemo(() => {
       const currentOptions = modelOptionsByProvider[selectedProvider];
       return currentOptions.some((option) => option.slug === selectedModelForPicker)

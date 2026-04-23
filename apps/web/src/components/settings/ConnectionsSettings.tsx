@@ -41,7 +41,7 @@ import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { QRCodeSvg } from "../ui/qr-code";
 import { Spinner } from "../ui/spinner";
 import { Switch } from "../ui/switch";
-import { stackedThreadToast, toastManager } from "../ui/toast";
+import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
@@ -302,13 +302,11 @@ const PairingLinkListRow = memo(function PairingLinkListRow({
     },
     onError: (error) => {
       setIsRevealDialogOpen(true);
-      toastManager.add(
-        stackedThreadToast({
-          type: "error",
-          title: canCopyToClipboard ? "Could not copy pairing URL" : "Clipboard copy unavailable",
-          description: canCopyToClipboard ? error.message : "Showing the full value instead.",
-        }),
-      );
+      toastManager.add({
+        type: "error",
+        title: canCopyToClipboard ? "Could not copy pairing URL" : "Clipboard copy unavailable",
+        description: canCopyToClipboard ? error.message : "Showing the full value instead.",
+      });
     },
   });
 
@@ -537,13 +535,11 @@ const AuthorizedClientsHeaderAction = memo(function AuthorizedClientsHeaderActio
       setDialogOpen(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to create pairing URL.";
-      toastManager.add(
-        stackedThreadToast({
-          type: "error",
-          title: "Could not create pairing URL",
-          description: message,
-        }),
-      );
+      toastManager.add({
+        type: "error",
+        title: "Could not create pairing URL",
+        description: message,
+      });
     } finally {
       setIsCreatingPairingLink(false);
     }
@@ -832,13 +828,11 @@ export function ConnectionsSettings() {
           error instanceof Error ? error.message : "Failed to update network exposure.";
         setPendingDesktopServerExposureMode(null);
         setDesktopServerExposureError(message);
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Could not update network access",
-            description: message,
-          }),
-        );
+        toastManager.add({
+          type: "error",
+          title: "Could not update network access",
+          description: message,
+        });
         setIsUpdatingDesktopServerExposure(false);
       }
     },
@@ -859,13 +853,11 @@ export function ConnectionsSettings() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to revoke pairing link.";
       setDesktopAccessManagementError(message);
-      toastManager.add(
-        stackedThreadToast({
-          type: "error",
-          title: "Could not revoke pairing link",
-          description: message,
-        }),
-      );
+      toastManager.add({
+        type: "error",
+        title: "Could not revoke pairing link",
+        description: message,
+      });
     } finally {
       setRevokingDesktopPairingLinkId(null);
     }
@@ -880,13 +872,11 @@ export function ConnectionsSettings() {
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to revoke client access.";
         setDesktopAccessManagementError(message);
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Could not revoke client access",
-            description: message,
-          }),
-        );
+        toastManager.add({
+          type: "error",
+          title: "Could not revoke client access",
+          description: message,
+        });
       } finally {
         setRevokingDesktopClientSessionId(null);
       }
@@ -907,13 +897,11 @@ export function ConnectionsSettings() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to revoke other clients.";
       setDesktopAccessManagementError(message);
-      toastManager.add(
-        stackedThreadToast({
-          type: "error",
-          title: "Could not revoke other clients",
-          description: message,
-        }),
-      );
+      toastManager.add({
+        type: "error",
+        title: "Could not revoke other clients",
+        description: message,
+      });
     } finally {
       setIsRevokingOtherDesktopClients(false);
     }
@@ -945,13 +933,11 @@ export function ConnectionsSettings() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to add backend.";
       setSavedBackendError(message);
-      toastManager.add(
-        stackedThreadToast({
-          type: "error",
-          title: "Could not add backend",
-          description: message,
-        }),
-      );
+      toastManager.add({
+        type: "error",
+        title: "Could not add backend",
+        description: message,
+      });
     } finally {
       setIsAddingSavedBackend(false);
     }
@@ -971,13 +957,11 @@ export function ConnectionsSettings() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to reconnect backend.";
       setSavedBackendError(message);
-      toastManager.add(
-        stackedThreadToast({
-          type: "error",
-          title: "Could not reconnect backend",
-          description: message,
-        }),
-      );
+      toastManager.add({
+        type: "error",
+        title: "Could not reconnect backend",
+        description: message,
+      });
     } finally {
       setReconnectingSavedEnvironmentId(null);
     }
@@ -991,13 +975,11 @@ export function ConnectionsSettings() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to remove backend.";
       setSavedBackendError(message);
-      toastManager.add(
-        stackedThreadToast({
-          type: "error",
-          title: "Could not remove backend",
-          description: message,
-        }),
-      );
+      toastManager.add({
+        type: "error",
+        title: "Could not remove backend",
+        description: message,
+      });
     } finally {
       setRemovingSavedEnvironmentId(null);
     }

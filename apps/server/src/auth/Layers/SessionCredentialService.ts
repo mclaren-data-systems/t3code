@@ -297,15 +297,17 @@ export const makeSessionCredentialService = Effect.gen(function* () {
         });
       }
 
-      return {
+      const expiresAtOption = DateTime.make(claims.exp);
+      const verified: VerifiedSession = {
         sessionId: claims.sid,
         token,
         method: claims.method,
         client: toClientMetadata(row.value.client),
-        expiresAt: DateTime.makeUnsafe(claims.exp),
+        ...(Option.isSome(expiresAtOption) ? { expiresAt: expiresAtOption.value } : {}),
         subject: claims.sub,
         role: claims.role,
-      } satisfies VerifiedSession;
+      };
+      return verified;
     }).pipe(
       Effect.mapError((cause) =>
         cause instanceof SessionCredentialError

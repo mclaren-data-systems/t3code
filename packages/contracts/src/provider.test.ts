@@ -6,13 +6,6 @@ import { ProviderSendTurnInput, ProviderSessionStartInput } from "./provider.ts"
 const decodeProviderSessionStartInput = Schema.decodeUnknownSync(ProviderSessionStartInput);
 const decodeProviderSendTurnInput = Schema.decodeUnknownSync(ProviderSendTurnInput);
 
-function getOptionValue(
-  options: ReadonlyArray<{ id: string; value: unknown }> | undefined,
-  id: string,
-): unknown {
-  return options?.find((option) => option.id === id)?.value;
-}
-
 describe("ProviderSessionStartInput", () => {
   it("accepts codex-compatible payloads", () => {
     const parsed = decodeProviderSessionStartInput({
@@ -22,10 +15,10 @@ describe("ProviderSessionStartInput", () => {
       modelSelection: {
         provider: "codex",
         model: "gpt-5.3-codex",
-        options: [
-          { id: "reasoningEffort", value: "high" },
-          { id: "fastMode", value: true },
-        ],
+        options: {
+          reasoningEffort: "high",
+          fastMode: true,
+        },
       },
       runtimeMode: "full-access",
     });
@@ -35,8 +28,8 @@ describe("ProviderSessionStartInput", () => {
     if (parsed.modelSelection?.provider !== "codex") {
       throw new Error("Expected codex modelSelection");
     }
-    expect(getOptionValue(parsed.modelSelection.options, "reasoningEffort")).toBe("high");
-    expect(getOptionValue(parsed.modelSelection.options, "fastMode")).toBe(true);
+    expect(parsed.modelSelection.options?.reasoningEffort).toBe("high");
+    expect(parsed.modelSelection.options?.fastMode).toBe(true);
   });
 
   it("rejects payloads without runtime mode", () => {
@@ -48,6 +41,18 @@ describe("ProviderSessionStartInput", () => {
     ).toThrow();
   });
 
+  it("accepts copilot provider payloads", () => {
+    const parsed = decodeProviderSessionStartInput({
+      threadId: "thread-1",
+      provider: "copilot",
+      cwd: "/tmp/workspace",
+      model: "claude-sonnet-4.6",
+      runtimeMode: "full-access",
+    });
+    expect(parsed.provider).toBe("copilot");
+    expect(parsed.runtimeMode).toBe("full-access");
+  });
+
   it("accepts claude runtime knobs", () => {
     const parsed = decodeProviderSessionStartInput({
       threadId: "thread-1",
@@ -56,11 +61,11 @@ describe("ProviderSessionStartInput", () => {
       modelSelection: {
         provider: "claudeAgent",
         model: "claude-sonnet-4-6",
-        options: [
-          { id: "thinking", value: true },
-          { id: "effort", value: "max" },
-          { id: "fastMode", value: true },
-        ],
+        options: {
+          thinking: true,
+          effort: "max",
+          fastMode: true,
+        },
       },
       runtimeMode: "full-access",
     });
@@ -70,10 +75,33 @@ describe("ProviderSessionStartInput", () => {
     if (parsed.modelSelection?.provider !== "claudeAgent") {
       throw new Error("Expected claude modelSelection");
     }
-    expect(getOptionValue(parsed.modelSelection.options, "thinking")).toBe(true);
-    expect(getOptionValue(parsed.modelSelection.options, "effort")).toBe("max");
-    expect(getOptionValue(parsed.modelSelection.options, "fastMode")).toBe(true);
+    expect(parsed.modelSelection.options?.thinking).toBe(true);
+    expect(parsed.modelSelection.options?.effort).toBe("max");
+    expect(parsed.modelSelection.options?.fastMode).toBe(true);
     expect(parsed.runtimeMode).toBe("full-access");
+  });
+
+  it("accepts cursor provider payloads with model selection", () => {
+    const parsed = decodeProviderSessionStartInput({
+      threadId: "thread-1",
+      cwd: "/tmp/workspace",
+      modelSelection: {
+        provider: "cursor",
+        model: "composer-1.5",
+        options: {
+          thinking: true,
+        },
+      },
+      runtimeMode: "approval-required",
+    });
+    expect(parsed.modelSelection?.provider).toBe("cursor");
+    expect(parsed.modelSelection?.model).toBe("composer-1.5");
+    expect(
+      parsed.modelSelection?.provider === "cursor"
+        ? parsed.modelSelection.options?.thinking
+        : undefined,
+    ).toBe(true);
+    expect(parsed.runtimeMode).toBe("approval-required");
   });
 
   it("accepts cursor provider", () => {
@@ -85,14 +113,14 @@ describe("ProviderSessionStartInput", () => {
       modelSelection: {
         provider: "cursor",
         model: "composer-2",
-        options: [{ id: "fastMode", value: true }],
+        options: { fastMode: true },
       },
     });
     expect(parsed.provider).toBe("cursor");
     expect(parsed.modelSelection?.provider).toBe("cursor");
     expect(parsed.modelSelection?.model).toBe("composer-2");
     if (parsed.modelSelection?.provider === "cursor") {
-      expect(getOptionValue(parsed.modelSelection.options, "fastMode")).toBe(true);
+      expect(parsed.modelSelection.options?.fastMode).toBe(true);
     }
   });
 });
@@ -104,10 +132,10 @@ describe("ProviderSendTurnInput", () => {
       modelSelection: {
         provider: "codex",
         model: "gpt-5.3-codex",
-        options: [
-          { id: "reasoningEffort", value: "xhigh" },
-          { id: "fastMode", value: true },
-        ],
+        options: {
+          reasoningEffort: "xhigh",
+          fastMode: true,
+        },
       },
     });
 
@@ -116,8 +144,8 @@ describe("ProviderSendTurnInput", () => {
     if (parsed.modelSelection?.provider !== "codex") {
       throw new Error("Expected codex modelSelection");
     }
-    expect(getOptionValue(parsed.modelSelection.options, "reasoningEffort")).toBe("xhigh");
-    expect(getOptionValue(parsed.modelSelection.options, "fastMode")).toBe(true);
+    expect(parsed.modelSelection.options?.reasoningEffort).toBe("xhigh");
+    expect(parsed.modelSelection.options?.fastMode).toBe(true);
   });
 
   it("accepts claude modelSelection including ultrathink", () => {
@@ -126,10 +154,10 @@ describe("ProviderSendTurnInput", () => {
       modelSelection: {
         provider: "claudeAgent",
         model: "claude-sonnet-4-6",
-        options: [
-          { id: "effort", value: "ultrathink" },
-          { id: "fastMode", value: true },
-        ],
+        options: {
+          effort: "ultrathink",
+          fastMode: true,
+        },
       },
     });
 
@@ -137,7 +165,7 @@ describe("ProviderSendTurnInput", () => {
     if (parsed.modelSelection?.provider !== "claudeAgent") {
       throw new Error("Expected claude modelSelection");
     }
-    expect(getOptionValue(parsed.modelSelection.options, "effort")).toBe("ultrathink");
-    expect(getOptionValue(parsed.modelSelection.options, "fastMode")).toBe(true);
+    expect(parsed.modelSelection.options?.effort).toBe("ultrathink");
+    expect(parsed.modelSelection.options?.fastMode).toBe(true);
   });
 });

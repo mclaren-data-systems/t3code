@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import { assertSuccess } from "@effect/vitest/utils";
@@ -12,6 +15,8 @@ import {
 
 it.layer(NodeServices.layer)("resolveEditorLaunch", (it) => {
   it.effect("returns commands for command-based editors", () =>
+    // Use "linux" to avoid macOS .app fallback logic, which depends on
+    // whether the .app bundle happens to be installed on the test host.
     Effect.gen(function* () {
       const antigravityLaunch = yield* resolveEditorLaunch(
         { cwd: "/tmp/workspace", editor: "antigravity" },
@@ -25,7 +30,7 @@ it.layer(NodeServices.layer)("resolveEditorLaunch", (it) => {
 
       const cursorLaunch = yield* resolveEditorLaunch(
         { cwd: "/tmp/workspace", editor: "cursor" },
-        "darwin",
+        "linux",
         { PATH: "" },
       );
       assert.deepEqual(cursorLaunch, {
@@ -54,7 +59,7 @@ it.layer(NodeServices.layer)("resolveEditorLaunch", (it) => {
 
       const vscodeLaunch = yield* resolveEditorLaunch(
         { cwd: "/tmp/workspace", editor: "vscode" },
-        "darwin",
+        "linux",
         { PATH: "" },
       );
       assert.deepEqual(vscodeLaunch, {
@@ -82,7 +87,7 @@ it.layer(NodeServices.layer)("resolveEditorLaunch", (it) => {
 
       const zedLaunch = yield* resolveEditorLaunch(
         { cwd: "/tmp/workspace", editor: "zed" },
-        "darwin",
+        "linux",
         { PATH: "" },
       );
       assert.deepEqual(zedLaunch, {
@@ -90,13 +95,99 @@ it.layer(NodeServices.layer)("resolveEditorLaunch", (it) => {
         args: ["/tmp/workspace"],
       });
 
+      const windsurfLaunch = yield* resolveEditorLaunch(
+        { cwd: "/tmp/workspace", editor: "windsurf" },
+        "linux",
+      );
+      assert.deepEqual(windsurfLaunch, {
+        command: "windsurf",
+        args: ["/tmp/workspace"],
+      });
+
+      const sublimeLaunch = yield* resolveEditorLaunch(
+        { cwd: "/tmp/workspace", editor: "sublime" },
+        "linux",
+      );
+      assert.deepEqual(sublimeLaunch, {
+        command: "subl",
+        args: ["/tmp/workspace"],
+      });
+
+      const webstormLaunch = yield* resolveEditorLaunch(
+        { cwd: "/tmp/workspace", editor: "webstorm" },
+        "linux",
+      );
+      assert.deepEqual(webstormLaunch, {
+        command: "webstorm",
+        args: ["/tmp/workspace"],
+      });
+
       const ideaLaunch = yield* resolveEditorLaunch(
         { cwd: "/tmp/workspace", editor: "idea" },
-        "darwin",
+        "linux",
       );
       assert.deepEqual(ideaLaunch, {
         command: "idea",
         args: ["/tmp/workspace"],
+      });
+
+      const fleetLaunch = yield* resolveEditorLaunch(
+        { cwd: "/tmp/workspace", editor: "fleet" },
+        "linux",
+      );
+      assert.deepEqual(fleetLaunch, {
+        command: "fleet",
+        args: ["/tmp/workspace"],
+      });
+
+      const positronLaunch = yield* resolveEditorLaunch(
+        { cwd: "/tmp/workspace", editor: "positron" },
+        "linux",
+      );
+      assert.deepEqual(positronLaunch, {
+        command: "positron",
+        args: ["/tmp/workspace"],
+      });
+    }),
+  );
+
+  it.effect("uses open -na on macOS for terminal editors like Ghostty", () =>
+    Effect.gen(function* () {
+      const ghosttyMac = yield* resolveEditorLaunch(
+        { cwd: "/tmp/workspace", editor: "ghostty" },
+        "darwin",
+      );
+      assert.deepEqual(ghosttyMac, {
+        command: "open",
+        args: ["-na", "Ghostty", "--args", "--working-directory=/tmp/workspace"],
+      });
+
+      const ghosttyLinux = yield* resolveEditorLaunch(
+        { cwd: "/tmp/workspace", editor: "ghostty" },
+        "linux",
+      );
+      assert.deepEqual(ghosttyLinux, {
+        command: "ghostty",
+        args: ["--working-directory=/tmp/workspace"],
+      });
+    }),
+  );
+
+  it.effect("uses the containing directory when terminal editors receive a file path", () =>
+    Effect.gen(function* () {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "t3-open-ghostty-"));
+      const filePath = path.join(tempDir, "nested", "AGENTS.md");
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, "# test\n", "utf8");
+
+      const ghosttyFileTarget = yield* resolveEditorLaunch(
+        { cwd: `${filePath}:48`, editor: "ghostty" },
+        "linux",
+      );
+
+      assert.deepEqual(ghosttyFileTarget, {
+        command: "ghostty",
+        args: [`--working-directory=${path.dirname(filePath)}`],
       });
     }),
   );
@@ -105,7 +196,7 @@ it.layer(NodeServices.layer)("resolveEditorLaunch", (it) => {
     Effect.gen(function* () {
       const lineOnly = yield* resolveEditorLaunch(
         { cwd: "/tmp/workspace/AGENTS.md:48", editor: "cursor" },
-        "darwin",
+        "linux",
         { PATH: "" },
       );
       assert.deepEqual(lineOnly, {
@@ -115,7 +206,7 @@ it.layer(NodeServices.layer)("resolveEditorLaunch", (it) => {
 
       const lineAndColumn = yield* resolveEditorLaunch(
         { cwd: "/tmp/workspace/src/open.ts:71:5", editor: "cursor" },
-        "darwin",
+        "linux",
         { PATH: "" },
       );
       assert.deepEqual(lineAndColumn, {
@@ -144,7 +235,7 @@ it.layer(NodeServices.layer)("resolveEditorLaunch", (it) => {
 
       const vscodeLineAndColumn = yield* resolveEditorLaunch(
         { cwd: "/tmp/workspace/src/open.ts:71:5", editor: "vscode" },
-        "darwin",
+        "linux",
         { PATH: "" },
       );
       assert.deepEqual(vscodeLineAndColumn, {
@@ -172,7 +263,7 @@ it.layer(NodeServices.layer)("resolveEditorLaunch", (it) => {
 
       const zedLineAndColumn = yield* resolveEditorLaunch(
         { cwd: "/tmp/workspace/src/open.ts:71:5", editor: "zed" },
-        "darwin",
+        "linux",
         { PATH: "" },
       );
       assert.deepEqual(zedLineAndColumn, {
@@ -180,9 +271,27 @@ it.layer(NodeServices.layer)("resolveEditorLaunch", (it) => {
         args: ["/tmp/workspace/src/open.ts:71:5"],
       });
 
+      const windsurfLineAndColumn = yield* resolveEditorLaunch(
+        { cwd: "/tmp/workspace/src/open.ts:71:5", editor: "windsurf" },
+        "linux",
+      );
+      assert.deepEqual(windsurfLineAndColumn, {
+        command: "windsurf",
+        args: ["--goto", "/tmp/workspace/src/open.ts:71:5"],
+      });
+
+      const positronLineAndColumn = yield* resolveEditorLaunch(
+        { cwd: "/tmp/workspace/src/open.ts:71:5", editor: "positron" },
+        "linux",
+      );
+      assert.deepEqual(positronLineAndColumn, {
+        command: "positron",
+        args: ["--goto", "/tmp/workspace/src/open.ts:71:5"],
+      });
+
       const zedLineOnly = yield* resolveEditorLaunch(
         { cwd: "/tmp/workspace/AGENTS.md:48", editor: "zed" },
-        "darwin",
+        "linux",
         { PATH: "" },
       );
       assert.deepEqual(zedLineOnly, {
@@ -192,7 +301,7 @@ it.layer(NodeServices.layer)("resolveEditorLaunch", (it) => {
 
       const ideaLineOnly = yield* resolveEditorLaunch(
         { cwd: "/tmp/workspace/AGENTS.md:48", editor: "idea" },
-        "darwin",
+        "linux",
       );
       assert.deepEqual(ideaLineOnly, {
         command: "idea",
@@ -201,7 +310,7 @@ it.layer(NodeServices.layer)("resolveEditorLaunch", (it) => {
 
       const ideaLineAndColumn = yield* resolveEditorLaunch(
         { cwd: "/tmp/workspace/src/open.ts:71:5", editor: "idea" },
-        "darwin",
+        "linux",
       );
       assert.deepEqual(ideaLineAndColumn, {
         command: "idea",
@@ -346,6 +455,21 @@ it.layer(NodeServices.layer)("isCommandAvailable", (it) => {
         PATHEXT: ".COM;.EXE;.BAT;.CMD",
       } satisfies NodeJS.ProcessEnv;
       assert.equal(isCommandAvailable("my.tool", { platform: "win32", env }), true);
+    }),
+  );
+
+  it.effect("keeps explicit command paths with executable extensions missing from PATHEXT", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const dir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-open-test-" });
+      const filePath = path.join(dir, "custom.CMD");
+      yield* fs.writeFileString(filePath, "@echo off\r\n");
+      const env = {
+        PATH: dir,
+        PATHEXT: ".COM;.EXE",
+      } satisfies NodeJS.ProcessEnv;
+      assert.equal(isCommandAvailable(filePath, { platform: "win32", env }), true);
     }),
   );
 

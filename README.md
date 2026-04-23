@@ -1,62 +1,91 @@
 # T3 Code
 
-T3 Code is a minimal web GUI for coding agents (currently Codex and Claude, more coming soon).
+T3 Code is a minimal web GUI for coding agents made by [Pingdotgg](https://github.com/pingdotgg). This project is a downstream fork of the original [T3 Code](https://github.com/pingdotgg/t3code), maintained in [aaditagrawal/t3code](https://github.com/aaditagrawal/t3code).
 
-## Installation
+This fork focuses on expanding provider support, improving persistence layers, and refining provider management across the app.
+
+It supports Codex, Claude Code, Cursor, Copilot, Gemini CLI, Amp, Kilo, and OpenCode.
+
+(NOTE: Amp /mode free is not supported, as Amp Code doesn't support it in headless mode - since they need to show ads for that business model to work.)
+
+## Why this fork?
+
+This fork aims to provide a more robust and feature-rich multi-provider experience, with improved server management, more reliable persistence of orchestration events, and UI refinements for settings and model selection.
+
+### Multi-provider support (Enhanced)
+
+Adds full provider adapters (server managers, service layers, runtime layers) for agents that are not yet on the upstream roadmap:
+
+| Provider    | What's included                                                           |
+| ----------- | ------------------------------------------------------------------------- |
+| Gemini CLI  | **Enhanced:** Adapter + `geminiCliServerManager` with full test coverage  |
+| Amp         | Adapter + `ampServerManager` for headless Amp sessions                    |
+| Copilot     | Adapter + CLI binary resolution + text generation layer                   |
+| Cursor      | Adapter + ACP probe integration + usage tracking                          |
+| Kilo        | Adapter + `kiloServerManager` + OpenCode-style server URL config          |
+| OpenCode    | Adapter + `opencodeServerManager` with hostname/port/workspace config     |
+| Claude Code | Full adapter with permission mode, thinking token limits, and SDK typings |
+
+### Persistence & Orchestration Improvements
+
+- **Normalized Provider Kinds:** Migration added to handle legacy provider kind naming consistently.
+- **Improved Event Store:** Robust persistence layer for orchestration events with better error handling.
+- **Session Management:** refined `ProviderSessionDirectory` for better tracking of active sessions.
+
+### UX enhancements
+
+| Feature             | Description                                                                                |
+| ------------------- | ------------------------------------------------------------------------------------------ |
+| Settings page       | Dedicated route (`/settings`) for theme, accent color, and custom model slug configuration |
+| Accent color system | Preset palette with contrast-safe terminal color injection across the entire UI            |
+| Theme support       | Light / dark / system modes with transition suppression                                    |
+| Command palette     | `Cmd+K` / `Ctrl+K` palette for quick actions, script running, and thread navigation        |
+| Sidebar search      | Normalized thread title search with instant filtering                                      |
+| Plan sidebar        | Dedicated panel for reviewing, downloading, or saving proposed agent plans                 |
+| Terminal drawer     | Theme-aware integrated terminal with accent color styling                                  |
+
+## Getting started
+
+### Quick install (recommended)
+
+Run the interactive installer — it detects your OS, checks prerequisites (git, Node.js ≥ 24, bun ≥ 1.3.9), installs missing tools, and lets you choose between development/production and desktop/web builds:
+
+```bash
+# macOS / Linux / WSL
+bash <(curl -fsSL https://raw.githubusercontent.com/aaditagrawal/t3code/main/scripts/install.sh)
+```
+
+```powershell
+# Windows (Git Bash, MSYS2, or WSL)
+bash <(curl -fsSL https://raw.githubusercontent.com/aaditagrawal/t3code/main/scripts/install.sh)
+```
+
+### Manual build
 
 > [!WARNING]
-> T3 Code currently supports Codex and Claude.
-> Install and authenticate at least one provider before use:
->
-> - Codex: install [Codex CLI](https://github.com/openai/codex) and run `codex login`
-> - Claude: install Claude Code and run `claude auth login`
-
-### Run without installing
+> You need at least one supported coding agent installed and authorized. See the supported agents list below.
 
 ```bash
-npx t3
+# Prerequisites: Bun >=1.3.9, Node >=24.13.1
+git clone https://github.com/aaditagrawal/t3code.git
+cd t3code
+bun install
+bun run dev
 ```
 
-### Desktop app
+## Supported agents
 
-Install the latest version of the desktop app from [GitHub Releases](https://github.com/pingdotgg/t3code/releases), or from your favorite package registry:
+- [Gemini CLI](https://github.com/google-gemini/gemini-cli)
+- [Claude Code](https://github.com/anthropics/claude-code)
+- [Cursor](https://cursor.sh)
+- [Codex CLI](https://github.com/openai/codex) (requires v0.37.0 or later)
+- [Copilot](https://github.com/features/copilot)
+- [Amp](https://ampcode.com)
+- [Kilo](https://kilo.dev)
+- [OpenCode](https://opencode.ai)
 
-#### Windows (`winget`)
+## Notes
 
-```bash
-winget install T3Tools.T3Code
-```
-
-#### macOS (Homebrew)
-
-```bash
-brew install --cask t3-code
-```
-
-#### Arch Linux (AUR)
-
-```bash
-yay -S t3code-bin
-```
-
-## Some notes
-
-We are very very early in this project. Expect bugs.
-
-We are not accepting contributions yet.
-
-Observability guide: [docs/observability.md](./docs/observability.md)
-
-## If you REALLY want to contribute still.... read this first
-
-Before local development, prepare the environment and install dependencies:
-
-```bash
-# Optional: only needed if you use mise for dev tool management.
-mise install
-bun install .
-```
-
-Read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening an issue or PR.
-
-Need support? Join the [Discord](https://discord.gg/jn4EGJjrvv).
+- This project is very early in development. Expect bugs.
+- Interested in contributing? See [CONTRIBUTING.md](CONTRIBUTING.md).
+- Special thanks to [Pingdotgg](https://github.com/pingdotgg) for the original project and [aaditagrawal](https://github.com/aaditagrawal) for the foundational fork.

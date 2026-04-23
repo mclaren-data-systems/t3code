@@ -126,9 +126,8 @@ function scoreEntry(entry: SearchableWorkspaceEntry, query: string): number | nu
 }
 
 function isPathInIgnoredDirectory(relativePath: string): boolean {
-  const firstSegment = relativePath.split("/")[0];
-  if (!firstSegment) return false;
-  return IGNORED_DIRECTORY_NAMES.has(firstSegment);
+  const segments = relativePath.split("/").filter((segment) => segment.length > 0);
+  return segments.slice(0, -1).some((segment) => IGNORED_DIRECTORY_NAMES.has(segment));
 }
 
 function directoryAncestorsOf(relativePath: string): string[] {
@@ -248,11 +247,16 @@ export const makeWorkspaceEntries = Effect.gen(function* () {
         )
         .map(toSearchableWorkspaceEntry);
 
-      const entries = [...directoryEntries, ...fileEntries];
+      const directoryBudget = Math.floor(WORKSPACE_INDEX_MAX_ENTRIES / 2);
+      const cappedDirectories = directoryEntries.slice(0, directoryBudget);
+      const fileBudget = WORKSPACE_INDEX_MAX_ENTRIES - cappedDirectories.length;
+      const cappedFiles = fileEntries.slice(0, fileBudget);
+      const entries = [...cappedDirectories, ...cappedFiles];
+      const totalAvailable = directoryEntries.length + fileEntries.length;
       return {
         scannedAt: Date.now(),
-        entries: entries.slice(0, WORKSPACE_INDEX_MAX_ENTRIES),
-        truncated: listedFiles.truncated || entries.length > WORKSPACE_INDEX_MAX_ENTRIES,
+        entries,
+        truncated: listedFiles.truncated || totalAvailable > WORKSPACE_INDEX_MAX_ENTRIES,
       };
     },
   );
@@ -279,7 +283,15 @@ export const makeWorkspaceEntries = Effect.gen(function* () {
         }),
     }).pipe(
       Effect.catchIf(
-        () => relativeDir.length > 0,
+        (error) => {
+          if (relativeDir.length === 0) return false;
+          const cause = error.cause;
+          if (cause instanceof Error && "code" in cause) {
+            const code = (cause as NodeJS.ErrnoException).code;
+            return code === "ENOENT" || code === "ENOTDIR";
+          }
+          return false;
+        },
         () => Effect.succeed({ relativeDir, dirents: null }),
       ),
     );

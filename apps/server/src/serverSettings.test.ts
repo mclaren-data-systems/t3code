@@ -1,6 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { DEFAULT_SERVER_SETTINGS, ServerSettings, ServerSettingsPatch } from "@t3tools/contracts";
-import { createModelSelection } from "@t3tools/shared/model";
+import { DEFAULT_SERVER_SETTINGS, ServerSettingsPatch } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import { Effect, FileSystem, Layer, Schema } from "effect";
 import { ServerConfig } from "./config.ts";
@@ -25,42 +24,42 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       assert.deepEqual(decodePatch({ providers: { codex: { binaryPath: "/tmp/codex" } } }), {
         providers: { codex: { binaryPath: "/tmp/codex" } },
       });
+      assert.deepEqual(
+        decodePatch({
+          providers: {
+            copilot: {
+              binaryPath: "/tmp/copilot",
+              configDir: "/tmp/copilot-config",
+            },
+          },
+        }),
+        {
+          providers: {
+            copilot: {
+              binaryPath: "/tmp/copilot",
+              configDir: "/tmp/copilot-config",
+            },
+          },
+        },
+      );
 
       assert.deepEqual(
         decodePatch({
           textGenerationModelSelection: {
-            options: [{ id: "fastMode", value: false }],
+            options: {
+              fastMode: false,
+            },
           },
         }),
         {
           textGenerationModelSelection: {
-            options: [{ id: "fastMode", value: false }],
+            options: {
+              fastMode: false,
+            },
           },
         },
       );
     }),
-  );
-
-  it.effect(
-    "decodes legacy object-shaped textGenerationModelSelection.options from settings.json",
-    () =>
-      Effect.sync(() => {
-        const decode = Schema.decodeUnknownSync(ServerSettings);
-
-        const decoded = decode({
-          textGenerationModelSelection: {
-            provider: "codex",
-            model: "gpt-5.4-mini",
-            options: { reasoningEffort: "low" },
-          },
-        });
-
-        assert.deepEqual(decoded.textGenerationModelSelection, {
-          provider: "codex",
-          model: "gpt-5.4-mini",
-          options: [{ id: "reasoningEffort", value: "low" }],
-        });
-      }),
   );
 
   it.effect("deep merges nested settings updates without dropping siblings", () =>
@@ -81,14 +80,10 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         textGenerationModelSelection: {
           provider: "codex",
           model: DEFAULT_SERVER_SETTINGS.textGenerationModelSelection.model,
-          options: createModelSelection(
-            "codex",
-            DEFAULT_SERVER_SETTINGS.textGenerationModelSelection.model,
-            [
-              { id: "reasoningEffort", value: "high" },
-              { id: "fastMode", value: true },
-            ],
-          ).options!,
+          options: {
+            reasoningEffort: "high",
+            fastMode: true,
+          },
         },
       });
 
@@ -99,7 +94,9 @@ it.layer(NodeServices.layer)("server settings", (it) => {
           },
         },
         textGenerationModelSelection: {
-          options: [{ id: "fastMode", value: false }],
+          options: {
+            fastMode: false,
+          },
         },
       });
 
@@ -115,13 +112,14 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         customModels: ["claude-custom"],
         launchArgs: "",
       });
-      assert.deepEqual(
-        next.textGenerationModelSelection,
-        createModelSelection("codex", DEFAULT_SERVER_SETTINGS.textGenerationModelSelection.model, [
-          { id: "reasoningEffort", value: "high" },
-          { id: "fastMode", value: false },
-        ]),
-      );
+      assert.deepEqual(next.textGenerationModelSelection, {
+        provider: "codex",
+        model: DEFAULT_SERVER_SETTINGS.textGenerationModelSelection.model,
+        options: {
+          reasoningEffort: "high",
+          fastMode: false,
+        },
+      });
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 
@@ -134,9 +132,9 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         textGenerationModelSelection: {
           provider: "claudeAgent",
           model: "claude-sonnet-4-6",
-          options: createModelSelection("claudeAgent", "claude-sonnet-4-6", [
-            { id: "effort", value: "high" },
-          ]).options!,
+          options: {
+            effort: "high",
+          },
         },
       });
 
@@ -146,16 +144,19 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         textGenerationModelSelection: {
           provider: "codex",
           model: "gpt-5.4",
-          options: createModelSelection("codex", "gpt-5.4", [
-            { id: "reasoningEffort", value: "high" },
-          ]).options!,
+          options: {
+            reasoningEffort: "high",
+          },
         },
       });
 
-      assert.deepEqual(
-        next.textGenerationModelSelection,
-        createModelSelection("codex", "gpt-5.4", [{ id: "reasoningEffort", value: "high" }]),
-      );
+      assert.deepEqual(next.textGenerationModelSelection, {
+        provider: "codex",
+        model: "gpt-5.4",
+        options: {
+          reasoningEffort: "high",
+        },
+      });
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 
@@ -167,14 +168,10 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         textGenerationModelSelection: {
           provider: "codex",
           model: DEFAULT_SERVER_SETTINGS.textGenerationModelSelection.model,
-          options: createModelSelection(
-            "codex",
-            DEFAULT_SERVER_SETTINGS.textGenerationModelSelection.model,
-            [
-              { id: "reasoningEffort", value: "high" },
-              { id: "fastMode", value: true },
-            ],
-          ).options!,
+          options: {
+            reasoningEffort: "high",
+            fastMode: true,
+          },
         },
       });
 
@@ -205,10 +202,14 @@ it.layer(NodeServices.layer)("server settings", (it) => {
           claudeAgent: {
             binaryPath: "  /opt/homebrew/bin/claude  ",
           },
+          copilot: {
+            binaryPath: "  /opt/homebrew/bin/copilot  ",
+            configDir: "  /Users/julius/.config/copilot  ",
+          },
           opencode: {
             binaryPath: "  /opt/homebrew/bin/opencode  ",
-            serverUrl: "  http://127.0.0.1:4096  ",
-            serverPassword: "  secret-password  ",
+            serverUrl: "  http://localhost:1234  ",
+            serverPassword: "  s3cret  ",
           },
         },
       });
@@ -225,11 +226,17 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         customModels: [],
         launchArgs: "",
       });
+      assert.deepEqual(next.providers.copilot, {
+        enabled: true,
+        binaryPath: "/opt/homebrew/bin/copilot",
+        configDir: "/Users/julius/.config/copilot",
+        customModels: [],
+      });
       assert.deepEqual(next.providers.opencode, {
         enabled: true,
         binaryPath: "/opt/homebrew/bin/opencode",
-        serverUrl: "http://127.0.0.1:4096",
-        serverPassword: "secret-password",
+        serverUrl: "http://localhost:1234",
+        serverPassword: "s3cret",
         customModels: [],
       });
     }).pipe(Effect.provide(makeServerSettingsLayer())),
@@ -291,8 +298,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
             binaryPath: "/opt/homebrew/bin/codex",
           },
           opencode: {
-            serverUrl: "http://127.0.0.1:4096",
-            serverPassword: "secret-password",
+            serverUrl: "http://localhost:1234",
           },
         },
       });
@@ -311,8 +317,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
             binaryPath: "/opt/homebrew/bin/codex",
           },
           opencode: {
-            serverUrl: "http://127.0.0.1:4096",
-            serverPassword: "secret-password",
+            serverUrl: "http://localhost:1234",
           },
         },
       });

@@ -4,6 +4,7 @@ import type {
   GitRunStackedActionResult,
   GitStackedAction,
   GitStatusResult,
+  ProviderKind,
 } from "@t3tools/contracts";
 import { useIsMutating, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
@@ -22,6 +23,7 @@ import {
   resolveQuickAction,
   resolveThreadBranchUpdate,
 } from "./GitActionsControl.logic";
+import { resolveGitTextGenerationModelSelection, useAppSettings } from "~/appSettings";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import {
@@ -38,7 +40,7 @@ import { Menu, MenuItem, MenuPopup, MenuTrigger } from "~/components/ui/menu";
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Textarea } from "~/components/ui/textarea";
-import { stackedThreadToast, toastManager, type ThreadToastData } from "~/components/ui/toast";
+import { toastManager, type ThreadToastData } from "~/components/ui/toast";
 import { openInPreferredEditor } from "~/editorPreferences";
 import {
   gitInitMutationOptions,
@@ -58,6 +60,8 @@ import { createThreadSelectorByRef } from "~/storeSelectors";
 interface GitActionsControlProps {
   gitCwd: string | null;
   activeThreadRef: ScopedThreadRef | null;
+  provider?: ProviderKind;
+  model?: string;
   draftId?: DraftId;
 }
 
@@ -213,8 +217,11 @@ function GitQuickActionIcon({ quickAction }: { quickAction: GitQuickAction }) {
 export default function GitActionsControl({
   gitCwd,
   activeThreadRef,
+  provider,
+  model,
   draftId,
 }: GitActionsControlProps) {
+  const { settings } = useAppSettings();
   const activeEnvironmentId = activeThreadRef?.environmentId ?? null;
   const threadToastData = useMemo(
     () => (activeThreadRef ? { threadRef: activeThreadRef } : undefined),
@@ -241,6 +248,13 @@ export default function GitActionsControl({
   const [isEditingFiles, setIsEditingFiles] = useState(false);
   const [pendingDefaultBranchAction, setPendingDefaultBranchAction] =
     useState<PendingDefaultBranchAction | null>(null);
+  const gitProvider = provider ?? activeServerThread?.modelSelection.provider ?? "codex";
+  const gitModel = model ?? activeServerThread?.modelSelection.model ?? "";
+  const gitTextGenerationModel = resolveGitTextGenerationModelSelection(
+    gitProvider,
+    settings,
+    gitModel,
+  );
   const activeGitActionProgressRef = useRef<ActiveGitActionProgress | null>(null);
   let runGitActionWithToast: (input: RunGitActionWithToastInput) => Promise<void>;
 
@@ -474,14 +488,12 @@ export default function GitActionsControl({
       return;
     }
     void api.shell.openExternal(prUrl).catch((err: unknown) => {
-      toastManager.add(
-        stackedThreadToast({
-          type: "error",
-          title: "Unable to open PR link",
-          description: err instanceof Error ? err.message : "An error occurred.",
-          ...(threadToastData !== undefined ? { data: threadToastData } : {}),
-        }),
-      );
+      toastManager.add({
+        type: "error",
+        title: "Unable to open PR link",
+        description: err instanceof Error ? err.message : "An error occurred.",
+        data: threadToastData,
+      });
     });
   }, [gitStatusForActions, threadToastData]);
 
@@ -672,44 +684,33 @@ export default function GitActionsControl({
           };
         }
 
-        const successToastData = {
-          ...scopedToastData,
-          dismissAfterVisibleMs: 10_000,
-        };
+        const successToastBase = {
+          type: "success",
+          title: result.toast.title,
+          description: result.toast.description,
+          timeout: 0,
+          data: {
+            ...scopedToastData,
+            dismissAfterVisibleMs: 10_000,
+          },
+        } as const;
 
         if (toastActionProps) {
-          toastManager.update(
-            resolvedProgressToastId,
-            stackedThreadToast({
-              type: "success",
-              title: result.toast.title,
-              description: result.toast.description,
-              timeout: 0,
-              actionProps: toastActionProps,
-              actionVariant: "outline",
-              data: successToastData,
-            }),
-          );
-        } else {
           toastManager.update(resolvedProgressToastId, {
-            type: "success",
-            title: result.toast.title,
-            description: result.toast.description,
-            timeout: 0,
-            data: successToastData,
+            ...successToastBase,
+            actionProps: toastActionProps,
           });
+        } else {
+          toastManager.update(resolvedProgressToastId, successToastBase);
         }
       } catch (err) {
         activeGitActionProgressRef.current = null;
-        toastManager.update(
-          resolvedProgressToastId,
-          stackedThreadToast({
-            type: "error",
-            title: "Action failed",
-            description: err instanceof Error ? err.message : "An error occurred.",
-            ...(scopedToastData !== undefined ? { data: scopedToastData } : {}),
-          }),
-        );
+        toastManager.update(resolvedProgressToastId, {
+          type: "error",
+          title: "Action failed",
+          description: err instanceof Error ? err.message : "An error occurred.",
+          data: scopedToastData,
+        });
       }
     },
   );
@@ -766,10 +767,7 @@ export default function GitActionsControl({
     }
     if (quickAction.kind === "run_pull") {
       const promise = pullMutation.mutateAsync();
-      void toastManager.promise<
-        Awaited<ReturnType<typeof pullMutation.mutateAsync>>,
-        ThreadToastData
-      >(promise, {
+      toastManager.promise(promise, {
         loading: { title: "Pulling...", data: threadToastData },
         success: (result) => ({
           title: result.status === "pulled" ? "Pulled" : "Already up to date",
@@ -848,14 +846,12 @@ export default function GitActionsControl({
       }
       const target = resolvePathLinkTarget(filePath, gitCwd);
       void openInPreferredEditor(api, target).catch((error) => {
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Unable to open file",
-            description: error instanceof Error ? error.message : "An error occurred.",
-            ...(threadToastData !== undefined ? { data: threadToastData } : {}),
-          }),
-        );
+        toastManager.add({
+          type: "error",
+          title: "Unable to open file",
+          description: error instanceof Error ? error.message : "An error occurred.",
+          data: threadToastData,
+        });
       });
     },
     [gitCwd, threadToastData],
@@ -1025,6 +1021,7 @@ export default function GitActionsControl({
                   <div className="flex items-center gap-2">
                     {isEditingFiles && allFiles.length > 0 && (
                       <Checkbox
+                        aria-label="Toggle all files for commit"
                         checked={allSelected}
                         indeterminate={!allSelected && !noneSelected}
                         onCheckedChange={() => {
@@ -1066,6 +1063,7 @@ export default function GitActionsControl({
                             >
                               {isEditingFiles && (
                                 <Checkbox
+                                  aria-label={`Toggle ${file.path} for commit`}
                                   checked={!excludedFiles.has(file.path)}
                                   onCheckedChange={() => {
                                     setExcludedFiles((prev) => {
@@ -1123,6 +1121,7 @@ export default function GitActionsControl({
             <div className="space-y-1">
               <p className="text-xs font-medium">Commit message (optional)</p>
               <Textarea
+                className="font-mono"
                 value={dialogCommitMessage}
                 onChange={(event) => setDialogCommitMessage(event.target.value)}
                 placeholder="Leave empty to auto-generate"

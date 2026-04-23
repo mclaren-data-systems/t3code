@@ -26,6 +26,12 @@ import type {
   ProjectWriteFileResult,
 } from "./project.ts";
 import type {
+  ProviderGetUsageInput,
+  ProviderListModelsInput,
+  ProviderListModelsResult,
+  ProviderUsageResult,
+} from "./provider.ts";
+import type {
   ServerConfig,
   ServerProviderUpdatedPayload,
   ServerUpsertKeybindingResult,
@@ -175,6 +181,10 @@ export interface DesktopBridge {
   downloadUpdate: () => Promise<DesktopUpdateActionResult>;
   installUpdate: () => Promise<DesktopUpdateActionResult>;
   onUpdateState: (listener: (state: DesktopUpdateState) => void) => () => void;
+  getLogDir: () => Promise<string>;
+  listLogFiles: () => Promise<string[]>;
+  readLogFile: (filename: string) => Promise<string>;
+  openLogDir: () => Promise<void>;
 }
 
 /**
@@ -268,6 +278,10 @@ export interface EnvironmentApi {
         onResubscribe?: () => void;
       },
     ) => () => void;
+  };
+  provider?: {
+    listModels: (input: ProviderListModelsInput) => Promise<ProviderListModelsResult>;
+    getUsage: (input: ProviderGetUsageInput) => Promise<ProviderUsageResult>;
   };
   orchestration: {
     dispatchCommand: (command: ClientOrchestrationCommand) => Promise<{ sequence: number }>;

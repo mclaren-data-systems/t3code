@@ -17,6 +17,7 @@ import {
   Stream,
 } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import nodePath from "node:path";
 
 import { GitCommandError, type GitBranch } from "@t3tools/contracts";
 import { dedupeRemoteBranchesWithLocalMatches } from "@t3tools/shared/git";
@@ -780,7 +781,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
         kind: "client",
         attributes: {
           "git.operation": input.operation,
-          "git.cwd": input.cwd,
+          "git.repo": nodePath.basename(input.cwd),
           "git.args_count": input.args.length,
         },
       }),

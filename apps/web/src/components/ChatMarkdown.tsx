@@ -20,13 +20,17 @@ import { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { VscodeEntryIcon } from "./chat/VscodeEntryIcon";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
-import { stackedThreadToast, toastManager } from "./ui/toast";
+import { toastManager } from "./ui/toast";
 import { openInPreferredEditor } from "../editorPreferences";
 import { resolveDiffThemeName, type DiffThemeName } from "../lib/diffRendering";
 import { fnv1a32 } from "../lib/diffRendering";
 import { LRUCache } from "../lib/lruCache";
 import { useTheme } from "../hooks/useTheme";
-import { resolveMarkdownFileLinkMeta, rewriteMarkdownFileUriHref } from "../markdown-links";
+import {
+  resolveMarkdownFileLinkMeta,
+  resolveMarkdownFileLinkTarget,
+  rewriteMarkdownFileUriHref,
+} from "../markdown-links";
 import { readLocalApi } from "../localApi";
 import { cn } from "../lib/utils";
 
@@ -351,25 +355,21 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
     }
 
     void openInPreferredEditor(api, targetPath).catch((error) => {
-      toastManager.add(
-        stackedThreadToast({
-          type: "error",
-          title: "Unable to open file",
-          description: error instanceof Error ? error.message : "An error occurred.",
-        }),
-      );
+      toastManager.add({
+        type: "error",
+        title: "Unable to open file",
+        description: error instanceof Error ? error.message : "An error occurred.",
+      });
     });
   }, [targetPath]);
 
   const handleCopy = useCallback((value: string, title: string) => {
     if (typeof window === "undefined" || !navigator.clipboard?.writeText) {
-      toastManager.add(
-        stackedThreadToast({
-          type: "error",
-          title: `Failed to copy ${title.toLowerCase()}`,
-          description: "Clipboard API unavailable.",
-        }),
-      );
+      toastManager.add({
+        type: "error",
+        title: `Failed to copy ${title.toLowerCase()}`,
+        description: "Clipboard API unavailable.",
+      });
       return;
     }
 
@@ -382,13 +382,11 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
         });
       },
       (error) => {
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: `Failed to copy ${title.toLowerCase()}`,
-            description: error instanceof Error ? error.message : "An error occurred.",
-          }),
-        );
+        toastManager.add({
+          type: "error",
+          title: `Failed to copy ${title.toLowerCase()}`,
+          description: error instanceof Error ? error.message : "An error occurred.",
+        });
       },
     );
   }, []);
@@ -533,6 +531,60 @@ function ChatMarkdown({ text, cwd, isStreaming = false }: ChatMarkdownProps) {
           />
         );
       },
+      code({ node: _node, className, children, ...props }) {
+        // Only transform inline code (fenced code blocks have language classes
+        // and are handled by the `pre` override).
+        if (className) {
+          return (
+            <code className={className} {...props}>
+              {children}
+            </code>
+          );
+        }
+
+        const text = typeof children === "string" ? children : nodeToPlainText(children);
+        const targetPath = resolveMarkdownFileLinkTarget(text.trim(), cwd);
+
+        if (!targetPath) {
+          return <code {...props}>{children}</code>;
+        }
+
+        // Strip :line:col suffix — OS default apps don't understand them.
+        const pathForOpen = targetPath.replace(/:\d+(?::\d+)?$/, "");
+
+        return (
+          <code
+            {...props}
+            className="cursor-pointer underline decoration-dotted underline-offset-2 hover:text-foreground"
+            role="button"
+            tabIndex={0}
+            title={`Open ${text.trim()}`}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              const api = readLocalApi();
+              if (api) {
+                api.shell.openInEditor(pathForOpen, "file-manager").catch((error: unknown) => {
+                  console.warn("Unable to open in file manager.", error);
+                });
+              }
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                const api = readLocalApi();
+                if (api) {
+                  api.shell.openInEditor(pathForOpen, "file-manager").catch((error: unknown) => {
+                    console.warn("Unable to open in file manager.", error);
+                  });
+                }
+              }
+            }}
+          >
+            {children}
+          </code>
+        );
+      },
       pre({ node: _node, children, ...props }) {
         const codeBlock = extractCodeBlock(children);
         if (!codeBlock) {
@@ -556,6 +608,7 @@ function ChatMarkdown({ text, cwd, isStreaming = false }: ChatMarkdownProps) {
       },
     }),
     [
+      cwd,
       diffThemeName,
       fileLinkParentSuffixByPath,
       isStreaming,

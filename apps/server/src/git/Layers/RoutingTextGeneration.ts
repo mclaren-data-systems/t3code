@@ -1,25 +1,46 @@
 /**
- * RoutingTextGeneration – Dispatches text generation requests to either the
- * Codex CLI or Claude CLI implementation based on the provider in each
- * request input.
+ * RoutingTextGeneration – Dispatches text generation requests to the
+ * appropriate CLI implementation based on the provider in each request input.
  *
- * When `modelSelection.provider` is `"claudeAgent"` the request is forwarded to
- * the Claude layer; for any other value (including the default `undefined`) it
- * falls through to the Codex layer.
+ * Currently supported providers with dedicated layers:
+ *  - `"claudeAgent"` → Claude CLI layer
+ *  - `"copilot"`     → Copilot text-generation layer (partial – falls back to
+ *                       codex for branch names / thread titles)
+ *  - `"codex"`       → Codex CLI layer (also the default fallback)
+ *  - `"cursor"`      → Cursor text-generation layer (ACP-based)
+ *  - `"opencode"`    → OpenCode text-generation layer (SDK-based)
+ *
+ * Providers without a dedicated CLI text-generation layer (geminiCli, amp,
+ * kilo) fall back to Codex.
  *
  * @module RoutingTextGeneration
  */
 import { Effect, Layer, Context } from "effect";
 
+import type { ProviderKind } from "@t3tools/contracts";
 import { TextGeneration, type TextGenerationShape } from "../Services/TextGeneration.ts";
+import {
+  CopilotTextGeneration,
+  type CopilotTextGenerationShape,
+} from "../Services/CopilotTextGeneration.ts";
 import { CodexTextGenerationLive } from "./CodexTextGeneration.ts";
 import { ClaudeTextGenerationLive } from "./ClaudeTextGeneration.ts";
+import { makeCopilotTextGenerationLive } from "./CopilotTextGeneration.ts";
 import { CursorTextGenerationLive } from "./CursorTextGeneration.ts";
 import { OpenCodeTextGenerationLive } from "./OpenCodeTextGeneration.ts";
 
 // ---------------------------------------------------------------------------
-// Internal service tags so both concrete layers can coexist.
+// Supported git text-generation providers.  Providers not in this set fall
+// back to codex (the most broadly compatible CLI implementation).
 // ---------------------------------------------------------------------------
+
+const GIT_TEXT_GEN_PROVIDERS = new Set<ProviderKind>([
+  "codex",
+  "claudeAgent",
+  "copilot",
+  "cursor",
+  "opencode",
+]);
 
 class CodexTextGen extends Context.Service<CodexTextGen, TextGenerationShape>()(
   "t3/git/Layers/RoutingTextGeneration/CodexTextGen",
@@ -27,6 +48,10 @@ class CodexTextGen extends Context.Service<CodexTextGen, TextGenerationShape>()(
 
 class ClaudeTextGen extends Context.Service<ClaudeTextGen, TextGenerationShape>()(
   "t3/git/Layers/RoutingTextGeneration/ClaudeTextGen",
+) {}
+
+class CopilotTextGen extends Context.Service<CopilotTextGen, CopilotTextGenerationShape>()(
+  "t3/git/Layers/RoutingTextGeneration/CopilotTextGen",
 ) {}
 
 class CursorTextGen extends Context.Service<CursorTextGen, TextGenerationShape>()(
@@ -42,22 +67,35 @@ class OpenCodeTextGen extends Context.Service<OpenCodeTextGen, TextGenerationSha
 // ---------------------------------------------------------------------------
 
 const makeRoutingTextGeneration = Effect.gen(function* () {
-  const byProvider = {
-    codex: yield* CodexTextGen,
-    claudeAgent: yield* ClaudeTextGen,
-    cursor: yield* CursorTextGen,
-    opencode: yield* OpenCodeTextGen,
+  const codex = yield* CodexTextGen;
+  const claude = yield* ClaudeTextGen;
+  const copilot = yield* CopilotTextGen;
+  const cursor = yield* CursorTextGen;
+  const openCode = yield* OpenCodeTextGen;
+
+  const route = (provider?: ProviderKind): TextGenerationShape => {
+    if (!provider || !GIT_TEXT_GEN_PROVIDERS.has(provider)) return codex;
+    if (provider === "claudeAgent") return claude;
+    if (provider === "cursor") return cursor;
+    if (provider === "opencode") return openCode;
+    if (provider === "copilot") {
+      return {
+        generateCommitMessage: copilot.generateCommitMessage,
+        generatePrContent: copilot.generatePrContent,
+        // Copilot text generation doesn't support these yet; fall back to codex.
+        generateBranchName: codex.generateBranchName,
+        generateThreadTitle: codex.generateThreadTitle,
+      };
+    }
+    return codex;
   };
 
   return {
     generateCommitMessage: (input) =>
-      byProvider[input.modelSelection.provider].generateCommitMessage(input),
-    generatePrContent: (input) =>
-      byProvider[input.modelSelection.provider].generatePrContent(input),
-    generateBranchName: (input) =>
-      byProvider[input.modelSelection.provider].generateBranchName(input),
-    generateThreadTitle: (input) =>
-      byProvider[input.modelSelection.provider].generateThreadTitle(input),
+      route(input.modelSelection.provider).generateCommitMessage(input),
+    generatePrContent: (input) => route(input.modelSelection.provider).generatePrContent(input),
+    generateBranchName: (input) => route(input.modelSelection.provider).generateBranchName(input),
+    generateThreadTitle: (input) => route(input.modelSelection.provider).generateThreadTitle(input),
   } satisfies TextGenerationShape;
 });
 
@@ -76,6 +114,14 @@ const InternalClaudeLayer = Layer.effect(
     return svc;
   }),
 ).pipe(Layer.provide(ClaudeTextGenerationLive));
+
+const InternalCopilotLayer = Layer.effect(
+  CopilotTextGen,
+  Effect.gen(function* () {
+    const svc = yield* CopilotTextGeneration;
+    return svc;
+  }),
+).pipe(Layer.provide(makeCopilotTextGenerationLive()));
 
 const InternalCursorLayer = Layer.effect(
   CursorTextGen,
@@ -99,6 +145,7 @@ export const RoutingTextGenerationLive = Layer.effect(
 ).pipe(
   Layer.provide(InternalCodexLayer),
   Layer.provide(InternalClaudeLayer),
+  Layer.provide(InternalCopilotLayer),
   Layer.provide(InternalCursorLayer),
   Layer.provide(InternalOpenCodeLayer),
 );

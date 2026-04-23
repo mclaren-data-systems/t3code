@@ -1,146 +1,494 @@
-import { Effect, Schema, SchemaTransformation } from "effect";
+import { Schema } from "effect";
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";
 import type { ProviderKind } from "./orchestration.ts";
 
-export const ProviderOptionDescriptorType = Schema.Literals(["select", "boolean"]);
-export type ProviderOptionDescriptorType = typeof ProviderOptionDescriptorType.Type;
+export const CODEX_REASONING_EFFORT_OPTIONS = ["xhigh", "high", "medium", "low"] as const;
+export const CodexReasoningEffort = Schema.Literals(CODEX_REASONING_EFFORT_OPTIONS);
+export type CodexReasoningEffort = typeof CodexReasoningEffort.Type;
+export const CLAUDE_CODE_EFFORT_OPTIONS = [
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+  "ultrathink",
+] as const;
+export const ClaudeCodeEffort = Schema.Literals(CLAUDE_CODE_EFFORT_OPTIONS);
+export type ClaudeCodeEffort = typeof ClaudeCodeEffort.Type;
+/**
+ * Alias of ClaudeCodeEffort — upstream renamed this to ClaudeAgentEffort.
+ * Both names are exported for backward compatibility with existing fork code
+ * and newly merged upstream code.
+ */
+export const ClaudeAgentEffort = ClaudeCodeEffort;
+export type ClaudeAgentEffort = ClaudeCodeEffort;
+export const CURSOR_REASONING_OPTIONS = ["low", "normal", "high", "xhigh"] as const;
+export const CursorReasoningOption = Schema.Literals(CURSOR_REASONING_OPTIONS);
+export type CursorReasoningOption = typeof CursorReasoningOption.Type;
 
-export const ProviderOptionChoice = Schema.Struct({
-  id: TrimmedNonEmptyString,
+export type ProviderReasoningEffort =
+  | CodexReasoningEffort
+  | ClaudeCodeEffort
+  | CursorReasoningOption;
+
+export const CodexModelOptions = Schema.Struct({
+  reasoningEffort: Schema.optional(Schema.Literals(CODEX_REASONING_EFFORT_OPTIONS)),
+  fastMode: Schema.optional(Schema.Boolean),
+});
+export type CodexModelOptions = typeof CodexModelOptions.Type;
+
+export const CopilotModelOptions = Schema.Struct({
+  reasoningEffort: Schema.optional(Schema.Literals(CODEX_REASONING_EFFORT_OPTIONS)),
+});
+export type CopilotModelOptions = typeof CopilotModelOptions.Type;
+
+export const OpencodeModelOptions = Schema.Struct({
+  providerId: Schema.optional(Schema.String),
+  modelId: Schema.optional(Schema.String),
+  variant: Schema.optional(Schema.String),
+  reasoningEffort: Schema.optional(Schema.String),
+  agent: Schema.optional(Schema.String),
+});
+export type OpencodeModelOptions = typeof OpencodeModelOptions.Type;
+/**
+ * Upstream's shorter-form OpenCode options schema. Kept as a type alias
+ * over the fork's richer OpencodeModelOptions so upstream code that imports
+ * `OpenCodeModelOptions` keeps compiling.
+ */
+export const OpenCodeModelOptions = OpencodeModelOptions;
+export type OpenCodeModelOptions = OpencodeModelOptions;
+
+export const ClaudeModelOptions = Schema.Struct({
+  thinking: Schema.optional(Schema.Boolean),
+  effort: Schema.optional(Schema.Literals(CLAUDE_CODE_EFFORT_OPTIONS)),
+  fastMode: Schema.optional(Schema.Boolean),
+  contextWindow: Schema.optional(Schema.String),
+});
+export type ClaudeModelOptions = typeof ClaudeModelOptions.Type;
+
+export const CursorModelOptions = Schema.Struct({
+  reasoning: Schema.optional(Schema.Literals(CURSOR_REASONING_OPTIONS)),
+  fastMode: Schema.optional(Schema.Boolean),
+  thinking: Schema.optional(Schema.Boolean),
+  contextWindow: Schema.optional(Schema.String),
+});
+export type CursorModelOptions = typeof CursorModelOptions.Type;
+
+export const GeminiCliModelOptions = Schema.Struct({
+  thinkingBudget: Schema.optional(Schema.Number),
+});
+export type GeminiCliModelOptions = typeof GeminiCliModelOptions.Type;
+
+export const AmpModelOptions = Schema.Struct({
+  mode: Schema.optional(Schema.Literals(["smart", "rush", "deep", "large"])),
+});
+export type AmpModelOptions = typeof AmpModelOptions.Type;
+
+export const KiloModelOptions = Schema.Struct({
+  providerId: Schema.optional(Schema.String),
+  modelId: Schema.optional(Schema.String),
+  variant: Schema.optional(Schema.String),
+  reasoningEffort: Schema.optional(Schema.String),
+  agent: Schema.optional(Schema.String),
+});
+export type KiloModelOptions = typeof KiloModelOptions.Type;
+
+export const ProviderModelOptions = Schema.Struct({
+  codex: Schema.optional(CodexModelOptions),
+  copilot: Schema.optional(CopilotModelOptions),
+  claudeAgent: Schema.optional(ClaudeModelOptions),
+  cursor: Schema.optional(CursorModelOptions),
+  opencode: Schema.optional(OpencodeModelOptions),
+  geminiCli: Schema.optional(GeminiCliModelOptions),
+  amp: Schema.optional(AmpModelOptions),
+  kilo: Schema.optional(KiloModelOptions),
+});
+export type ProviderModelOptions = typeof ProviderModelOptions.Type;
+
+export const EffortOption = Schema.Struct({
+  value: TrimmedNonEmptyString,
   label: TrimmedNonEmptyString,
-  description: Schema.optional(TrimmedNonEmptyString),
   isDefault: Schema.optional(Schema.Boolean),
 });
-export type ProviderOptionChoice = typeof ProviderOptionChoice.Type;
+export type EffortOption = typeof EffortOption.Type;
 
-const ProviderOptionDescriptorBase = {
-  id: TrimmedNonEmptyString,
+export const ContextWindowOption = Schema.Struct({
+  value: TrimmedNonEmptyString,
   label: TrimmedNonEmptyString,
-  description: Schema.optional(TrimmedNonEmptyString),
-} as const;
-
-export const SelectProviderOptionDescriptor = Schema.Struct({
-  ...ProviderOptionDescriptorBase,
-  type: Schema.Literal("select"),
-  options: Schema.Array(ProviderOptionChoice),
-  currentValue: Schema.optional(TrimmedNonEmptyString),
-  promptInjectedValues: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  isDefault: Schema.optional(Schema.Boolean),
 });
-export type SelectProviderOptionDescriptor = typeof SelectProviderOptionDescriptor.Type;
-
-export const BooleanProviderOptionDescriptor = Schema.Struct({
-  ...ProviderOptionDescriptorBase,
-  type: Schema.Literal("boolean"),
-  currentValue: Schema.optional(Schema.Boolean),
-});
-export type BooleanProviderOptionDescriptor = typeof BooleanProviderOptionDescriptor.Type;
-
-export const ProviderOptionDescriptor = Schema.Union([
-  SelectProviderOptionDescriptor,
-  BooleanProviderOptionDescriptor,
-]);
-export type ProviderOptionDescriptor = typeof ProviderOptionDescriptor.Type;
-
-export const ProviderOptionSelectionValue = Schema.Union([TrimmedNonEmptyString, Schema.Boolean]);
-export type ProviderOptionSelectionValue = typeof ProviderOptionSelectionValue.Type;
-
-export const ProviderOptionSelection = Schema.Struct({
-  id: TrimmedNonEmptyString,
-  value: ProviderOptionSelectionValue,
-});
-export type ProviderOptionSelection = typeof ProviderOptionSelection.Type;
-
-/**
- * Legacy on-disk shape for provider option selections, kept readable by the
- * decoder so we can tolerate stored data written before the v3 array shape.
- *
- * Persisted historically as `{ effort: "max", fastMode: true, ... }` inside
- * `modelSelection.options`. Migration 026 rewrites stored rows to the
- * canonical array shape, but we still see the legacy form in:
- *   - `settings.json` files from older client builds,
- *   - SQLite databases that have not yet run migration 026,
- *   - any future regression that re-introduces the legacy shape.
- */
-const LegacyProviderOptionSelectionsObject = Schema.Record(Schema.String, Schema.Unknown);
-
-const ProviderOptionSelectionsFromLegacyObject = LegacyProviderOptionSelectionsObject.pipe(
-  Schema.decodeTo(
-    Schema.Array(ProviderOptionSelection),
-    SchemaTransformation.transformOrFail({
-      decode: (record) => Effect.succeed(coerceLegacyOptionsObjectToArray(record)),
-      encode: (selections) => Effect.succeed(canonicalSelectionsToLegacyObject(selections)),
-    }),
-  ),
-);
-
-/**
- * Schema for the `options` field of every `ModelSelection` variant.
- *
- * Accepts both:
- *   - the canonical array shape `Array<{ id, value }>` (preferred), and
- *   - the legacy object shape `Record<string, string | boolean | …>` from
- *     pre-migration data.
- *
- * Always normalizes to the canonical array on decode and re-encodes as the
- * canonical array, so any legacy storage gets cleaned up the next time the
- * containing record is written back.
- */
-export const ProviderOptionSelections = Schema.Union([
-  Schema.Array(ProviderOptionSelection),
-  ProviderOptionSelectionsFromLegacyObject,
-]);
-export type ProviderOptionSelections = typeof ProviderOptionSelections.Type;
-
-function coerceLegacyOptionsObjectToArray(
-  record: Record<string, unknown>,
-): ReadonlyArray<ProviderOptionSelection> {
-  const entries: Array<ProviderOptionSelection> = [];
-  for (const [rawKey, rawValue] of Object.entries(record)) {
-    const id = typeof rawKey === "string" ? rawKey.trim() : "";
-    if (!id) continue;
-    if (typeof rawValue === "string") {
-      const trimmed = rawValue.trim();
-      if (trimmed) entries.push({ id, value: trimmed });
-    } else if (typeof rawValue === "boolean") {
-      entries.push({ id, value: rawValue });
-    }
-    // Drop anything else (numbers, null, nested objects/arrays) to match the
-    // permissive normalization performed by migration 026.
-  }
-  return entries;
-}
-
-function canonicalSelectionsToLegacyObject(
-  selections: ReadonlyArray<ProviderOptionSelection>,
-): Record<string, string | boolean> {
-  const out: Record<string, string | boolean> = {};
-  for (const { id, value } of selections) {
-    out[id] = value;
-  }
-  return out;
-}
+export type ContextWindowOption = typeof ContextWindowOption.Type;
 
 export const ModelCapabilities = Schema.Struct({
-  optionDescriptors: Schema.optional(Schema.Array(ProviderOptionDescriptor)),
+  reasoningEffortLevels: Schema.Array(EffortOption),
+  supportsFastMode: Schema.Boolean,
+  supportsThinkingToggle: Schema.Boolean,
+  contextWindowOptions: Schema.Array(ContextWindowOption),
+  promptInjectedEffortLevels: Schema.Array(TrimmedNonEmptyString),
+  variantOptions: Schema.optional(Schema.Array(EffortOption)),
+  agentOptions: Schema.optional(Schema.Array(EffortOption)),
 });
 export type ModelCapabilities = typeof ModelCapabilities.Type;
 
-export const DEFAULT_MODEL_BY_PROVIDER: Record<ProviderKind, string> = {
-  codex: "gpt-5.4",
-  claudeAgent: "claude-sonnet-4-6",
-  cursor: "auto",
-  opencode: "openai/gpt-5",
+type ModelDefinition = {
+  readonly slug: string;
+  readonly name: string;
+  readonly pricingTier?: string;
+  readonly capabilities?: ModelCapabilities;
 };
+
+type CursorModelFamilyOption = {
+  readonly slug: string;
+  readonly name: string;
+};
+
+export const CURSOR_MODEL_FAMILY_OPTIONS = [
+  { slug: "auto", name: "Auto" },
+  { slug: "composer-1.5", name: "Composer 1.5" },
+  { slug: "composer-1", name: "Composer 1" },
+  { slug: "gpt-5.4-medium", name: "GPT-5.4" },
+  { slug: "gpt-5.4-medium-fast", name: "GPT-5.4 Fast" },
+  { slug: "gpt-5.4-high", name: "GPT-5.4 High" },
+  { slug: "gpt-5.4-high-fast", name: "GPT-5.4 High Fast" },
+  { slug: "gpt-5.4-xhigh", name: "GPT-5.4 Extra High" },
+  { slug: "gpt-5.4-xhigh-fast", name: "GPT-5.4 Extra High Fast" },
+  { slug: "gpt-5.3-codex", name: "GPT-5.3 Codex" },
+  { slug: "gpt-5.3-codex-spark-preview", name: "GPT-5.3 Codex Spark" },
+  { slug: "gpt-5.2-codex", name: "GPT-5.2 Codex" },
+  { slug: "gpt-5.2", name: "GPT-5.2" },
+  { slug: "gpt-5.2-high", name: "GPT-5.2 High" },
+  { slug: "gpt-5.1-codex-max", name: "GPT-5.1 Codex Max" },
+  { slug: "gpt-5.1-codex-max-high", name: "GPT-5.1 Codex Max High" },
+  { slug: "gpt-5.1-high", name: "GPT-5.1 High" },
+  { slug: "gpt-5.1-codex-mini", name: "GPT-5.1 Codex Mini" },
+  { slug: "opus-4.6", name: "Claude 4.6 Opus" },
+  { slug: "opus-4.5", name: "Claude 4.5 Opus" },
+  { slug: "sonnet-4.6", name: "Claude 4.6 Sonnet" },
+  { slug: "sonnet-4.5", name: "Claude 4.5 Sonnet" },
+  { slug: "gemini-3.1-pro", name: "Gemini 3.1 Pro" },
+  { slug: "gemini-3-pro", name: "Gemini 3 Pro" },
+  { slug: "gemini-3-flash", name: "Gemini 3 Flash" },
+  { slug: "grok", name: "Grok" },
+  { slug: "kimi-k2.5", name: "Kimi K2.5" },
+] as const satisfies readonly CursorModelFamilyOption[];
+
+export type CursorModelFamily = (typeof CURSOR_MODEL_FAMILY_OPTIONS)[number]["slug"];
+
+/**
+ * TODO: This should not be a static array, each provider
+ * should return its own model list over the WS API.
+ */
+export const MODEL_OPTIONS_BY_PROVIDER = {
+  codex: [
+    {
+      slug: "gpt-5.4",
+      name: "GPT-5.4",
+      capabilities: {
+        reasoningEffortLevels: [
+          { value: "xhigh", label: "Extra High" },
+          { value: "high", label: "High", isDefault: true },
+          { value: "medium", label: "Medium" },
+          { value: "low", label: "Low" },
+        ],
+        supportsFastMode: true,
+        supportsThinkingToggle: false,
+        contextWindowOptions: [],
+        promptInjectedEffortLevels: [],
+      },
+    },
+    {
+      slug: "gpt-5.4-mini",
+      name: "GPT-5.4 Mini",
+      capabilities: {
+        reasoningEffortLevels: [
+          { value: "xhigh", label: "Extra High" },
+          { value: "high", label: "High", isDefault: true },
+          { value: "medium", label: "Medium" },
+          { value: "low", label: "Low" },
+        ],
+        supportsFastMode: true,
+        supportsThinkingToggle: false,
+        contextWindowOptions: [],
+        promptInjectedEffortLevels: [],
+      },
+    },
+    {
+      slug: "gpt-5.3-codex",
+      name: "GPT-5.3 Codex",
+      capabilities: {
+        reasoningEffortLevels: [
+          { value: "xhigh", label: "Extra High" },
+          { value: "high", label: "High", isDefault: true },
+          { value: "medium", label: "Medium" },
+          { value: "low", label: "Low" },
+        ],
+        supportsFastMode: true,
+        supportsThinkingToggle: false,
+        contextWindowOptions: [],
+        promptInjectedEffortLevels: [],
+      },
+    },
+    {
+      slug: "gpt-5.3-codex-spark",
+      name: "GPT-5.3 Codex Spark",
+      capabilities: {
+        reasoningEffortLevels: [
+          { value: "xhigh", label: "Extra High" },
+          { value: "high", label: "High", isDefault: true },
+          { value: "medium", label: "Medium" },
+          { value: "low", label: "Low" },
+        ],
+        supportsFastMode: true,
+        supportsThinkingToggle: false,
+        contextWindowOptions: [],
+        promptInjectedEffortLevels: [],
+      },
+    },
+    {
+      slug: "gpt-5.2-codex",
+      name: "GPT-5.2 Codex",
+      capabilities: {
+        reasoningEffortLevels: [
+          { value: "xhigh", label: "Extra High" },
+          { value: "high", label: "High", isDefault: true },
+          { value: "medium", label: "Medium" },
+          { value: "low", label: "Low" },
+        ],
+        supportsFastMode: true,
+        supportsThinkingToggle: false,
+        contextWindowOptions: [],
+        promptInjectedEffortLevels: [],
+      },
+    },
+    {
+      slug: "gpt-5.2",
+      name: "GPT-5.2",
+      capabilities: {
+        reasoningEffortLevels: [
+          { value: "xhigh", label: "Extra High" },
+          { value: "high", label: "High", isDefault: true },
+          { value: "medium", label: "Medium" },
+          { value: "low", label: "Low" },
+        ],
+        supportsFastMode: true,
+        supportsThinkingToggle: false,
+        contextWindowOptions: [],
+        promptInjectedEffortLevels: [],
+      },
+    },
+  ],
+  copilot: [
+    { slug: "gpt-5.4", name: "GPT-5.4" },
+    { slug: "claude-sonnet-4.6", name: "Claude Sonnet 4.6" },
+    { slug: "claude-sonnet-4.5", name: "Claude Sonnet 4.5" },
+    { slug: "claude-haiku-4.5", name: "Claude Haiku 4.5" },
+    { slug: "claude-opus-4.6", name: "Claude Opus 4.6" },
+    { slug: "claude-opus-4.6-fast", name: "Claude Opus 4.6 (fast mode)" },
+    { slug: "claude-opus-4.5", name: "Claude Opus 4.5" },
+    { slug: "claude-sonnet-4", name: "Claude Sonnet 4" },
+    { slug: "gemini-3-pro-preview", name: "Gemini 3 Pro (Preview)" },
+    { slug: "gpt-5.3-codex", name: "GPT-5.3 Codex" },
+    { slug: "gpt-5.2-codex", name: "GPT-5.2 Codex" },
+    { slug: "gpt-5.2", name: "GPT-5.2" },
+    { slug: "gpt-5.1-codex-max", name: "GPT-5.1 Codex Max" },
+    { slug: "gpt-5.1-codex", name: "GPT-5.1 Codex" },
+    { slug: "gpt-5.1-codex-mini", name: "GPT-5.1 Codex Mini" },
+    { slug: "gpt-5.1", name: "GPT-5.1" },
+    { slug: "gpt-5-mini", name: "GPT-5 mini" },
+    { slug: "gpt-4.1", name: "GPT-4.1" },
+  ],
+  claudeAgent: [
+    {
+      slug: "claude-opus-4-7",
+      name: "Claude Opus 4.7",
+      capabilities: {
+        reasoningEffortLevels: [
+          { value: "low", label: "Low" },
+          { value: "medium", label: "Medium" },
+          { value: "high", label: "High" },
+          { value: "xhigh", label: "Extra High", isDefault: true },
+          { value: "max", label: "Max" },
+          { value: "ultrathink", label: "Ultrathink" },
+        ],
+        supportsFastMode: false,
+        supportsThinkingToggle: false,
+        contextWindowOptions: [
+          { value: "200k", label: "200k", isDefault: true },
+          { value: "1m", label: "1M" },
+        ],
+        promptInjectedEffortLevels: ["ultrathink"],
+      },
+    },
+    {
+      slug: "claude-opus-4-6",
+      name: "Claude Opus 4.6",
+      capabilities: {
+        reasoningEffortLevels: [
+          { value: "low", label: "Low" },
+          { value: "medium", label: "Medium" },
+          { value: "high", label: "High", isDefault: true },
+          { value: "max", label: "Max" },
+          { value: "ultrathink", label: "Ultrathink" },
+        ],
+        supportsFastMode: true,
+        supportsThinkingToggle: false,
+        contextWindowOptions: [
+          { value: "200k", label: "200k" },
+          { value: "1m", label: "1M", isDefault: true },
+        ],
+        promptInjectedEffortLevels: ["ultrathink"],
+      },
+    },
+    {
+      slug: "claude-opus-4-5",
+      name: "Claude Opus 4.5",
+      capabilities: {
+        reasoningEffortLevels: [
+          { value: "low", label: "Low" },
+          { value: "medium", label: "Medium" },
+          { value: "high", label: "High", isDefault: true },
+          { value: "max", label: "Max" },
+        ],
+        supportsFastMode: true,
+        supportsThinkingToggle: false,
+        contextWindowOptions: [],
+        promptInjectedEffortLevels: [],
+      },
+    },
+    {
+      slug: "claude-sonnet-4-6",
+      name: "Claude Sonnet 4.6",
+      capabilities: {
+        reasoningEffortLevels: [
+          { value: "low", label: "Low" },
+          { value: "medium", label: "Medium" },
+          { value: "high", label: "High", isDefault: true },
+          { value: "ultrathink", label: "Ultrathink" },
+        ],
+        supportsFastMode: false,
+        supportsThinkingToggle: false,
+        contextWindowOptions: [
+          { value: "200k", label: "200k" },
+          { value: "1m", label: "1M", isDefault: true },
+        ],
+        promptInjectedEffortLevels: ["ultrathink"],
+      },
+    },
+    {
+      slug: "claude-haiku-4-5",
+      name: "Claude Haiku 4.5",
+      capabilities: {
+        reasoningEffortLevels: [],
+        supportsFastMode: false,
+        supportsThinkingToggle: true,
+        contextWindowOptions: [],
+        promptInjectedEffortLevels: [],
+      },
+    },
+  ],
+  cursor: [
+    { slug: "auto", name: "Auto" },
+    { slug: "composer-1.5", name: "Composer 1.5" },
+    { slug: "composer-1", name: "Composer 1" },
+    { slug: "gpt-5.3-codex-low", name: "GPT-5.3 Codex Low" },
+    { slug: "gpt-5.3-codex-low-fast", name: "GPT-5.3 Codex Low Fast" },
+    { slug: "gpt-5.3-codex", name: "GPT-5.3 Codex" },
+    { slug: "gpt-5.3-codex-fast", name: "GPT-5.3 Codex Fast" },
+    { slug: "gpt-5.3-codex-high", name: "GPT-5.3 Codex High" },
+    { slug: "gpt-5.3-codex-high-fast", name: "GPT-5.3 Codex High Fast" },
+    { slug: "gpt-5.3-codex-xhigh", name: "GPT-5.3 Codex Extra High" },
+    { slug: "gpt-5.3-codex-xhigh-fast", name: "GPT-5.3 Codex Extra High Fast" },
+    { slug: "gpt-5.2", name: "GPT-5.2" },
+    { slug: "gpt-5.3-codex-spark-preview", name: "GPT-5.3 Codex Spark" },
+    { slug: "gpt-5.2-codex-low", name: "GPT-5.2 Codex Low" },
+    { slug: "gpt-5.2-codex-low-fast", name: "GPT-5.2 Codex Low Fast" },
+    { slug: "gpt-5.2-codex", name: "GPT-5.2 Codex" },
+    { slug: "gpt-5.2-codex-fast", name: "GPT-5.2 Codex Fast" },
+    { slug: "gpt-5.2-codex-high", name: "GPT-5.2 Codex High" },
+    { slug: "gpt-5.2-codex-high-fast", name: "GPT-5.2 Codex High Fast" },
+    { slug: "gpt-5.2-codex-xhigh", name: "GPT-5.2 Codex Extra High" },
+    { slug: "gpt-5.2-codex-xhigh-fast", name: "GPT-5.2 Codex Extra High Fast" },
+    { slug: "gpt-5.1-codex-max", name: "GPT-5.1 Codex Max" },
+    { slug: "gpt-5.1-codex-max-high", name: "GPT-5.1 Codex Max High" },
+    { slug: "gpt-5.4-high", name: "GPT-5.4 High" },
+    { slug: "opus-4.6", name: "Claude 4.6 Opus" },
+    { slug: "opus-4.6-thinking", name: "Claude 4.6 Opus (Thinking)" },
+    { slug: "gpt-5.4-medium", name: "GPT-5.4" },
+    { slug: "gpt-5.4-medium-fast", name: "GPT-5.4 Fast" },
+    { slug: "gpt-5.4-high-fast", name: "GPT-5.4 High Fast" },
+    { slug: "gpt-5.4-xhigh", name: "GPT-5.4 Extra High" },
+    { slug: "gpt-5.4-xhigh-fast", name: "GPT-5.4 Extra High Fast" },
+    { slug: "opus-4.5", name: "Claude 4.5 Opus" },
+    { slug: "opus-4.5-thinking", name: "Claude 4.5 Opus (Thinking)" },
+    { slug: "sonnet-4.6", name: "Claude 4.6 Sonnet" },
+    { slug: "sonnet-4.6-thinking", name: "Claude 4.6 Sonnet (Thinking)" },
+    { slug: "gpt-5.2-high", name: "GPT-5.2 High" },
+    { slug: "gemini-3.1-pro", name: "Gemini 3.1 Pro" },
+    { slug: "grok", name: "Grok" },
+    { slug: "sonnet-4.5", name: "Claude 4.5 Sonnet" },
+    { slug: "sonnet-4.5-thinking", name: "Claude 4.5 Sonnet (Thinking)" },
+    { slug: "gpt-5.1-high", name: "GPT-5.1 High" },
+    { slug: "gemini-3-pro", name: "Gemini 3 Pro" },
+    { slug: "gemini-3-flash", name: "Gemini 3 Flash" },
+    { slug: "gpt-5.1-codex-mini", name: "GPT-5.1 Codex Mini" },
+    { slug: "kimi-k2.5", name: "Kimi K2.5" },
+  ],
+  opencode: [
+    { slug: "openai/gpt-5", name: "OpenAI / GPT-5" },
+    { slug: "openai/gpt-5-mini", name: "OpenAI / GPT-5 Mini" },
+    { slug: "anthropic/claude-opus-4-7", name: "Anthropic / Claude Opus 4.7" },
+    { slug: "anthropic/claude-sonnet-4-6", name: "Anthropic / Claude Sonnet 4.6" },
+    { slug: "anthropic/claude-opus-4-6", name: "Anthropic / Claude Opus 4.6" },
+    { slug: "anthropic/claude-opus-4-5", name: "Anthropic / Claude Opus 4.5" },
+    { slug: "google/gemini-2.5-pro", name: "Google / Gemini 2.5 Pro" },
+    { slug: "google/gemini-2.5-flash", name: "Google / Gemini 2.5 Flash" },
+  ],
+  geminiCli: [
+    { slug: "gemini-2.5-pro", name: "Gemini 2.5 Pro" },
+    { slug: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
+    { slug: "gemini-3-pro-preview", name: "Gemini 3 Pro" },
+    { slug: "gemini-3-flash-preview", name: "Gemini 3 Flash" },
+    { slug: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro" },
+  ],
+  amp: [
+    { slug: "smart", name: "Smart (Opus 4.6)" },
+    { slug: "rush", name: "Rush (Fast)" },
+    { slug: "deep", name: "Deep (GPT-5.3 Codex)" },
+    { slug: "large", name: "Large" },
+  ],
+  kilo: [
+    { slug: "openai/gpt-5", name: "OpenAI / GPT-5" },
+    { slug: "openai/gpt-5-mini", name: "OpenAI / GPT-5 Mini" },
+    { slug: "anthropic/claude-sonnet-4-6", name: "Anthropic / Claude Sonnet 4.6" },
+    { slug: "anthropic/claude-opus-4-6", name: "Anthropic / Claude Opus 4.6" },
+    { slug: "google/gemini-2.5-pro", name: "Google / Gemini 2.5 Pro" },
+    { slug: "google/gemini-2.5-flash", name: "Google / Gemini 2.5 Flash" },
+  ],
+} as const satisfies Record<ProviderKind, readonly ModelDefinition[]>;
+export type ModelOptionsByProvider = typeof MODEL_OPTIONS_BY_PROVIDER;
+
+type BuiltInModelSlug = (typeof MODEL_OPTIONS_BY_PROVIDER)[ProviderKind][number]["slug"];
+export type ModelSlug = BuiltInModelSlug | (string & {});
+export type CursorModelSlug = (typeof MODEL_OPTIONS_BY_PROVIDER)["cursor"][number]["slug"];
+
+export const DEFAULT_MODEL_BY_PROVIDER: Record<ProviderKind, ModelSlug> = {
+  codex: "gpt-5.4",
+  copilot: "claude-sonnet-4.6",
+  claudeAgent: "claude-sonnet-4-6",
+  cursor: "opus-4.6-thinking",
+  opencode: "openai/gpt-5",
+  geminiCli: "gemini-2.5-pro",
+  amp: "smart",
+  kilo: "openai/gpt-5",
+} as const satisfies Record<ProviderKind, ModelSlug>;
 
 export const DEFAULT_MODEL = DEFAULT_MODEL_BY_PROVIDER.codex;
-
-/** Per-provider text generation model defaults. */
-export const DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER: Record<ProviderKind, string> = {
+export const DEFAULT_GIT_TEXT_GENERATION_MODEL = "gpt-5.4-mini" as const;
+export const DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER = {
+  ...DEFAULT_MODEL_BY_PROVIDER,
   codex: "gpt-5.4-mini",
   claudeAgent: "claude-haiku-4-5",
-  cursor: "composer-2",
-  opencode: "openai/gpt-5",
-};
+} as const satisfies Record<ProviderKind, ModelSlug>;
 
 export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string, string>> = {
   codex: {
@@ -151,6 +499,22 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string,
     "5.3-spark": "gpt-5.3-codex-spark",
     "gpt-5.3-spark": "gpt-5.3-codex-spark",
   },
+  copilot: {
+    "4.1": "gpt-4.1",
+    "5.4": "gpt-5.4",
+    "5-mini": "gpt-5-mini",
+    "5.1": "gpt-5.1",
+    "5.1-codex": "gpt-5.1-codex",
+    "5.1-max": "gpt-5.1-codex-max",
+    "5.1-mini": "gpt-5.1-codex-mini",
+    "5.2": "gpt-5.2",
+    "5.2-codex": "gpt-5.2-codex",
+    "5.3": "gpt-5.3-codex",
+    haiku: "claude-haiku-4.5",
+    sonnet: "claude-sonnet-4.6",
+    opus: "claude-opus-4.6",
+    gemini: "gemini-3-pro-preview",
+  },
   claudeAgent: {
     opus: "claude-opus-4-7",
     "opus-4.7": "claude-opus-4-7",
@@ -158,6 +522,8 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string,
     "opus-4.6": "claude-opus-4-6",
     "claude-opus-4.6": "claude-opus-4-6",
     "claude-opus-4-6-20251117": "claude-opus-4-6",
+    "opus-4.5": "claude-opus-4-5",
+    "claude-opus-4.5": "claude-opus-4-5",
     sonnet: "claude-sonnet-4-6",
     "sonnet-4.6": "claude-sonnet-4-6",
     "claude-sonnet-4.6": "claude-sonnet-4-6",
@@ -168,24 +534,135 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string,
     "claude-haiku-4-5-20251001": "claude-haiku-4-5",
   },
   cursor: {
-    composer: "composer-2",
+    composer: "composer-1.5",
     "composer-1.5": "composer-1.5",
-    "composer-1": "composer-1.5",
-    "opus-4.6-thinking": "claude-opus-4-6",
-    "opus-4.6": "claude-opus-4-6",
-    "sonnet-4.6-thinking": "claude-sonnet-4-6",
-    "sonnet-4.6": "claude-sonnet-4-6",
-    "opus-4.5-thinking": "claude-opus-4-5",
-    "opus-4.5": "claude-opus-4-5",
+    "composer-1": "composer-1",
+    "5.4": "gpt-5.4-medium",
+    "gpt-5.4": "gpt-5.4-medium",
+    "5.2": "gpt-5.2",
+    "5.2-codex": "gpt-5.2-codex",
+    "gpt-5.2-codex": "gpt-5.2-codex",
+    "5.1-max": "gpt-5.1-codex-max",
+    "gpt-5.1-codex-max": "gpt-5.1-codex-max",
+    "gpt-5.3-codex": "gpt-5.3-codex",
+    "gpt-5.3-codex-spark": "gpt-5.3-codex-spark-preview",
+    "gemini-3.1": "gemini-3.1-pro",
+    "gemini-3.1-pro": "gemini-3.1-pro",
+    "claude-4.6-sonnet-thinking": "sonnet-4.6-thinking",
+    "claude-4.5-sonnet-thinking": "sonnet-4.5-thinking",
+    "claude-4.6-opus-thinking": "opus-4.6-thinking",
+    "claude-4.5-opus-thinking": "opus-4.5-thinking",
+    "sonnet-4.5-thinking": "sonnet-4.5-thinking",
+    "sonnet-4.6-thinking": "sonnet-4.6-thinking",
+    "opus-4.6-thinking": "opus-4.6-thinking",
+    "opus-4.5-thinking": "opus-4.5-thinking",
   },
-  opencode: {},
+  opencode: {
+    "gpt-5": "openai/gpt-5",
+    "gpt-5-mini": "openai/gpt-5-mini",
+    "claude-opus-4-7": "anthropic/claude-opus-4-7",
+    "claude-sonnet-4-6": "anthropic/claude-sonnet-4-6",
+    "claude-opus-4-6": "anthropic/claude-opus-4-6",
+    "claude-opus-4-5": "anthropic/claude-opus-4-5",
+    "gemini-2.5-pro": "google/gemini-2.5-pro",
+    "gemini-2.5-flash": "google/gemini-2.5-flash",
+  },
+  kilo: {
+    "gpt-5": "openai/gpt-5",
+    "gpt-5-mini": "openai/gpt-5-mini",
+    "claude-sonnet-4-6": "anthropic/claude-sonnet-4-6",
+    "claude-opus-4-6": "anthropic/claude-opus-4-6",
+    "gemini-2.5-pro": "google/gemini-2.5-pro",
+    "gemini-2.5-flash": "google/gemini-2.5-flash",
+  },
+  geminiCli: {
+    gemini: "gemini-2.5-pro",
+    "2.5-pro": "gemini-2.5-pro",
+    "2.5-flash": "gemini-2.5-flash",
+    "3-pro": "gemini-3-pro-preview",
+    "3-flash": "gemini-3-flash-preview",
+    "3.1-pro": "gemini-3.1-pro-preview",
+    // Compatibility aliases for old slugs without -preview suffix
+    "gemini-3-pro": "gemini-3-pro-preview",
+    "gemini-3-flash": "gemini-3-flash-preview",
+    "gemini-3.1-pro": "gemini-3.1-pro-preview",
+  },
+  amp: {
+    opus: "smart",
+    fast: "rush",
+    codex: "deep",
+    large: "large",
+  },
 };
+
+export const REASONING_EFFORT_OPTIONS_BY_PROVIDER = {
+  codex: CODEX_REASONING_EFFORT_OPTIONS,
+  copilot: [],
+  claudeAgent: CLAUDE_CODE_EFFORT_OPTIONS,
+  cursor: [],
+  opencode: [],
+  kilo: [],
+  geminiCli: [],
+  amp: [],
+} as const satisfies Record<ProviderKind, readonly ProviderReasoningEffort[]>;
+
+export const DEFAULT_REASONING_EFFORT_BY_PROVIDER = {
+  codex: "high",
+  copilot: null,
+  claudeAgent: "high",
+  cursor: null,
+  opencode: null,
+  kilo: null,
+  geminiCli: null,
+  amp: null,
+} as const satisfies Record<ProviderKind, ProviderReasoningEffort | null>;
+
+export const CLAUDE_CODE_EFFORT_OPTIONS_BY_PROVIDER = {
+  codex: [],
+  copilot: [],
+  claudeAgent: CLAUDE_CODE_EFFORT_OPTIONS,
+  cursor: [],
+  opencode: [],
+  kilo: [],
+  geminiCli: [],
+  amp: [],
+} as const satisfies Record<ProviderKind, readonly ClaudeCodeEffort[]>;
+
+export const DEFAULT_CLAUDE_CODE_EFFORT_BY_PROVIDER = {
+  codex: null,
+  copilot: null,
+  claudeAgent: "high",
+  cursor: null,
+  opencode: null,
+  kilo: null,
+  geminiCli: null,
+  amp: null,
+} as const satisfies Record<ProviderKind, ClaudeCodeEffort | null>;
+
+// ── Model capabilities index ──────────────────────────────────────────
+
+export const MODEL_CAPABILITIES_INDEX = Object.fromEntries(
+  Object.entries(MODEL_OPTIONS_BY_PROVIDER).map(([provider, models]) => [
+    provider,
+    Object.fromEntries(
+      (models as readonly ModelDefinition[])
+        .filter(
+          (m): m is ModelDefinition & { capabilities: ModelCapabilities } => m.capabilities != null,
+        )
+        .map((m) => [m.slug, m.capabilities]),
+    ),
+  ]),
+) as unknown as Record<ProviderKind, Record<string, ModelCapabilities>>;
 
 // ── Provider display names ────────────────────────────────────────────
 
 export const PROVIDER_DISPLAY_NAMES: Record<ProviderKind, string> = {
   codex: "Codex",
+  copilot: "Copilot",
   claudeAgent: "Claude",
   cursor: "Cursor",
   opencode: "OpenCode",
+  geminiCli: "Gemini CLI",
+  amp: "Amp",
+  kilo: "Kilo",
 };

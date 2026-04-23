@@ -7,7 +7,7 @@ import * as nodePath from "node:path";
 
 import {
   ApprovalRequestId,
-  type ProviderOptionSelection,
+  type CursorModelOptions,
   EventId,
   type ProviderApprovalDecision,
   type ProviderInteractionMode,
@@ -73,6 +73,7 @@ import {
   extractTodosAsPlan,
 } from "../acp/CursorAcpExtension.ts";
 import { CursorAdapter, type CursorAdapterShape } from "../Services/CursorAdapter.ts";
+import { getProviderCapabilities } from "../Services/ProviderAdapter.ts";
 import { resolveCursorAcpBaseModelId } from "./CursorProvider.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 
@@ -222,7 +223,7 @@ function applyRequestedSessionConfiguration<E>(input: {
   readonly modelSelection:
     | {
         readonly model: string;
-        readonly options?: ReadonlyArray<ProviderOptionSelection> | null | undefined;
+        readonly options?: CursorModelOptions | null | undefined;
       }
     | undefined;
   readonly mapError: (context: {
@@ -235,7 +236,7 @@ function applyRequestedSessionConfiguration<E>(input: {
       yield* applyCursorAcpModelSelection({
         runtime: input.runtime,
         model: input.modelSelection.model,
-        selections: input.modelSelection.options,
+        modelOptions: input.modelSelection.options,
         mapError: ({ cause }) =>
           input.mapError({
             cause,
@@ -1033,7 +1034,7 @@ function makeCursorAdapter(options?: CursorAdapterLiveOptions) {
 
     return {
       provider: PROVIDER,
-      capabilities: { sessionModelSwitch: "in-session" },
+      capabilities: getProviderCapabilities(PROVIDER),
       startSession,
       sendTurn,
       interruptTurn,

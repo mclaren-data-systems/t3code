@@ -32,9 +32,13 @@ export const PROVIDER_OPTIONS: Array<{
   pickerSidebarBadge?: "new" | "soon";
 }> = [
   { value: "codex", label: "Codex", available: true },
-  { value: "claudeAgent", label: "Claude", available: true },
+  { value: "copilot", label: "GitHub Copilot", available: true },
+  { value: "claudeAgent", label: "Claude Code", available: true },
+  { value: "cursor", label: "Cursor Agent", available: true, pickerSidebarBadge: "new" },
   { value: "opencode", label: "OpenCode", available: true, pickerSidebarBadge: "new" },
-  { value: "cursor", label: "Cursor", available: true, pickerSidebarBadge: "new" },
+  { value: "geminiCli", label: "Gemini CLI", available: true },
+  { value: "amp", label: "AMPcode", available: true },
+  { value: "kilo", label: "Kilo", available: true },
 ];
 
 export interface WorkLogEntry {
@@ -46,6 +50,7 @@ export interface WorkLogEntry {
   rawCommand?: string;
   changedFiles?: ReadonlyArray<string>;
   tone: "thinking" | "tool" | "info" | "error";
+  activityKind: OrchestrationThreadActivity["kind"];
   toolTitle?: string;
   itemType?: ToolLifecycleItemType;
   requestKind?: PendingApproval["requestKind"];
@@ -169,7 +174,6 @@ function requestKindFromRequestType(requestType: unknown): PendingApproval["requ
   switch (requestType) {
     case "command_execution_approval":
     case "exec_command_approval":
-    case "dynamic_tool_call":
       return "command";
     case "file_read_approval":
       return "file-read";
@@ -473,10 +477,14 @@ export function hasActionableProposedPlan(
 export function deriveWorkLogEntries(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
   latestTurnId: TurnId | undefined,
+  sinceCreatedAt?: string,
 ): WorkLogEntry[] {
   const ordered = [...activities].toSorted(compareActivitiesByOrder);
   const entries = ordered
-    .filter((activity) => (latestTurnId ? activity.turnId === latestTurnId : true))
+    .filter((activity) =>
+      latestTurnId ? activity.turnId === latestTurnId || activity.turnId === null : true,
+    )
+    .filter((activity) => (sinceCreatedAt ? activity.createdAt >= sinceCreatedAt : true))
     .filter((activity) => activity.kind !== "tool.started")
     .filter((activity) => activity.kind !== "task.started")
     .filter((activity) => activity.kind !== "context-window.updated")
@@ -484,7 +492,7 @@ export function deriveWorkLogEntries(
     .filter((activity) => !isPlanBoundaryToolActivity(activity))
     .map(toDerivedWorkLogEntry);
   return collapseDerivedWorkLogEntries(entries).map(
-    ({ activityKind: _activityKind, collapseKey: _collapseKey, ...entry }) => entry,
+    ({ collapseKey: _collapseKey, ...entry }) => entry,
   );
 }
 
@@ -1146,6 +1154,16 @@ export function hasToolActivityForTurn(
   return activities.some((activity) => activity.turnId === turnId && activity.tone === "tool");
 }
 
+export function hasToolActivitySince(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+  sinceCreatedAt: string | undefined,
+): boolean {
+  return activities.some(
+    (activity) =>
+      activity.tone === "tool" && (sinceCreatedAt ? activity.createdAt >= sinceCreatedAt : true),
+  );
+}
+
 export function deriveTimelineEntries(
   messages: ChatMessage[],
   proposedPlans: ProposedPlan[],
@@ -1199,7 +1217,11 @@ export function deriveCompletionDividerBeforeEntryId(
 
   const turnStartedAt = Date.parse(latestTurn.startedAt);
   const turnCompletedAt = Date.parse(latestTurn.completedAt);
-  if (Number.isNaN(turnStartedAt) || Number.isNaN(turnCompletedAt)) {
+  if (
+    Number.isNaN(turnStartedAt) ||
+    Number.isNaN(turnCompletedAt) ||
+    turnCompletedAt < turnStartedAt
+  ) {
     return null;
   }
 

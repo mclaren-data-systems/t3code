@@ -80,7 +80,7 @@ export async function waitForResources({
   tcpPort,
   connectTimeoutMs = 500,
 }) {
-  if (!Number.isInteger(tcpPort) || tcpPort <= 0) {
+  if (!Number.isInteger(tcpPort) || tcpPort <= 0 || tcpPort > 65_535) {
     throw new TypeError("waitForResources requires a positive integer tcpPort");
   }
 

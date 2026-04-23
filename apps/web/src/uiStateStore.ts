@@ -19,6 +19,7 @@ export interface PersistedUiState {
   collapsedProjectCwds?: string[];
   expandedProjectCwds?: string[];
   projectOrderCwds?: string[];
+  threadLastVisitedAtById?: Record<string, string>;
   threadChangedFilesExpandedById?: Record<string, Record<string, boolean>>;
 }
 
@@ -57,6 +58,7 @@ const initialState: UiState = {
 const persistedCollapsedProjectCwds = new Set<string>();
 const persistedExpandedProjectCwds = new Set<string>();
 const persistedProjectOrderCwds: string[] = [];
+let persistedThreadLastVisitedAtById: Record<string, string> = {};
 // Pre-fix persisted shape only listed expanded cwds, so anything not listed
 // was treated as collapsed. Track whether the loaded blob carried the new
 // `collapsedProjectCwds` field so we can preserve that legacy semantic for
@@ -80,7 +82,7 @@ function readPersistedState(): UiState {
           continue;
         }
         hydratePersistedProjectState(JSON.parse(legacyRaw) as PersistedUiState);
-        return initialState;
+        return { ...initialState, threadLastVisitedAtById: persistedThreadLastVisitedAtById };
       }
       return initialState;
     }
@@ -88,6 +90,7 @@ function readPersistedState(): UiState {
     hydratePersistedProjectState(parsed);
     return {
       ...initialState,
+      threadLastVisitedAtById: persistedThreadLastVisitedAtById,
       threadChangedFilesExpandedById: sanitizePersistedThreadChangedFilesExpanded(
         parsed.threadChangedFilesExpandedById,
       ),
@@ -145,6 +148,11 @@ export function hydratePersistedProjectState(parsed: PersistedUiState): void {
       persistedProjectOrderCwds.push(cwd);
     }
   }
+  if (parsed.threadLastVisitedAtById && typeof parsed.threadLastVisitedAtById === "object") {
+    persistedThreadLastVisitedAtById = { ...parsed.threadLastVisitedAtById };
+  } else {
+    persistedThreadLastVisitedAtById = {};
+  }
 }
 
 export function persistState(state: UiState): void {
@@ -179,6 +187,7 @@ export function persistState(state: UiState): void {
         collapsedProjectCwds,
         expandedProjectCwds,
         projectOrderCwds,
+        threadLastVisitedAtById: state.threadLastVisitedAtById,
         threadChangedFilesExpandedById,
       } satisfies PersistedUiState),
     );

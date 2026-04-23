@@ -90,7 +90,6 @@ vi.mock("~/components/ui/toast", () => ({
     promise: toastPromiseSpy,
     update: toastUpdateSpy,
   },
-  stackedThreadToast: vi.fn((options: unknown) => options),
 }));
 
 vi.mock("~/editorPreferences", () => ({
@@ -201,6 +200,7 @@ vi.mock("~/store", () => ({
                   id: SHARED_THREAD_ID,
                   branch: BRANCH_NAME,
                   worktreePath: null,
+                  modelSelection: { provider: "codex", model: "gpt-5-codex" },
                 },
               }
             : {},
@@ -222,6 +222,7 @@ vi.mock("~/store", () => ({
                   id: SHARED_THREAD_ID,
                   branch: BRANCH_NAME,
                   worktreePath: null,
+                  modelSelection: { provider: "codex", model: "gpt-5-codex" },
                 },
               }
             : {},

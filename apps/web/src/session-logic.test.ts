@@ -19,7 +19,9 @@ import {
   findSidebarProposedPlan,
   hasActionableProposedPlan,
   hasToolActivityForTurn,
+  hasToolActivitySince,
   isLatestTurnSettled,
+  PROVIDER_OPTIONS,
 } from "./session-logic";
 
 function makeActivity(overrides: {
@@ -920,6 +922,23 @@ describe("deriveWorkLogEntries", () => {
     ]);
   });
 
+  it("keeps tool item types for icon rendering", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "web-search-tool",
+        kind: "tool.completed",
+        summary: "Web search complete",
+        payload: {
+          itemType: "web_search",
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities, undefined);
+    expect(entry?.activityKind).toBe("tool.completed");
+    expect(entry?.itemType).toBe("web_search");
+  });
+
   it("drops duplicated tool detail when it only repeats the title", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({
@@ -1113,6 +1132,60 @@ describe("deriveWorkLogEntries", () => {
     expect(entries[0]?.detail).toBeUndefined();
   });
 
+  it("maps request kinds for approval work log entries", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "approval-entry",
+        kind: "approval.requested",
+        summary: "File-read approval requested",
+        tone: "approval",
+        payload: {
+          requestType: "file_read_approval",
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities, undefined);
+    expect(entry?.activityKind).toBe("approval.requested");
+    expect(entry?.requestKind).toBe("file-read");
+    expect(entry?.tone).toBe("info");
+  });
+
+  it("keeps multi-turn tool activity since the latest user message", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "before-user",
+        createdAt: "2026-02-23T00:00:01.000Z",
+        turnId: "turn-1",
+        summary: "Old tool call",
+        kind: "tool.completed",
+        tone: "tool",
+      }),
+      makeActivity({
+        id: "after-user-first-turn",
+        createdAt: "2026-02-23T00:00:03.000Z",
+        turnId: "turn-2",
+        summary: "First Copilot tool call",
+        kind: "tool.completed",
+        tone: "tool",
+      }),
+      makeActivity({
+        id: "after-user-second-turn",
+        createdAt: "2026-02-23T00:00:04.000Z",
+        turnId: "turn-3",
+        summary: "Second Copilot tool call",
+        kind: "tool.completed",
+        tone: "tool",
+      }),
+    ];
+
+    const entries = deriveWorkLogEntries(activities, undefined, "2026-02-23T00:00:02.000Z");
+    expect(entries.map((entry) => entry.id)).toEqual([
+      "after-user-first-turn",
+      "after-user-second-turn",
+    ]);
+  });
+
   it("collapses repeated lifecycle updates for the same tool call into one entry", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({
@@ -1295,6 +1368,7 @@ describe("deriveTimelineEntries", () => {
           createdAt: "2026-02-23T00:00:03.000Z",
           label: "Ran tests",
           tone: "tool",
+          activityKind: "tool.completed",
         },
       ],
     );
@@ -1408,6 +1482,30 @@ describe("hasToolActivityForTurn", () => {
   });
 });
 
+describe("hasToolActivitySince", () => {
+  it("tracks tool activity across multiple turns since the latest user message", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "before-user",
+        createdAt: "2026-02-23T00:00:01.000Z",
+        turnId: "turn-1",
+        kind: "tool.completed",
+        tone: "tool",
+      }),
+      makeActivity({
+        id: "after-user",
+        createdAt: "2026-02-23T00:00:03.000Z",
+        turnId: "turn-2",
+        kind: "tool.completed",
+        tone: "tool",
+      }),
+    ];
+
+    expect(hasToolActivitySince(activities, "2026-02-23T00:00:02.000Z")).toBe(true);
+    expect(hasToolActivitySince(activities, "2026-02-23T00:00:04.000Z")).toBe(false);
+  });
+});
+
 describe("isLatestTurnSettled", () => {
   const latestTurn = {
     turnId: TurnId.make("turn-1"),
@@ -1514,5 +1612,58 @@ describe("deriveActiveWorkStartedAt", () => {
         "2026-02-27T21:11:00.000Z",
       ),
     ).toBe("2026-02-27T21:11:00.000Z");
+  });
+});
+
+describe("PROVIDER_OPTIONS", () => {
+  it("advertises all currently integrated providers", () => {
+    const copilot = PROVIDER_OPTIONS.find((option) => option.value === "copilot");
+    const claude = PROVIDER_OPTIONS.find((option) => option.value === "claudeAgent");
+    const cursor = PROVIDER_OPTIONS.find((option) => option.value === "cursor");
+    const opencode = PROVIDER_OPTIONS.find((option) => option.value === "opencode");
+    const geminiCli = PROVIDER_OPTIONS.find((option) => option.value === "geminiCli");
+    const amp = PROVIDER_OPTIONS.find((option) => option.value === "amp");
+    expect(PROVIDER_OPTIONS).toEqual([
+      { value: "codex", label: "Codex", available: true },
+      { value: "copilot", label: "GitHub Copilot", available: true },
+      { value: "claudeAgent", label: "Claude Code", available: true },
+      { value: "cursor", label: "Cursor Agent", available: true, pickerSidebarBadge: "new" },
+      { value: "opencode", label: "OpenCode", available: true, pickerSidebarBadge: "new" },
+      { value: "geminiCli", label: "Gemini CLI", available: true },
+      { value: "amp", label: "AMPcode", available: true },
+      { value: "kilo", label: "Kilo", available: true },
+    ]);
+    expect(copilot).toEqual({
+      value: "copilot",
+      label: "GitHub Copilot",
+      available: true,
+    });
+    expect(claude).toEqual({
+      value: "claudeAgent",
+      label: "Claude Code",
+      available: true,
+    });
+    expect(cursor).toEqual({
+      value: "cursor",
+      label: "Cursor Agent",
+      available: true,
+      pickerSidebarBadge: "new",
+    });
+    expect(opencode).toEqual({
+      value: "opencode",
+      label: "OpenCode",
+      available: true,
+      pickerSidebarBadge: "new",
+    });
+    expect(geminiCli).toEqual({
+      value: "geminiCli",
+      label: "Gemini CLI",
+      available: true,
+    });
+    expect(amp).toEqual({
+      value: "amp",
+      label: "AMPcode",
+      available: true,
+    });
   });
 });
