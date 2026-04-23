@@ -60,9 +60,16 @@ import { createThreadSelectorByRef } from "~/storeSelectors";
 interface GitActionsControlProps {
   gitCwd: string | null;
   activeThreadRef: ScopedThreadRef | null;
-  provider?: ProviderKind;
-  model?: string;
-  draftId?: DraftId;
+  scopedCommitRequest?:
+    | {
+        id: string;
+        filePaths: string[];
+      }
+    | null
+    | undefined;
+  provider?: ProviderKind | undefined;
+  model?: string | undefined;
+  draftId?: DraftId | undefined;
 }
 
 interface PendingDefaultBranchAction {
@@ -217,6 +224,7 @@ function GitQuickActionIcon({ quickAction }: { quickAction: GitQuickAction }) {
 export default function GitActionsControl({
   gitCwd,
   activeThreadRef,
+  scopedCommitRequest = null,
   provider,
   model,
   draftId,
@@ -246,6 +254,8 @@ export default function GitActionsControl({
   const [dialogCommitMessage, setDialogCommitMessage] = useState("");
   const [excludedFiles, setExcludedFiles] = useState<ReadonlySet<string>>(new Set());
   const [isEditingFiles, setIsEditingFiles] = useState(false);
+  const [dialogSelectedFilePaths, setDialogSelectedFilePaths] =
+    useState<ReadonlySet<string> | null>(null);
   const [pendingDefaultBranchAction, setPendingDefaultBranchAction] =
     useState<PendingDefaultBranchAction | null>(null);
   const gitProvider = provider ?? activeServerThread?.modelSelection.provider ?? "codex";
@@ -341,10 +351,44 @@ export default function GitActionsControl({
   const hasOriginRemote = gitStatus?.hasOriginRemote ?? false;
   const gitStatusForActions = gitStatus;
 
-  const allFiles = gitStatusForActions?.workingTree.files ?? [];
+  const allFiles = useMemo(
+    () => gitStatusForActions?.workingTree.files ?? [],
+    [gitStatusForActions?.workingTree.files],
+  );
   const selectedFiles = allFiles.filter((f) => !excludedFiles.has(f.path));
   const allSelected = excludedFiles.size === 0;
   const noneSelected = selectedFiles.length === 0;
+
+  const resetCommitDialogState = useCallback(() => {
+    setIsCommitDialogOpen(false);
+    setDialogCommitMessage("");
+    setExcludedFiles(new Set());
+    setIsEditingFiles(false);
+    setDialogSelectedFilePaths(null);
+  }, []);
+
+  useEffect(() => {
+    if (!scopedCommitRequest) {
+      return;
+    }
+
+    setDialogSelectedFilePaths(new Set(scopedCommitRequest.filePaths));
+    setDialogCommitMessage("");
+    setIsEditingFiles(true);
+    setIsCommitDialogOpen(true);
+  }, [scopedCommitRequest]);
+
+  useEffect(() => {
+    if (!isCommitDialogOpen || dialogSelectedFilePaths === null) {
+      return;
+    }
+
+    setExcludedFiles(
+      new Set(
+        allFiles.map((file) => file.path).filter((path) => !dialogSelectedFilePaths.has(path)),
+      ),
+    );
+  }, [allFiles, dialogSelectedFilePaths, isCommitDialogOpen]);
 
   const initMutation = useMutation(
     gitInitMutationOptions({ environmentId: activeEnvironmentId, cwd: gitCwd, queryClient }),
@@ -746,10 +790,7 @@ export default function GitActionsControl({
     if (!isCommitDialogOpen) return;
     const commitMessage = dialogCommitMessage.trim();
 
-    setIsCommitDialogOpen(false);
-    setDialogCommitMessage("");
-    setExcludedFiles(new Set());
-    setIsEditingFiles(false);
+    resetCommitDialogState();
 
     void runGitActionWithToast({
       action: "commit",
@@ -814,6 +855,7 @@ export default function GitActionsControl({
       void runGitActionWithToast({ action: "create_pr" });
       return;
     }
+    setDialogSelectedFilePaths(null);
     setExcludedFiles(new Set());
     setIsEditingFiles(false);
     setIsCommitDialogOpen(true);
@@ -822,10 +864,7 @@ export default function GitActionsControl({
   const runDialogAction = () => {
     if (!isCommitDialogOpen) return;
     const commitMessage = dialogCommitMessage.trim();
-    setIsCommitDialogOpen(false);
-    setDialogCommitMessage("");
-    setExcludedFiles(new Set());
-    setIsEditingFiles(false);
+    resetCommitDialogState();
     void runGitActionWithToast({
       action: "commit",
       ...(commitMessage ? { commitMessage } : {}),
@@ -991,10 +1030,7 @@ export default function GitActionsControl({
         open={isCommitDialogOpen}
         onOpenChange={(open) => {
           if (!open) {
-            setIsCommitDialogOpen(false);
-            setDialogCommitMessage("");
-            setExcludedFiles(new Set());
-            setIsEditingFiles(false);
+            resetCommitDialogState();
           }
         }}
       >
@@ -1130,16 +1166,7 @@ export default function GitActionsControl({
             </div>
           </DialogPanel>
           <DialogFooter>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setIsCommitDialogOpen(false);
-                setDialogCommitMessage("");
-                setExcludedFiles(new Set());
-                setIsEditingFiles(false);
-              }}
-            >
+            <Button variant="outline" size="sm" onClick={resetCommitDialogState}>
               Cancel
             </Button>
             <Button

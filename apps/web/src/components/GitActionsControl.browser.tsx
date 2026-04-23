@@ -25,6 +25,7 @@ function createDeferredPromise<T>() {
 const {
   activeRunStackedActionDeferredRef,
   activeDraftThreadRef,
+  gitStatusRef,
   hasServerThreadRef,
   invalidateGitQueriesSpy,
   refreshGitStatusSpy,
@@ -38,6 +39,17 @@ const {
 } = vi.hoisted(() => ({
   activeRunStackedActionDeferredRef: { current: createDeferredPromise<never>() },
   activeDraftThreadRef: { current: null as unknown },
+  gitStatusRef: {
+    current: {
+      branch: BRANCH_NAME,
+      hasWorkingTreeChanges: false,
+      workingTree: { files: [], insertions: 0, deletions: 0 },
+      hasUpstream: true,
+      aheadCount: 1,
+      behindCount: 0,
+      pr: null,
+    } as unknown,
+  },
   hasServerThreadRef: { current: true },
   invalidateGitQueriesSpy: vi.fn(() => Promise.resolve()),
   refreshGitStatusSpy: vi.fn(() => Promise.resolve(null)),
@@ -111,15 +123,7 @@ vi.mock("~/lib/gitStatusState", () => ({
   refreshGitStatus: refreshGitStatusSpy,
   resetGitStatusStateForTests: () => undefined,
   useGitStatus: vi.fn(() => ({
-    data: {
-      branch: BRANCH_NAME,
-      hasWorkingTreeChanges: false,
-      workingTree: { files: [], insertions: 0, deletions: 0 },
-      hasUpstream: true,
-      aheadCount: 1,
-      behindCount: 0,
-      pr: null,
-    },
+    data: gitStatusRef.current,
     error: null,
     isPending: false,
   })),
@@ -277,6 +281,15 @@ describe("GitActionsControl thread-scoped progress toast", () => {
     vi.clearAllMocks();
     activeRunStackedActionDeferredRef.current = createDeferredPromise<never>();
     activeDraftThreadRef.current = null;
+    gitStatusRef.current = {
+      branch: BRANCH_NAME,
+      hasWorkingTreeChanges: false,
+      workingTree: { files: [], insertions: 0, deletions: 0 },
+      hasUpstream: true,
+      aheadCount: 1,
+      behindCount: 0,
+      pr: null,
+    };
     hasServerThreadRef.current = true;
     document.body.innerHTML = "";
   });
@@ -456,6 +469,52 @@ describe("GitActionsControl thread-scoped progress toast", () => {
 
       expect(setDraftThreadContextSpy).not.toHaveBeenCalled();
       expect(setThreadBranchSpy).not.toHaveBeenCalled();
+    } finally {
+      await screen.unmount();
+      host.remove();
+    }
+  });
+
+  it("opens a scoped commit dialog with only the requested files selected", async () => {
+    gitStatusRef.current = {
+      branch: BRANCH_NAME,
+      hasWorkingTreeChanges: true,
+      workingTree: {
+        files: [
+          { path: "apps/web/src/ChatView.tsx", insertions: 10, deletions: 2 },
+          { path: "apps/web/src/session-logic.ts", insertions: 4, deletions: 1 },
+          { path: "README.md", insertions: 1, deletions: 0 },
+        ],
+        insertions: 15,
+        deletions: 3,
+      },
+      hasUpstream: true,
+      aheadCount: 0,
+      behindCount: 0,
+      pr: null,
+    };
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const screen = await render(
+      <GitActionsControl
+        gitCwd={GIT_CWD}
+        activeThreadRef={scopeThreadRef(ENVIRONMENT_A, SHARED_THREAD_ID)}
+        scopedCommitRequest={{
+          id: "scoped-1",
+          filePaths: ["apps/web/src/session-logic.ts"],
+        }}
+      />,
+      {
+        container: host,
+      },
+    );
+
+    try {
+      expect(document.body.textContent).toContain("Commit changes");
+      expect(document.body.textContent).toContain("(1 of 3)");
+      expect(document.body.textContent).toContain("Excluded");
+      expect(document.body.textContent).toContain("apps/web/src/session-logic.ts");
     } finally {
       await screen.unmount();
       host.remove();

@@ -137,6 +137,31 @@ export function formatElapsed(startIso: string, endIso: string | undefined): str
   return formatDuration(endedAt - startedAt);
 }
 
+export function normalizeWorkspaceRelativeFilePath(
+  pathValue: string,
+  workspaceRoot?: string,
+): string {
+  const trimmed = pathValue.trim();
+  if (trimmed.length === 0) {
+    return "";
+  }
+
+  let normalizedPath = trimmed.replaceAll("\\", "/");
+  const normalizedWorkspaceRoot = workspaceRoot?.trim().replaceAll("\\", "/").replace(/\/+$/u, "");
+  if (normalizedWorkspaceRoot) {
+    const lowerPath = normalizedPath.toLowerCase();
+    const lowerWorkspaceRoot = normalizedWorkspaceRoot.toLowerCase();
+    if (lowerPath === lowerWorkspaceRoot) {
+      return "";
+    }
+    if (lowerPath.startsWith(`${lowerWorkspaceRoot}/`)) {
+      normalizedPath = normalizedPath.slice(normalizedWorkspaceRoot.length + 1);
+    }
+  }
+
+  return normalizedPath.replace(/^\.\/+/u, "").replace(/^\/+/u, "");
+}
+
 type LatestTurnTiming = Pick<OrchestrationLatestTurn, "turnId" | "startedAt" | "completedAt">;
 type SessionActivityState = Pick<ThreadSession, "orchestrationStatus" | "activeTurnId">;
 
@@ -1103,6 +1128,52 @@ function extractChangedFiles(payload: Record<string, unknown> | null): string[] 
   const seen = new Set<string>();
   collectChangedFiles(asRecord(payload?.data), changedFiles, seen, 0);
   return changedFiles;
+}
+
+export function deriveTurnChangedFilesByTurnId(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+  workspaceRoot?: string,
+): ReadonlyMap<TurnId, ReadonlyArray<string>> {
+  const changedFilesByTurnId = new Map<TurnId, string[]>();
+  const seenByTurnId = new Map<TurnId, Set<string>>();
+
+  for (const activity of activities) {
+    if (!activity.turnId) {
+      continue;
+    }
+
+    const payload =
+      activity.payload && typeof activity.payload === "object"
+        ? (activity.payload as Record<string, unknown>)
+        : null;
+    const changedFiles = extractChangedFiles(payload);
+    if (changedFiles.length === 0) {
+      continue;
+    }
+
+    let nextChangedFiles = changedFilesByTurnId.get(activity.turnId);
+    if (!nextChangedFiles) {
+      nextChangedFiles = [];
+      changedFilesByTurnId.set(activity.turnId, nextChangedFiles);
+    }
+
+    let seen = seenByTurnId.get(activity.turnId);
+    if (!seen) {
+      seen = new Set<string>();
+      seenByTurnId.set(activity.turnId, seen);
+    }
+
+    for (const filePath of changedFiles) {
+      const normalizedFilePath = normalizeWorkspaceRelativeFilePath(filePath, workspaceRoot);
+      if (normalizedFilePath.length === 0 || seen.has(normalizedFilePath)) {
+        continue;
+      }
+      seen.add(normalizedFilePath);
+      nextChangedFiles.push(normalizedFilePath);
+    }
+  }
+
+  return changedFilesByTurnId;
 }
 
 function compareActivitiesByOrder(

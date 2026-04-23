@@ -13,6 +13,7 @@ import {
   deriveActivePlanState,
   derivePendingApprovals,
   derivePendingUserInputs,
+  deriveTurnChangedFilesByTurnId,
   deriveTimelineEntries,
   deriveWorkLogEntries,
   findLatestProposedPlan,
@@ -21,6 +22,7 @@ import {
   hasToolActivityForTurn,
   hasToolActivitySince,
   isLatestTurnSettled,
+  normalizeWorkspaceRelativeFilePath,
   PROVIDER_OPTIONS,
 } from "./session-logic";
 
@@ -1336,6 +1338,58 @@ describe("deriveWorkLogEntries", () => {
 
     expect(entries).toHaveLength(1);
     expect(entries[0]?.id).toBe("a-complete-same-timestamp");
+  });
+});
+
+describe("deriveTurnChangedFilesByTurnId", () => {
+  it("normalizes absolute tool file paths and groups them per turn", () => {
+    const turnId = "turn-1";
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "tool-1",
+        kind: "tool.completed",
+        turnId,
+        payload: {
+          itemType: "file_change",
+          data: {
+            item: {
+              changes: [
+                { path: "C:\\repo\\apps\\web\\src\\ChatView.tsx" },
+                { path: "./apps/web/src/ChatView.tsx" },
+                { filename: "apps/web/src/session-logic.ts" },
+              ],
+            },
+          },
+        },
+      }),
+      makeActivity({
+        id: "tool-2",
+        kind: "tool.completed",
+        turnId: "turn-2",
+        payload: {
+          itemType: "file_change",
+          data: {
+            changes: [{ path: "C:\\repo\\README.md" }],
+          },
+        },
+      }),
+    ];
+
+    const result = deriveTurnChangedFilesByTurnId(activities, "C:\\repo");
+
+    expect(result.get(TurnId.make(turnId))).toEqual([
+      "apps/web/src/ChatView.tsx",
+      "apps/web/src/session-logic.ts",
+    ]);
+    expect(result.get(TurnId.make("turn-2"))).toEqual(["README.md"]);
+  });
+});
+
+describe("normalizeWorkspaceRelativeFilePath", () => {
+  it("strips the workspace root and normalizes separators", () => {
+    expect(
+      normalizeWorkspaceRelativeFilePath("C:\\repo\\apps\\web\\src\\ChatView.tsx", "C:\\repo"),
+    ).toBe("apps/web/src/ChatView.tsx");
   });
 });
 

@@ -35,6 +35,13 @@ interface ChatHeaderProps {
   terminalToggleShortcutLabel: string | null;
   diffToggleShortcutLabel: string | null;
   gitCwd: string | null;
+  scopedCommitRequest?:
+    | {
+        id: string;
+        filePaths: string[];
+      }
+    | null
+    | undefined;
   gitProvider?: ProviderKind;
   gitModel?: string;
   diffOpen: boolean;
@@ -63,6 +70,7 @@ export const ChatHeader = memo(function ChatHeader({
   terminalToggleShortcutLabel,
   diffToggleShortcutLabel,
   gitCwd,
+  scopedCommitRequest,
   gitProvider,
   gitModel,
   diffOpen,
@@ -117,6 +125,7 @@ export const ChatHeader = memo(function ChatHeader({
           <GitActionsControl
             gitCwd={gitCwd}
             activeThreadRef={scopeThreadRef(activeThreadEnvironmentId, activeThreadId)}
+            scopedCommitRequest={scopedCommitRequest}
             {...(gitProvider ? { provider: gitProvider } : {})}
             {...(gitModel ? { model: gitModel } : {})}
             {...(draftId ? { draftId } : {})}

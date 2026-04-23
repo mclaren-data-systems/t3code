@@ -51,6 +51,7 @@ import {
   deriveTimelineEntries,
   deriveActiveWorkStartedAt,
   deriveActivePlanState,
+  deriveTurnChangedFilesByTurnId,
   findSidebarProposedPlan,
   findLatestProposedPlan,
   deriveWorkLogEntries,
@@ -58,6 +59,7 @@ import {
   hasToolActivityForTurn,
   isLatestTurnSettled,
   formatElapsed,
+  normalizeWorkspaceRelativeFilePath,
 } from "../session-logic";
 import { type LegendListRef } from "@legendapp/list/react";
 import {
@@ -182,6 +184,38 @@ const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
 const EMPTY_PROPOSED_PLANS: Thread["proposedPlans"] = [];
 const EMPTY_PROVIDERS: ServerProvider[] = [];
 const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
+const THREAD_READ_VISIBILITY_DELAY_MS = 3_000;
+
+function filterTurnDiffSummaryToThreadFiles(
+  summary: TurnDiffSummary,
+  relatedFilePaths: ReadonlyArray<string> | undefined,
+  workspaceRoot?: string,
+): TurnDiffSummary {
+  if (!relatedFilePaths || relatedFilePaths.length === 0) {
+    return summary;
+  }
+
+  const normalizedRelatedFilePaths = new Set(
+    relatedFilePaths
+      .map((filePath) => normalizeWorkspaceRelativeFilePath(filePath, workspaceRoot))
+      .filter((filePath) => filePath.length > 0),
+  );
+  if (normalizedRelatedFilePaths.size === 0) {
+    return summary;
+  }
+
+  const filteredFiles = summary.files.filter((file) =>
+    normalizedRelatedFilePaths.has(normalizeWorkspaceRelativeFilePath(file.path, workspaceRoot)),
+  );
+  if (filteredFiles.length === summary.files.length) {
+    return summary;
+  }
+
+  return {
+    ...summary,
+    files: filteredFiles,
+  };
+}
 
 type ThreadPlanCatalogEntry = Pick<Thread, "id" | "proposedPlans">;
 
@@ -607,8 +641,16 @@ export default function ChatView(props: ChatViewProps) {
   );
   const setStoreThreadError = useStore((store) => store.setError);
   const markThreadVisited = useUiStateStore((store) => store.markThreadVisited);
+  const markThreadCompletionAcknowledged = useUiStateStore(
+    (store) => store.markThreadCompletionAcknowledged,
+  );
   const activeThreadLastVisitedAt = useUiStateStore((store) =>
     routeKind === "server" ? store.threadLastVisitedAtById[routeThreadKey] : undefined,
+  );
+  const activeThreadLastCompletionAcknowledgedAt = useUiStateStore((store) =>
+    routeKind === "server"
+      ? store.threadLastCompletionAcknowledgedAtById[routeThreadKey]
+      : undefined,
   );
   const settings = useSettings();
   const setStickyComposerModelSelection = useComposerDraftStore(
@@ -712,6 +754,8 @@ export default function ChatView(props: ChatViewProps) {
   const attachmentPreviewPromotionInFlightByMessageIdRef = useRef<Record<string, true>>({});
   const sendInFlightRef = useRef(false);
   const terminalOpenByThreadRef = useRef<Record<string, boolean>>({});
+  const readVisibilityRemainingMsRef = useRef<number>(THREAD_READ_VISIBILITY_DELAY_MS);
+  const readVisibilityDeadlineRef = useRef<number | null>(null);
 
   const terminalState = useTerminalStateStore((state) =>
     selectThreadTerminalState(state.terminalStateByThreadKey, routeThreadRef),
@@ -1015,10 +1059,110 @@ export default function ChatView(props: ChatViewProps) {
     if (!activeLatestTurn?.completedAt) return;
     const turnCompletedAt = Date.parse(activeLatestTurn.completedAt);
     if (Number.isNaN(turnCompletedAt)) return;
-    const lastVisitedAt = activeThreadLastVisitedAt ? Date.parse(activeThreadLastVisitedAt) : NaN;
-    if (!Number.isNaN(lastVisitedAt) && lastVisitedAt >= turnCompletedAt) return;
+    const lastCompletionAcknowledgedAt = activeThreadLastCompletionAcknowledgedAt
+      ? Date.parse(activeThreadLastCompletionAcknowledgedAt)
+      : NaN;
+    if (
+      !Number.isNaN(lastCompletionAcknowledgedAt) &&
+      lastCompletionAcknowledgedAt >= turnCompletedAt
+    ) {
+      return;
+    }
 
-    markThreadVisited(scopedThreadKey(scopeThreadRef(serverThread.environmentId, serverThread.id)));
+    markThreadCompletionAcknowledged(
+      scopedThreadKey(scopeThreadRef(serverThread.environmentId, serverThread.id)),
+    );
+  }, [
+    activeLatestTurn?.completedAt,
+    activeThreadLastCompletionAcknowledgedAt,
+    latestTurnSettled,
+    markThreadCompletionAcknowledged,
+    serverThread?.environmentId,
+    serverThread?.id,
+  ]);
+
+  useEffect(() => {
+    if (!serverThread?.id || !latestTurnSettled || !activeLatestTurn?.completedAt) {
+      readVisibilityRemainingMsRef.current = THREAD_READ_VISIBILITY_DELAY_MS;
+      readVisibilityDeadlineRef.current = null;
+      return;
+    }
+
+    const turnCompletedAt = Date.parse(activeLatestTurn.completedAt);
+    if (Number.isNaN(turnCompletedAt)) {
+      readVisibilityRemainingMsRef.current = THREAD_READ_VISIBILITY_DELAY_MS;
+      readVisibilityDeadlineRef.current = null;
+      return;
+    }
+
+    const lastVisitedAt = activeThreadLastVisitedAt ? Date.parse(activeThreadLastVisitedAt) : NaN;
+    if (!Number.isNaN(lastVisitedAt) && lastVisitedAt >= turnCompletedAt) {
+      readVisibilityRemainingMsRef.current = THREAD_READ_VISIBILITY_DELAY_MS;
+      readVisibilityDeadlineRef.current = null;
+      return;
+    }
+
+    readVisibilityRemainingMsRef.current = THREAD_READ_VISIBILITY_DELAY_MS;
+    readVisibilityDeadlineRef.current = null;
+    const threadKey = scopedThreadKey(scopeThreadRef(serverThread.environmentId, serverThread.id));
+    let timeoutId: number | null = null;
+
+    const clearPendingTimeout = () => {
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
+
+    const pauseTimer = () => {
+      if (readVisibilityDeadlineRef.current === null) {
+        return;
+      }
+      readVisibilityRemainingMsRef.current = Math.max(
+        0,
+        readVisibilityDeadlineRef.current - Date.now(),
+      );
+      readVisibilityDeadlineRef.current = null;
+      clearPendingTimeout();
+    };
+
+    const startTimer = () => {
+      if (readVisibilityDeadlineRef.current !== null) {
+        return;
+      }
+      if (readVisibilityRemainingMsRef.current <= 0) {
+        markThreadVisited(threadKey);
+        return;
+      }
+      readVisibilityDeadlineRef.current = Date.now() + readVisibilityRemainingMsRef.current;
+      timeoutId = window.setTimeout(() => {
+        readVisibilityRemainingMsRef.current = THREAD_READ_VISIBILITY_DELAY_MS;
+        readVisibilityDeadlineRef.current = null;
+        timeoutId = null;
+        markThreadVisited(threadKey);
+      }, readVisibilityRemainingMsRef.current);
+    };
+
+    const syncTimer = () => {
+      if (document.visibilityState === "visible" && document.hasFocus()) {
+        startTimer();
+        return;
+      }
+      pauseTimer();
+    };
+
+    syncTimer();
+    document.addEventListener("visibilitychange", syncTimer);
+    window.addEventListener("focus", syncTimer);
+    window.addEventListener("blur", syncTimer);
+
+    return () => {
+      pauseTimer();
+      readVisibilityRemainingMsRef.current = THREAD_READ_VISIBILITY_DELAY_MS;
+      document.removeEventListener("visibilitychange", syncTimer);
+      window.removeEventListener("focus", syncTimer);
+      window.removeEventListener("blur", syncTimer);
+    };
   }, [
     activeLatestTurn?.completedAt,
     activeThreadLastVisitedAt,
@@ -1353,16 +1497,38 @@ export default function ChatView(props: ChatViewProps) {
       deriveTimelineEntries(timelineMessages, activeThread?.proposedPlans ?? [], workLogEntries),
     [activeThread?.proposedPlans, timelineMessages, workLogEntries],
   );
+  const activeProjectCwd = activeProject?.cwd ?? null;
+  const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
+  const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
+  const [scopedCommitRequest, setScopedCommitRequest] = useState<{
+    id: string;
+    filePaths: string[];
+  } | null>(null);
   const { turnDiffSummaries, inferredCheckpointTurnCountByTurnId } =
     useTurnDiffSummaries(activeThread);
+  const turnChangedFilesByTurnId = useMemo(
+    () =>
+      deriveTurnChangedFilesByTurnId(
+        activeThread?.activities ?? EMPTY_ACTIVITIES,
+        activeWorkspaceRoot,
+      ),
+    [activeThread?.activities, activeWorkspaceRoot],
+  );
   const turnDiffSummaryByAssistantMessageId = useMemo(() => {
     const byMessageId = new Map<MessageId, TurnDiffSummary>();
     for (const summary of turnDiffSummaries) {
       if (!summary.assistantMessageId) continue;
-      byMessageId.set(summary.assistantMessageId, summary);
+      byMessageId.set(
+        summary.assistantMessageId,
+        filterTurnDiffSummaryToThreadFiles(
+          summary,
+          turnChangedFilesByTurnId.get(summary.turnId),
+          activeWorkspaceRoot,
+        ),
+      );
     }
     return byMessageId;
-  }, [turnDiffSummaries]);
+  }, [activeWorkspaceRoot, turnChangedFilesByTurnId, turnDiffSummaries]);
   const revertTurnCountByUserMessageId = useMemo(() => {
     const byUserMessageId = new Map<MessageId, number>();
     for (let index = 0; index < timelineEntries.length; index += 1) {
@@ -1428,9 +1594,16 @@ export default function ChatView(props: ChatViewProps) {
     () => providerStatuses.find((status) => status.provider === selectedProvider) ?? null,
     [selectedProvider, providerStatuses],
   );
-  const activeProjectCwd = activeProject?.cwd ?? null;
-  const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
-  const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
+  const openScopedCommitDialog = useCallback((filePaths: ReadonlyArray<string>) => {
+    if (filePaths.length === 0) {
+      return;
+    }
+
+    setScopedCommitRequest({
+      id: crypto.randomUUID(),
+      filePaths: [...filePaths],
+    });
+  }, []);
   const activeTerminalLaunchContext =
     terminalLaunchContext?.threadId === activeThreadId
       ? terminalLaunchContext
@@ -3255,6 +3428,7 @@ export default function ChatView(props: ChatViewProps) {
           terminalToggleShortcutLabel={terminalToggleShortcutLabel}
           diffToggleShortcutLabel={diffPanelShortcutLabel}
           gitCwd={gitCwd}
+          scopedCommitRequest={scopedCommitRequest}
           diffOpen={diffOpen}
           onRunProjectScript={runProjectScript}
           onAddProjectScript={saveProjectScript}
@@ -3292,6 +3466,7 @@ export default function ChatView(props: ChatViewProps) {
               activeThreadEnvironmentId={activeThread.environmentId}
               routeThreadKey={routeThreadKey}
               onOpenTurnDiff={onOpenTurnDiff}
+              onOpenScopedCommit={openScopedCommitDialog}
               revertTurnCountByUserMessageId={revertTurnCountByUserMessageId}
               onRevertUserMessage={onRevertUserMessage}
               isRevertingCheckpoint={isRevertingCheckpoint}

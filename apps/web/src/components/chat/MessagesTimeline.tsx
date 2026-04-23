@@ -86,6 +86,7 @@ interface TimelineRowSharedState {
   onRevertUserMessage: (messageId: MessageId) => void;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  onOpenScopedCommit?: ((filePaths: ReadonlyArray<string>) => void) | undefined;
 }
 
 const TimelineRowCtx = createContext<TimelineRowSharedState>(null!);
@@ -106,6 +107,7 @@ interface MessagesTimelineProps {
   turnDiffSummaryByAssistantMessageId: Map<MessageId, TurnDiffSummary>;
   routeThreadKey: string;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  onOpenScopedCommit?: ((filePaths: ReadonlyArray<string>) => void) | undefined;
   revertTurnCountByUserMessageId: Map<MessageId, number>;
   onRevertUserMessage: (messageId: MessageId) => void;
   isRevertingCheckpoint: boolean;
@@ -134,6 +136,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   turnDiffSummaryByAssistantMessageId,
   routeThreadKey,
   onOpenTurnDiff,
+  onOpenScopedCommit,
   revertTurnCountByUserMessageId,
   onRevertUserMessage,
   isRevertingCheckpoint,
@@ -213,6 +216,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onRevertUserMessage,
       onImageExpand,
       onOpenTurnDiff,
+      onOpenScopedCommit,
     }),
     [
       activeTurnInProgress,
@@ -230,6 +234,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onRevertUserMessage,
       onImageExpand,
       onOpenTurnDiff,
+      onOpenScopedCommit,
     ],
   );
 
@@ -422,6 +427,7 @@ function TimelineRowContent({ row }: { row: TimelineRow }) {
                   routeThreadKey={ctx.routeThreadKey}
                   resolvedTheme={ctx.resolvedTheme}
                   onOpenTurnDiff={ctx.onOpenTurnDiff}
+                  onOpenScopedCommit={ctx.onOpenScopedCommit}
                 />
                 <div className="mt-1.5 flex items-center gap-2">
                   <p
@@ -593,11 +599,13 @@ const AssistantChangedFilesSection = memo(function AssistantChangedFilesSection(
   routeThreadKey,
   resolvedTheme,
   onOpenTurnDiff,
+  onOpenScopedCommit,
 }: {
   turnSummary: TurnDiffSummary | undefined;
   routeThreadKey: string;
   resolvedTheme: "light" | "dark";
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  onOpenScopedCommit?: ((filePaths: ReadonlyArray<string>) => void) | undefined;
 }) {
   if (!turnSummary) return null;
   const checkpointFiles = turnSummary.files;
@@ -610,6 +618,7 @@ const AssistantChangedFilesSection = memo(function AssistantChangedFilesSection(
       routeThreadKey={routeThreadKey}
       resolvedTheme={resolvedTheme}
       onOpenTurnDiff={onOpenTurnDiff}
+      onOpenScopedCommit={onOpenScopedCommit}
     />
   );
 });
@@ -622,12 +631,14 @@ function AssistantChangedFilesSectionInner({
   routeThreadKey,
   resolvedTheme,
   onOpenTurnDiff,
+  onOpenScopedCommit,
 }: {
   turnSummary: TurnDiffSummary;
   checkpointFiles: TurnDiffSummary["files"];
   routeThreadKey: string;
   resolvedTheme: "light" | "dark";
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  onOpenScopedCommit?: ((filePaths: ReadonlyArray<string>) => void) | undefined;
 }) {
   const allDirectoriesExpanded = useUiStateStore(
     (store) => store.threadChangedFilesExpandedById[routeThreadKey]?.[turnSummary.turnId] ?? true,
@@ -666,6 +677,16 @@ function AssistantChangedFilesSectionInner({
           >
             View diff
           </Button>
+          {onOpenScopedCommit && (
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              onClick={() => onOpenScopedCommit(checkpointFiles.map((file) => file.path))}
+            >
+              Commit these
+            </Button>
+          )}
         </div>
       </div>
       <ChangedFilesTree
