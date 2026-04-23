@@ -14,6 +14,7 @@ import { deepMerge } from "@t3tools/shared/Struct";
 
 import { checkCodexProviderStatus, type CodexAppServerProviderSnapshot } from "./CodexProvider.ts";
 import { checkClaudeProviderStatus, parseClaudeAuthStatusFromOutput } from "./ClaudeProvider.ts";
+import { checkGeminiCliProviderStatus } from "./GeminiCliProvider.ts";
 import {
   haveProvidersChanged,
   mergeProviderSnapshot,
@@ -69,6 +70,20 @@ function mockCommandSpawnerLayer(
       const cmd = command as unknown as { command: string; args: ReadonlyArray<string> };
       return Effect.succeed(mockHandle(handler(cmd.command, cmd.args)));
     }),
+  );
+}
+
+function isGeminiVersionProbe(command: string, args: ReadonlyArray<string>): boolean {
+  if (command === "gemini" && args.length === 1 && args[0] === "--version") {
+    return true;
+  }
+
+  const lowerCommand = command.toLowerCase();
+  const firstArg = args[0]?.toLowerCase() ?? "";
+  return (
+    lowerCommand.includes("node") &&
+    firstArg.includes("@google\\gemini-cli\\bundle\\gemini.js") &&
+    args[1] === "--version"
   );
 }
 
@@ -456,6 +471,9 @@ it.layer(
             mockCommandSpawnerLayer((command, args) => {
               spawnCount += 1;
               const joined = args.join(" ");
+              if (isGeminiVersionProbe(command, args)) {
+                return { stdout: "gemini 0.39.0\n", stderr: "", code: 0 };
+              }
               if (joined === "--version") {
                 return { stdout: "claude 1.0.0\n", stderr: "", code: 0 };
               }
@@ -526,6 +544,9 @@ it.layer(
                 cursorSpawned = true;
               }
               const joined = args.join(" ");
+              if (isGeminiVersionProbe(command, args)) {
+                return { stdout: "gemini 0.39.0\n", stderr: "", code: 0 };
+              }
               if (joined === "--version") {
                 return { stdout: `${command} 1.0.0\n`, stderr: "", code: 0 };
               }
@@ -550,7 +571,7 @@ it.layer(
 
           assert.deepStrictEqual(
             providers.map((provider) => provider.provider),
-            ["codex", "claudeAgent", "copilot", "opencode", "cursor"],
+            ["codex", "claudeAgent", "copilot", "opencode", "cursor", "geminiCli"],
           );
           assert.strictEqual(cursorProvider?.enabled, false);
           assert.strictEqual(cursorProvider?.status, "disabled");
@@ -573,6 +594,9 @@ it.layer(
           Layer.provideMerge(
             mockCommandSpawnerLayer((command, args) => {
               const joined = args.join(" ");
+              if (isGeminiVersionProbe(command, args)) {
+                return { stdout: "gemini 0.39.0\n", stderr: "", code: 0 };
+              }
               if (joined === "--version") {
                 if (command === "codex") {
                   return { stdout: "codex 1.0.0\n", stderr: "", code: 0 };
@@ -582,6 +606,9 @@ it.layer(
                 }
                 if (command === "copilot") {
                   return { stdout: "copilot 2.3.4\n", stderr: "", code: 0 };
+                }
+                if (command === "gemini") {
+                  return { stdout: "gemini 0.39.0\n", stderr: "", code: 0 };
                 }
                 return { stdout: "", stderr: "spawn ENOENT", code: 1 };
               }
@@ -632,12 +659,18 @@ it.layer(
           Layer.provideMerge(
             mockCommandSpawnerLayer((command, args) => {
               const joined = args.join(" ");
+              if (isGeminiVersionProbe(command, args)) {
+                return { stdout: "gemini 0.39.0\n", stderr: "", code: 0 };
+              }
               if (joined === "--version") {
                 if (command === "codex") {
                   return { stdout: "codex 1.0.0\n", stderr: "", code: 0 };
                 }
                 if (command === "claude") {
                   return { stdout: "claude 1.0.0\n", stderr: "", code: 0 };
+                }
+                if (command === "gemini") {
+                  return { stdout: "gemini 0.39.0\n", stderr: "", code: 0 };
                 }
                 return { stdout: "", stderr: "spawn ENOENT", code: 1 };
               }
@@ -679,6 +712,9 @@ it.layer(
             mockCommandSpawnerLayer((command, args) => {
               probeCount += 1;
               const joined = args.join(" ");
+              if (isGeminiVersionProbe(command, args)) {
+                return { stdout: "gemini 0.39.0\n", stderr: "", code: 0 };
+              }
               if (joined === "--version") {
                 if (command === "codex") {
                   return { stdout: "codex 1.0.0\n", stderr: "", code: 0 };
@@ -1053,6 +1089,43 @@ it.layer(
           }),
         ),
       ),
+    );
+  });
+
+  describe("checkGeminiCliProviderStatus", () => {
+    it.effect("returns ready when gemini is installed", () =>
+      Effect.gen(function* () {
+        const status = yield* checkGeminiCliProviderStatus();
+        assert.strictEqual(status.provider, "geminiCli");
+        assert.strictEqual(status.status, "ready");
+        assert.strictEqual(status.installed, true);
+        assert.strictEqual(status.auth.status, "unknown");
+        assert.strictEqual(status.version, "0.39.0");
+      }).pipe(
+        Effect.provide(
+          mockCommandSpawnerLayer((command, args) => {
+            if (isGeminiVersionProbe(command, args)) {
+              return { stdout: "0.39.0\n", stderr: "", code: 0 };
+            }
+            const joined = args.join(" ");
+            throw new Error(`Unexpected command: ${command} ${joined}`);
+          }),
+        ),
+      ),
+    );
+
+    it.effect("returns unavailable when gemini is missing", () =>
+      Effect.gen(function* () {
+        const status = yield* checkGeminiCliProviderStatus();
+        assert.strictEqual(status.provider, "geminiCli");
+        assert.strictEqual(status.status, "error");
+        assert.strictEqual(status.installed, false);
+        assert.strictEqual(status.auth.status, "unknown");
+        assert.strictEqual(
+          status.message,
+          "Gemini CLI (`gemini`) is not installed or not on PATH.",
+        );
+      }).pipe(Effect.provide(failingSpawnerLayer("spawn gemini ENOENT"))),
     );
   });
 

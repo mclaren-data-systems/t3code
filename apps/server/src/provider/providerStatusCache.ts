@@ -8,6 +8,7 @@ export const PROVIDER_CACHE_IDS = [
   "copilot",
   "opencode",
   "cursor",
+  "geminiCli",
 ] as const satisfies ReadonlyArray<ServerProvider["provider"]>;
 
 const decodeProviderStatusCache = Schema.decodeUnknownEffect(

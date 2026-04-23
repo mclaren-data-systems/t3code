@@ -11,11 +11,13 @@ import { ClaudeProviderLive } from "./ClaudeProvider.ts";
 import { CodexProviderLive } from "./CodexProvider.ts";
 import { CopilotProviderLive } from "./CopilotProvider.ts";
 import { CursorProviderLive } from "./CursorProvider.ts";
+import { GeminiCliProviderLive } from "./GeminiCliProvider.ts";
 import { OpenCodeProviderLive } from "./OpenCodeProvider.ts";
 import { ClaudeProvider } from "../Services/ClaudeProvider.ts";
 import { CodexProvider } from "../Services/CodexProvider.ts";
 import { CopilotProvider } from "../Services/CopilotProvider.ts";
 import { CursorProvider } from "../Services/CursorProvider.ts";
+import { GeminiCliProvider } from "../Services/GeminiCliProvider.ts";
 import { OpenCodeProvider } from "../Services/OpenCodeProvider.ts";
 import { ProviderRegistry, type ProviderRegistryShape } from "../Services/ProviderRegistry.ts";
 import { OpenCodeRuntimeLive } from "../opencodeRuntime.ts";
@@ -96,6 +98,7 @@ const ProviderRegistryLiveBase = Layer.effect(
     const copilotProvider = yield* CopilotProvider;
     const openCodeProvider = yield* OpenCodeProvider;
     const cursorProvider = yield* CursorProvider;
+    const geminiCliProvider = yield* GeminiCliProvider;
     const config = yield* ServerConfig;
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
@@ -130,6 +133,12 @@ const ProviderRegistryLiveBase = Layer.effect(
         getSnapshot: cursorProvider.getSnapshot,
         refresh: cursorProvider.refresh,
         streamChanges: cursorProvider.streamChanges,
+      },
+      {
+        provider: "geminiCli",
+        getSnapshot: geminiCliProvider.getSnapshot,
+        refresh: geminiCliProvider.refresh,
+        streamChanges: geminiCliProvider.streamChanges,
       },
     ] satisfies ReadonlyArray<ProviderSnapshotSource>;
     const activeProviders = PROVIDER_CACHE_IDS;
@@ -304,6 +313,7 @@ export const ProviderRegistryLive = Layer.unwrap(
       Layer.provideMerge(ClaudeProviderLive),
       Layer.provideMerge(CopilotProviderLive),
       Layer.provideMerge(CursorProviderLive),
+      Layer.provideMerge(GeminiCliProviderLive),
       Layer.provideMerge(OpenCodeProviderLive),
       Layer.provideMerge(OpenCodeRuntimeLive),
     ),
