@@ -54,7 +54,7 @@ import {
 import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
-import { formatTimestamp } from "../../timestampFormat";
+import { formatFullTimestamp, formatTimestamp } from "../../timestampFormat";
 
 import {
   buildInlineTerminalContextText,
@@ -374,7 +374,10 @@ function TimelineRowContent({ row }: { row: TimelineRow }) {
                       </Button>
                     )}
                   </div>
-                  <p className="text-right text-xs text-muted-foreground/50">
+                  <p
+                    className="text-right text-xs text-muted-foreground/50"
+                    title={formatFullTimestamp(row.message.createdAt)}
+                  >
                     {formatTimestamp(row.message.createdAt, ctx.timestampFormat)}
                   </p>
                 </div>
@@ -421,7 +424,10 @@ function TimelineRowContent({ row }: { row: TimelineRow }) {
                   onOpenTurnDiff={ctx.onOpenTurnDiff}
                 />
                 <div className="mt-1.5 flex items-center gap-2">
-                  <p className="text-[10px] text-muted-foreground/30">
+                  <p
+                    className="text-[10px] text-muted-foreground/30"
+                    title={formatFullTimestamp(row.message.createdAt)}
+                  >
                     {row.message.streaming ? (
                       <LiveMessageMeta
                         createdAt={row.message.createdAt}

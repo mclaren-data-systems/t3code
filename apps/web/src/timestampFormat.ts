@@ -21,6 +21,7 @@ export function getTimestampFormatOptions(
 }
 
 const timestampFormatterCache = new Map<string, Intl.DateTimeFormat>();
+let fullTimestampFormatter: Intl.DateTimeFormat | null = null;
 
 function getTimestampFormatter(
   timestampFormat: TimestampFormat,
@@ -46,6 +47,14 @@ export function formatTimestamp(isoDate: string, timestampFormat: TimestampForma
 
 export function formatShortTimestamp(isoDate: string, timestampFormat: TimestampFormat): string {
   return getTimestampFormatter(timestampFormat, false).format(new Date(isoDate));
+}
+
+export function formatFullTimestamp(isoDate: string): string {
+  fullTimestampFormatter ??= new Intl.DateTimeFormat(undefined, {
+    dateStyle: "full",
+    timeStyle: "medium",
+  });
+  return fullTimestampFormatter.format(new Date(isoDate));
 }
 
 /**
