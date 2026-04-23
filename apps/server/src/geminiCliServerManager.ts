@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { extname, win32 as win32Path } from "node:path";
 import {
   spawn,
@@ -195,27 +195,81 @@ interface GeminiSpawnPlan {
 interface GeminiSpawnPlanDependencies {
   readonly resolveCommandPath?: typeof resolveCommandPath;
   readonly existsSync?: typeof existsSync;
+  readonly readFileSync?: (path: string, encoding: "utf8") => string;
+}
+
+const GEMINI_SHIM_ENTRY_POINT_CANDIDATES = [
+  ["node_modules", "@google", "gemini-cli", "dist", "index.js"],
+  ["node_modules", "@google", "gemini-cli", "bundle", "gemini.js"],
+] as const;
+
+function resolveGeminiShimScriptPath(shimDirectory: string, scriptPath: string): string {
+  const normalizedScriptPath = scriptPath.trim().replace(/\//g, "\\");
+  const normalizedLowerCaseScriptPath = normalizedScriptPath.toLowerCase();
+  const shimDirectoryPrefixes = ["%~dp0\\", "%~dp0/", "%dp0%\\", "%dp0%/", "%dp0\\", "%dp0/"];
+  const shimDirectoryPrefix = shimDirectoryPrefixes.find((prefix) =>
+    normalizedLowerCaseScriptPath.startsWith(prefix.toLowerCase()),
+  );
+
+  if (shimDirectoryPrefix) {
+    return win32Path.normalize(
+      win32Path.join(shimDirectory, normalizedScriptPath.slice(shimDirectoryPrefix.length)),
+    );
+  }
+
+  if (win32Path.isAbsolute(normalizedScriptPath)) {
+    return win32Path.normalize(normalizedScriptPath);
+  }
+
+  return win32Path.normalize(win32Path.join(shimDirectory, normalizedScriptPath));
+}
+
+function parseGeminiShimEntryPoint(
+  binaryPath: string,
+  fileExists: typeof existsSync,
+  readFile: (path: string, encoding: "utf8") => string,
+): string | undefined {
+  try {
+    const shimContents = readFile(binaryPath, "utf8");
+    const shimDirectory = win32Path.dirname(binaryPath);
+    const shimScriptMatches = shimContents.matchAll(/"([^"\r\n]+\.js)"/gi);
+
+    for (const match of shimScriptMatches) {
+      const shimScriptPath = match[1];
+      if (!shimScriptPath) {
+        continue;
+      }
+      const resolvedShimScriptPath = resolveGeminiShimScriptPath(shimDirectory, shimScriptPath);
+      if (fileExists(resolvedShimScriptPath)) {
+        return resolvedShimScriptPath;
+      }
+    }
+  } catch {
+    // Ignore unreadable wrapper scripts and fall back to direct execution.
+  }
+
+  return undefined;
 }
 
 function resolveGeminiShimEntryPoint(
   binaryPath: string,
   fileExists: typeof existsSync = existsSync,
+  readFile: (path: string, encoding: "utf8") => string = (path, encoding) =>
+    readFileSync(path, encoding),
 ): string | undefined {
   if (![".cmd", ".bat"].includes(extname(binaryPath).toLowerCase())) {
     return undefined;
   }
 
   const shimDirectory = win32Path.dirname(binaryPath);
-  const shimEntryPoint = win32Path.join(
-    shimDirectory,
-    "node_modules",
-    "@google",
-    "gemini-cli",
-    "dist",
-    "index.js",
-  );
+  for (const candidateParts of GEMINI_SHIM_ENTRY_POINT_CANDIDATES) {
+    const shimEntryPoint = win32Path.join(shimDirectory, ...candidateParts);
+    if (fileExists(shimEntryPoint)) {
+      return shimEntryPoint;
+    }
+  }
 
-  return fileExists(shimEntryPoint) ? shimEntryPoint : undefined;
+  return parseGeminiShimEntryPoint(binaryPath, fileExists, readFile);
 }
 
 function resolveNodeCommand(
@@ -241,6 +295,8 @@ export function resolveGeminiSpawnPlan(
 ): GeminiSpawnPlan {
   const commandPathResolver = dependencies.resolveCommandPath ?? resolveCommandPath;
   const fileExists = dependencies.existsSync ?? existsSync;
+  const readFile =
+    dependencies.readFileSync ?? ((path: string, encoding: "utf8") => readFileSync(path, encoding));
   const options = buildGeminiSpawnOptions({
     cwd: input.cwd,
     env: input.env,
@@ -268,7 +324,7 @@ export function resolveGeminiSpawnPlan(
     };
   }
 
-  const shimEntryPoint = resolveGeminiShimEntryPoint(resolvedBinaryPath, fileExists);
+  const shimEntryPoint = resolveGeminiShimEntryPoint(resolvedBinaryPath, fileExists, readFile);
   if (shimEntryPoint) {
     return {
       command: resolveNodeCommand(input.env, platform, commandPathResolver),

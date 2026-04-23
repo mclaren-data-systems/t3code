@@ -73,6 +73,82 @@ describe("GeminiCliServerManager", () => {
       expect(plan.options.shell).toBe(false);
     });
 
+    it("rewrites Windows npm shim launches to node bundle/gemini.js", () => {
+      const env = {
+        PATH: "C:\\Users\\user\\AppData\\Roaming\\npm;C:\\Program Files\\nodejs",
+        PATHEXT: ".COM;.EXE;.BAT;.CMD",
+      };
+      const geminiCmd = "C:\\Users\\user\\AppData\\Roaming\\npm\\gemini.cmd";
+      const nodeBinary = "C:\\Program Files\\nodejs\\node.exe";
+
+      const plan = resolveGeminiSpawnPlan(
+        {
+          binaryPath: geminiCmd,
+          args: ["-p", "Reply with exactly PONG"],
+          cwd: "C:\\repo",
+          env,
+        },
+        "win32",
+        {
+          resolveCommandPath: (command: string) => {
+            if (command === "node") {
+              return nodeBinary;
+            }
+            return undefined;
+          },
+          existsSync: (path: PathLike) =>
+            String(path).replace(/\\/g, "/") ===
+            "C:/Users/user/AppData/Roaming/npm/node_modules/@google/gemini-cli/bundle/gemini.js",
+        },
+      );
+
+      expect(plan.command).toBe(nodeBinary);
+      expect(plan.args[0]?.replace(/\\/g, "/")).toContain(
+        "/AppData/Roaming/npm/node_modules/@google/gemini-cli/bundle/gemini.js",
+      );
+      expect(plan.args.slice(1)).toEqual(["-p", "Reply with exactly PONG"]);
+      expect(plan.options.shell).toBe(false);
+    });
+
+    it("parses Windows cmd shims to discover the JS entry point", () => {
+      const env = {
+        PATH: "C:\\Users\\user\\AppData\\Roaming\\npm;C:\\Program Files\\nodejs",
+        PATHEXT: ".COM;.EXE;.BAT;.CMD",
+      };
+      const geminiCmd = "C:\\Users\\user\\AppData\\Roaming\\npm\\gemini.cmd";
+      const nodeBinary = "C:\\Program Files\\nodejs\\node.exe";
+
+      const plan = resolveGeminiSpawnPlan(
+        {
+          binaryPath: geminiCmd,
+          args: ["-p", "Reply with exactly PONG"],
+          cwd: "C:\\repo",
+          env,
+        },
+        "win32",
+        {
+          resolveCommandPath: (command: string) => {
+            if (command === "node") {
+              return nodeBinary;
+            }
+            return undefined;
+          },
+          existsSync: (path: PathLike) =>
+            String(path).replace(/\\/g, "/") === "C:/Users/user/AppData/Roaming/npm/lib/cli.js",
+          readFileSync: vi
+            .fn<(path: string, encoding: "utf8") => string>()
+            .mockReturnValue('@SETLOCAL\r\n@"%~dp0\\..\\node.exe" "%~dp0\\lib\\cli.js" %*\r\n'),
+        },
+      );
+
+      expect(plan.command).toBe(nodeBinary);
+      expect(plan.args[0]?.replace(/\\/g, "/")).toBe(
+        "C:/Users/user/AppData/Roaming/npm/lib/cli.js",
+      );
+      expect(plan.args.slice(1)).toEqual(["-p", "Reply with exactly PONG"]);
+      expect(plan.options.shell).toBe(false);
+    });
+
     it("spawns directly on non-Windows platforms", () => {
       const plan = resolveGeminiSpawnPlan(
         {
