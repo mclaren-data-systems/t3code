@@ -277,12 +277,12 @@ once.
 - **What:** The inherited `AGENTS.md` (section A) hardcoded
   `aaditagrawal/t3code` as the only allowed target for `gh` write commands.
   Generalized to "the fork" so the same policy applies to this repo, and
-  dropped the aadit-specific upstream-merge PR instruction. `CLAUDE.md` (a
-  symlink to `AGENTS.md`) was retargeted to `@AGENTS.md`.
+  dropped the aadit-specific upstream-merge PR instruction.
 - **Re-apply notes:** Apply on top of the aadit fork's `AGENTS.md`, not
-  upstream's. Verify the `CLAUDE.md` symlink still resolves to a real file
-  after re-applying (a target of `@AGENTS.md` only works if a file with that
-  literal name exists).
+  upstream's. `CLAUDE.md` must stay a symlink pointing at the literal path
+  `AGENTS.md` — a `16c78b6`-style retarget to `@AGENTS.md` leaves it dangling
+  (the `@file` import syntax only works inside a file's content, not as a
+  symlink target).
 
 ### 13. Housekeeping
 
