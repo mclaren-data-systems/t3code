@@ -24,6 +24,7 @@ import {
   shouldShowModelPickerJumpHints,
   shouldShowThreadJumpHints,
   shortcutLabelForCommand,
+  terminalControlShortcutData,
   terminalDeleteShortcutData,
   terminalNavigationShortcutData,
   threadJumpCommandForIndex,
@@ -758,6 +759,52 @@ describe("terminalNavigationShortcutData", () => {
         event({ type: "keyup", key: "ArrowLeft", altKey: true }),
         "MacIntel",
       ),
+    );
+  });
+});
+
+describe("terminalControlShortcutData", () => {
+  it("maps a plain Ctrl+<letter> chord to its control character", () => {
+    assert.strictEqual(
+      terminalControlShortcutData(event({ key: "c", ctrlKey: true }), false),
+      String.fromCharCode(3),
+    );
+    assert.strictEqual(
+      terminalControlShortcutData(event({ key: "C", ctrlKey: true }), false),
+      String.fromCharCode(3),
+    );
+    assert.strictEqual(
+      terminalControlShortcutData(event({ key: "d", ctrlKey: true }), false),
+      String.fromCharCode(4),
+    );
+    assert.strictEqual(
+      terminalControlShortcutData(event({ key: "a", ctrlKey: true }), false),
+      String.fromCharCode(1),
+    );
+  });
+
+  it("does not intercept when there is an active selection (so Ctrl+C still copies)", () => {
+    assert.isNull(terminalControlShortcutData(event({ key: "c", ctrlKey: true }), true));
+  });
+
+  it("ignores other modifier combinations and non-letters", () => {
+    assert.isNull(terminalControlShortcutData(event({ key: "c" }), false));
+    assert.isNull(
+      terminalControlShortcutData(event({ key: "c", ctrlKey: true, shiftKey: true }), false),
+    );
+    assert.isNull(
+      terminalControlShortcutData(event({ key: "c", ctrlKey: true, altKey: true }), false),
+    );
+    assert.isNull(
+      terminalControlShortcutData(event({ key: "c", ctrlKey: true, metaKey: true }), false),
+    );
+    assert.isNull(terminalControlShortcutData(event({ key: "1", ctrlKey: true }), false));
+    assert.isNull(terminalControlShortcutData(event({ key: "Enter", ctrlKey: true }), false));
+  });
+
+  it("ignores non-keydown events", () => {
+    assert.isNull(
+      terminalControlShortcutData(event({ type: "keyup", key: "c", ctrlKey: true }), false),
     );
   });
 });
