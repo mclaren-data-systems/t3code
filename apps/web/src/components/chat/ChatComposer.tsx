@@ -193,6 +193,17 @@ import { formatProviderSkillDisplayName } from "../../providerSkillPresentation"
 import { searchProviderSkills } from "../../providerSkillSearch";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { useThreadMessageHistoryStore } from "../../threadMessageHistoryStore";
+import {
+  isThreadMessageHistoryBoundary,
+  resolveThreadMessageHistoryNavigation,
+  type ThreadMessageHistoryDirection,
+  type ThreadMessageHistoryNavigationState,
+} from "../../threadMessageHistory";
+
+/** Stable empty history reference so the zustand selector doesn't churn renders. */
+const EMPTY_THREAD_MESSAGE_HISTORY: readonly string[] = [];
 
 const IMAGE_SIZE_LIMIT_LABEL = `${Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))}MB`;
 
@@ -975,6 +986,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerFormRef = useRef<HTMLFormElement>(null);
   const composerSurfaceRef = useRef<HTMLDivElement>(null);
   const composerSelectLockRef = useRef(false);
+
+  // Per-thread composer message history (shell-style arrow-key recall, #7).
+  const threadMessageHistoryKey = useMemo(() => scopedThreadKey(routeThreadRef), [routeThreadRef]);
+  const threadMessageHistory = useThreadMessageHistoryStore(
+    (store) => store.historyByThreadKey[threadMessageHistoryKey] ?? EMPTY_THREAD_MESSAGE_HISTORY,
+  );
+  const appendThreadMessageHistory = useThreadMessageHistoryStore((store) => store.appendMessage);
+  const threadMessageHistoryNavigationRef = useRef<ThreadMessageHistoryNavigationState>({
+    index: null,
+    draft: "",
+  });
+  const threadMessageHistoryAppliedPromptRef = useRef<string | null>(null);
   const composerMenuOpenRef = useRef(false);
   const composerMenuItemsRef = useRef<ComposerCommandItem[]>([]);
   const activeComposerMenuItemRef = useRef<ComposerCommandItem | null>(null);
@@ -1789,18 +1812,88 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     showPlanFollowUpPrompt,
   ]);
 
+  const applyThreadMessageHistoryPrompt = useCallback(
+    (nextPrompt: string) => {
+      setPrompt(nextPrompt);
+      const nextCursor = collapseExpandedComposerCursor(nextPrompt, nextPrompt.length);
+      setComposerCursor(nextCursor);
+      setComposerTrigger(detectComposerTrigger(nextPrompt, nextPrompt.length));
+      setComposerHighlightedItemId(null);
+      setComposerHighlightedSearchKey(null);
+      threadMessageHistoryAppliedPromptRef.current = nextPrompt;
+      window.requestAnimationFrame(() => {
+        composerEditorRef.current?.focusAt(nextCursor);
+      });
+    },
+    [setPrompt],
+  );
+
+  const navigateThreadMessageHistory = useCallback(
+    (direction: ThreadMessageHistoryDirection): boolean => {
+      const snapshot = composerEditorRef.current?.readSnapshot() ?? {
+        value: promptRef.current,
+        cursor: 0,
+        expandedCursor: promptRef.current.length,
+        terminalContextIds: [],
+      };
+      // Restart navigation when the prompt was edited since we last applied one,
+      // so ArrowUp begins from the newest message again.
+      if (threadMessageHistoryAppliedPromptRef.current !== snapshot.value) {
+        threadMessageHistoryNavigationRef.current = { index: null, draft: "" };
+      }
+      const navigationState = threadMessageHistoryNavigationRef.current;
+      if (
+        navigationState.index === null &&
+        !isThreadMessageHistoryBoundary({
+          direction,
+          text: snapshot.value,
+          expandedCursor: snapshot.expandedCursor,
+        })
+      ) {
+        return false;
+      }
+      const result = resolveThreadMessageHistoryNavigation({
+        direction,
+        history: threadMessageHistory,
+        navigation: navigationState,
+        currentDraft: snapshot.value,
+      });
+      if (!result.handled) {
+        return false;
+      }
+      threadMessageHistoryNavigationRef.current = result.navigation;
+      applyThreadMessageHistoryPrompt(result.nextPrompt);
+      return true;
+    },
+    [applyThreadMessageHistoryPrompt, promptRef, threadMessageHistory],
+  );
+
   const submitComposer = useCallback(
     (event?: { preventDefault: () => void }) => {
       if (noProviderAvailable) {
         event?.preventDefault();
         return;
       }
+      const promptBeforeSubmit = promptRef.current;
       onSend(event);
+      if (promptBeforeSubmit.trim().length > 0) {
+        appendThreadMessageHistory(threadMessageHistoryKey, promptBeforeSubmit);
+      }
+      threadMessageHistoryNavigationRef.current = { index: null, draft: "" };
+      threadMessageHistoryAppliedPromptRef.current = null;
       if (shouldBlurMobileComposerOnSubmit()) {
         blurMobileComposerAfterSend();
       }
     },
-    [blurMobileComposerAfterSend, noProviderAvailable, onSend, shouldBlurMobileComposerOnSubmit],
+    [
+      appendThreadMessageHistory,
+      blurMobileComposerAfterSend,
+      noProviderAvailable,
+      onSend,
+      promptRef,
+      shouldBlurMobileComposerOnSubmit,
+      threadMessageHistoryKey,
+    ],
   );
   const expandMobileComposer = useCallback(() => {
     if (composerBlurFrameRef.current !== null) {
@@ -1860,6 +1953,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     ) {
       submitComposer();
       return true;
+    }
+    if (key === "ArrowUp" || key === "ArrowDown") {
+      const direction: ThreadMessageHistoryDirection = key === "ArrowUp" ? "backward" : "forward";
+      if (navigateThreadMessageHistory(direction)) {
+        return true;
+      }
     }
     return false;
   };
