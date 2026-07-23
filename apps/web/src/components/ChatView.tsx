@@ -1150,6 +1150,9 @@ function ChatViewContent(props: ChatViewProps) {
     routeKind === "server" ? routeThreadRef : props.draftId;
   const serverThread = useThread(routeThreadRef);
   const markThreadVisited = useUiStateStore((store) => store.markThreadVisited);
+  const markThreadCompletionAcknowledged = useUiStateStore(
+    (store) => store.markThreadCompletionAcknowledged,
+  );
   const activeThreadLastVisitedAt = useUiStateStore(
     (store) => store.threadLastVisitedAtById[routeThreadKey],
   );
@@ -1757,13 +1760,16 @@ function ChatViewContent(props: ChatViewProps) {
     const lastVisitedAt = activeThreadLastVisitedAt ? Date.parse(activeThreadLastVisitedAt) : NaN;
     if (!Number.isNaN(lastVisitedAt) && lastVisitedAt >= threadUpdatedAt) return;
 
-    markThreadVisited(
-      scopedThreadKey(scopeThreadRef(serverThread.environmentId, serverThread.id)),
-      serverThread.updatedAt,
+    const visitedThreadKey = scopedThreadKey(
+      scopeThreadRef(serverThread.environmentId, serverThread.id),
     );
+    markThreadVisited(visitedThreadKey, serverThread.updatedAt);
+    // Acknowledge the completion on visit as well (backs the green dot).
+    markThreadCompletionAcknowledged(visitedThreadKey, serverThread.updatedAt);
   }, [
     activeThreadLastVisitedAt,
     markThreadVisited,
+    markThreadCompletionAcknowledged,
     serverThread?.environmentId,
     serverThread?.id,
     serverThread?.updatedAt,

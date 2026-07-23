@@ -378,6 +378,9 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
   const threadRef = scopeThreadRef(thread.environmentId, thread.id);
   const threadKey = scopedThreadKey(threadRef);
   const lastVisitedAt = useUiStateStore((state) => state.threadLastVisitedAtById[threadKey]);
+  const completionAcknowledgedAt = useUiStateStore(
+    (state) => state.threadLastCompletionAcknowledgedAtById[threadKey],
+  );
   const isSelected = useThreadSelectionStore((state) => state.selectedThreadKeys.has(threadKey));
   const runningTerminalIds = useThreadRunningTerminalIds({
     environmentId: thread.environmentId,
@@ -457,6 +460,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
     thread: {
       ...thread,
       lastVisitedAt,
+      completionAcknowledgedAt,
     },
   });
   const pr = resolveThreadPr({
@@ -2333,7 +2337,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         <Tooltip>
           <TooltipTrigger
             render={
-              <div className="pointer-events-none absolute top-[calc(50%+1px)] right-0.5 -translate-y-1/2 opacity-0 transition-opacity duration-150 max-sm:pointer-events-auto max-sm:opacity-100 group-hover/project-header:pointer-events-auto group-hover/project-header:opacity-100 group-focus-within/project-header:pointer-events-auto group-focus-within/project-header:opacity-100">
+              <div className="pointer-events-auto absolute top-[calc(50%+1px)] right-0.5 -translate-y-1/2 opacity-100 transition-opacity duration-150">
                 <button
                   type="button"
                   aria-label={`Create new thread in ${project.displayName}`}

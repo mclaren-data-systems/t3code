@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import {
   legacyProjectCwdPreferenceKey,
+  markThreadCompletionAcknowledged,
   markThreadUnread,
   markThreadVisited,
   parsePersistedState,
@@ -22,6 +23,7 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     projectExpandedById: {},
     projectOrder: [],
     threadLastVisitedAtById: {},
+    threadLastCompletionAcknowledgedAtById: {},
     threadChangedFilesExpandedById: {},
     defaultAdvertisedEndpointKey: null,
     ...overrides,
@@ -37,6 +39,33 @@ describe("uiStateStore pure functions", () => {
     expect(visited.threadLastVisitedAtById[threadId]).toBe("2026-02-25T12:30:00.700Z");
     expect(markThreadVisited(visited, threadId, "2026-02-25T12:30:00.000Z")).toBe(visited);
     expect(markThreadVisited(visited, threadId, "not-a-date")).toBe(visited);
+  });
+
+  it("stores completion acknowledgement without moving it backwards", () => {
+    const threadId = ThreadId.make("thread-1");
+    const acked = markThreadCompletionAcknowledged(
+      makeUiState(),
+      threadId,
+      "2026-02-25T12:30:00.700Z",
+    );
+
+    expect(acked.threadLastCompletionAcknowledgedAtById[threadId]).toBe("2026-02-25T12:30:00.700Z");
+    expect(markThreadCompletionAcknowledged(acked, threadId, "2026-02-25T12:30:00.000Z")).toBe(
+      acked,
+    );
+    expect(markThreadCompletionAcknowledged(acked, threadId, "not-a-date")).toBe(acked);
+  });
+
+  it("resets completion acknowledgement when a thread is marked unread", () => {
+    const threadId = ThreadId.make("thread-1");
+    const initialState = makeUiState({
+      threadLastVisitedAtById: { [threadId]: "2026-02-25T12:35:00.000Z" },
+      threadLastCompletionAcknowledgedAtById: { [threadId]: "2026-02-25T12:35:00.000Z" },
+    });
+
+    const next = markThreadUnread(initialState, threadId, "2026-02-25T12:30:00.000Z");
+
+    expect(next.threadLastCompletionAcknowledgedAtById[threadId]).toBe("2026-02-25T12:29:59.999Z");
   });
 
   it("marks a completed thread unread using the server completion timestamp", () => {
@@ -171,6 +200,10 @@ describe("parsePersistedState", () => {
       threadLastVisitedAtById: {
         "environment:thread-1": "2026-02-25T12:35:00.000Z",
       },
+      // Acknowledgement is seeded from last-visited when absent from the blob.
+      threadLastCompletionAcknowledgedAtById: {
+        "environment:thread-1": "2026-02-25T12:35:00.000Z",
+      },
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
       threadChangedFilesExpandedById: {
         "environment:thread-1": {
@@ -277,6 +310,7 @@ describe("uiStateStore persistence", () => {
       threadLastVisitedAtById: {
         "environment:thread-1": "2026-02-25T12:35:00.000Z",
       },
+      threadLastCompletionAcknowledgedAtById: {},
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
       threadChangedFilesExpandedById: {
         "environment:thread-1": {
