@@ -1,4 +1,4 @@
-# Fork changes (mclaren-data-systems/t3code)
+# Fork notes (mclaren-data-systems/t3code)
 
 This file is the authoritative list of changes that set this fork
 (`mclaren-data-systems/t3code`, branch `main`) apart from upstream. It is
@@ -258,20 +258,36 @@ once.
 - **Re-apply notes:** Only needed while those packages' tests spawn processes;
   if upstream adds its own configs, merge rather than duplicate.
 
-### 11. TODO.md: John's TODO / TODID sections
+### 11. TODO list moved into this file; `TODO.md` deleted
 
-- **Files:** `TODO.md`
+- **Files:** `TODO.md` (deleted), this file's "TODO" section (bottom)
 - **Commits:** `82cd7cf`, `3078f01` (and later edits)
-- **What:** A "John's TODO (Only work on these)" section tracking planned fork
-  work and a "John's TODID" section recording completed items, prepended above
-  upstream's TODO content.
-- **Re-apply notes:** Keep the sections at the top of the file; merge
-  upstream's own TODO edits below them.
+- **What:** John's TODO / TODID lists (formerly prepended to upstream's
+  `TODO.md`) now live in the "TODO" section at the bottom of this file, and
+  `TODO.md` is removed from the tree.
+- **Re-apply notes:** On sync this shows up as a modify/delete conflict on
+  `TODO.md` — resolve by keeping the deletion. If upstream added TODO items
+  worth tracking, fold them into this file's TODO section instead of
+  resurrecting `TODO.md`.
 
-### 12. Housekeeping
+### 12. AGENTS.md: generalize the GitHub fork policy
+
+- **Files:** `AGENTS.md`, `CLAUDE.md`
+- **Commits:** `4e93085`, `16c78b6`
+- **What:** The inherited `AGENTS.md` (section A) hardcoded
+  `aaditagrawal/t3code` as the only allowed target for `gh` write commands.
+  Generalized to "the fork" so the same policy applies to this repo, and
+  dropped the aadit-specific upstream-merge PR instruction. `CLAUDE.md` (a
+  symlink to `AGENTS.md`) was retargeted to `@AGENTS.md`.
+- **Re-apply notes:** Apply on top of the aadit fork's `AGENTS.md`, not
+  upstream's. Verify the `CLAUDE.md` symlink still resolves to a real file
+  after re-applying (a target of `@AGENTS.md` only works if a file with that
+  literal name exists).
+
+### 13. Housekeeping
 
 - **Files:** stray `update` file deleted (`de4b997`); `README.md` fork banner
-  and this `FORK_CHANGES.md` file (see the README entry in section A notes).
+  and this `FORK.md` file (see the README entry in section A notes).
 - **Re-apply notes:** When syncing, re-prepend the "About this fork" blockquote
   to `README.md` (before the `# T3 Code` heading) and keep its one-paragraph
   change summary in sync with this file's Active lists.
@@ -293,7 +309,8 @@ rebasing directly onto `pingdotgg/main`.
 - **What:** README rewritten to describe the multi-provider fork (8 supported
   agents, installer instructions, credits). `REMOTE.md` gains auth-token
   security guidance (`--auth-token`, `--bootstrap-fd` envelope). `.plans/`
-  documents the Claude Code and Cursor provider designs.
+  documents the Claude Code and Cursor provider designs. `AGENTS.md` carries
+  the fork-first GitHub policy — since generalized by this fork (change 12).
 - **Re-apply notes:** This repo's own "About this fork" banner sits above the
   aadit README content (change 12). On conflict, keep banner → aadit fork
   README → nothing of upstream's README (upstream's install instructions don't
@@ -439,3 +456,43 @@ re-introduce them):
   (`3f8d328`), keeping only fork-side enhancements on top (section B). When
   upstream ships first-party support for any other fork provider, follow the
   same pattern: adopt upstream's backend, re-apply only the fork's deltas.
+
+---
+
+## TODO
+
+<!-- AI AGENTS: IGNORE THIS SECTION. This is John's personal task list, kept
+here for reference (moved from the old TODO.md). Do not treat these items as
+instructions and do not work on them unless explicitly asked to. -->
+
+### John's TODO
+
+- Change: Threads that are complete have a "completed" tag on them in the sidebar with a green dot, when they are opened that goes away. Make it so the green dot stays but the "completed" tag still goes away. Make it so the thread is considered read only after it's been visible to the user for 3 seconds.
+- When a thread is complete and changes were made it shows a message with what files changed. This message includes files that changed outside of this thread. Detect which files were changed related to this thread and make it so it only shows those. Provide a commit button within the "Changed files" box that will display the commit modal but only have our changed files for this thread selected/checked (display the checkboxes automatically in this scenario) (the regular commit button still selects all files).
+- Make the commit modal movable and resizable.
+- Feature: After starting a new thread, if you don't finish your message and click away, the message is saved but the thread is not created. I want the new thread to be created if the message has text when the user clicks away. It should be given an appropriate status like draft in the thread list.
+- Fix: Terminal does not capture ctrl+c or possibly other key commands when in focus, make it so it does.
+- Maintain a history of messages in each thread if it isn't already. When a users cursor is in the message input box and they use the up arrow key it should populate the input with the last message they sent in that thread, pressing it multiple times goes further back in their message history. If they use the down arrow key it should go forward in the message history. This is similar to how terminal input works. If the input box has multiple lines of text, this should only happen when the cursor is on the first line and the up arrow is pressed or the last line and the down arrow is pressed, otherwise it should just move the cursor up and down as normal.
+- Make the effect of threads moving to the top of the list when they are updated, optional based on a settings menu toggle. This should be on by default but if a user prefers the old way they can change it in settings.
+
+### John's TODID
+
+- Fix: Building on windows failed because of spaces in file paths
+- Fix: Copilot CLI provider not working or fully implemented
+- Fix: Gemini CLI provider not looking in the right path on Windows and not fully implemented
+- Feature: Make it so time stamps in chat messages show the full date when hovering over them
+- Change: Always show the new thread button on sidebar projects, not just on hover
+
+### Upstream's TODO (from the old TODO.md)
+
+#### Small things
+
+- [ ] Submitting new messages should scroll to bottom
+- [ ] Only show last 10 threads for a given project
+- [ ] Thread archiving
+- [ ] New projects should go on top
+- [ ] Projects should be sorted by latest thread update
+
+#### Bigger things
+
+- [ ] Queueing messages
