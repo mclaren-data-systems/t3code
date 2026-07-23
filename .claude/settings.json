@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cmd=$(jq -r '.tool_input.command'); if echo \"$cmd\" | grep -qE 'git push|gh pr create'; then echo 'Running pre-push checks (bun typecheck && bun run test)...' >&2; cd /Users/mav/Documents/Projects/Experiments/vibes/t3code && bun typecheck && bun run test || { echo 'Pre-push checks failed. Fix errors before pushing.' >&2; exit 2; }; fi",
+            "command": "cmd=$(jq -r '.tool_input.command'); if echo \"$cmd\" | grep -qE 'git push|gh pr create'; then echo 'Running pre-push checks (bun typecheck && bun run test)...' >&2; cd \"${CLAUDE_PROJECT_DIR:?}\" && bun typecheck && bun run test || { echo 'Pre-push checks failed. Fix errors before pushing.' >&2; exit 2; }; fi",
             "timeout": 300,
             "statusMessage": "Running pre-push CI checks"
           }

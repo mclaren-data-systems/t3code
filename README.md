@@ -1,3 +1,13 @@
+> ## About this fork
+>
+> This is a development fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3code), built on top of the multi-provider fork [aaditagrawal/t3code](https://github.com/aaditagrawal/t3code) and maintained at [mclaren-data-systems/t3code](https://github.com/mclaren-data-systems/t3code). Upstream is periodically merged into `main` here.
+>
+> The full, up-to-date list of changes that set this fork apart from upstream — and the notes for re-applying them when rebasing — lives in **[FORK_CHANGES.md](FORK_CHANGES.md)**. In short, on top of the inherited 8-provider expansion, this fork carries Windows build and provider fixes (builds from paths with spaces, Gemini CLI shim resolution, Copilot detection), working Gemini CLI and Copilot provider registrations, and a set of UI refinements (terminal Ctrl-key forwarding, thread-scoped changed-files and commit selection, a completed dot that persists until the thread is read, per-thread composer message history, full timestamps on hover, and an always-visible new-thread button).
+>
+> Fork README below (from the aaditagrawal fork).
+>
+> ` `
+
 # T3 Code
 
 T3 Code is a minimal web GUI for coding agents made by [Pingdotgg](https://github.com/pingdotgg). This project is a downstream fork of the original [T3 Code](https://github.com/pingdotgg/t3code), maintained in [aaditagrawal/t3code](https://github.com/aaditagrawal/t3code).
