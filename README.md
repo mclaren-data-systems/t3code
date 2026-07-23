@@ -1,3 +1,25 @@
+<!-- FORK-BANNER:START -->
+> ## About this fork
+>
+> This is a development fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3code),
+> maintained at [mclaren-data-systems/t3code](https://github.com/mclaren-data-systems/t3code).
+> Upstream (`pingdotgg`) is treated as the source of truth and is periodically reset/merged
+> into `main` here.
+>
+> On top of upstream this fork carries a small, curated set of changes — two extra providers
+> (**Copilot** and **Gemini CLI**, ported from [aaditagrawal/t3code](https://github.com/aaditagrawal/t3code)),
+> Windows build/provider fixes (builds from paths with spaces, Gemini CLI `.cmd` shim
+> resolution, Copilot detection), and UI refinements (terminal Ctrl-key forwarding,
+> thread-scoped changed-files and commit selection, a completed dot that persists until the
+> thread is read, per-thread composer message history, full timestamps on hover, and an
+> always-visible new-thread button).
+>
+> The authoritative, up-to-date list of everything that sets this fork apart from upstream —
+> and the notes for re-applying it when resetting/rebasing — lives in **[FORK.md](FORK.md)**.
+>
+> Upstream README follows.
+<!-- FORK-BANNER:END -->
+
 # T3 Code
 
 T3 Code is a minimal web GUI for coding agents (currently Codex, Claude, Cursor, and OpenCode, more coming soon).
