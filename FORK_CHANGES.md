@@ -1,0 +1,441 @@
+# Fork changes (mclaren-data-systems/t3code)
+
+This file is the authoritative list of changes that set this fork
+(`mclaren-data-systems/t3code`, branch `main`) apart from upstream. It is
+written to be used by a human or an AI agent when **rebasing onto / merging a
+newer upstream, or re-applying these changes**.
+
+The fork has two upstreams:
+
+- **Original upstream:** [`pingdotgg/t3code`](https://github.com/pingdotgg/t3code) — the source project.
+- **Intermediate fork:** [`aaditagrawal/t3code`](https://github.com/aaditagrawal/t3code) — a
+  multi-provider expansion fork this repo is built on. Its changes are carried
+  here wholesale and are documented in the "Inherited" section below.
+
+When you rebase or sync, work through every entry below. For each one:
+
+1. Check whether upstream (or the aadit fork, for inherited entries) has since
+   implemented an equivalent fix. If it has, **drop** the fork change and move
+   it to "Dropped / now upstream" with a note.
+2. Otherwise re-apply it, adapting to any code that moved. Re-run the listed
+   verification (at minimum `bun typecheck && bun run test` for touched
+   packages).
+3. Keep this file in sync: update the "Last synced" marker, and move entries
+   between the "Active" and "Dropped" sections as upstream evolves.
+
+> **Last synced with upstream:** merge `0fc0b45` on 2026-04-23, which merged
+> `pingdotgg/t3code` `main` at `ada410b` — _chore(release): prepare v0.0.21_.
+> The aadit fork was merged the same day at `e30772f` (branch `aadit/main`).
+> All of this fork's own commits also date from 2026-04-23; anything upstream
+> shipped after v0.0.21 is not yet in this tree.
+
+---
+
+## How this fork is layered
+
+The delta vs `pingdotgg/t3code` at the last sync point is ~338 files /
++35k lines. It divides into two layers with different sync strategies:
+
+- **This fork's own changes** (John's work, sections 1–12): small, surgical,
+  and the priority to preserve. Re-apply each individually from the notes
+  below. The original commits are `1619f42`, `3ee45ab`, `01b28bb`, `5103758`,
+  `30744f7`, `562a44b`, `f379f84`, `9f1c136`, `e6990e3`, `2f440ff`, `274d317`
+  (plus `TODO.md` housekeeping) — a 3-way cherry-pick of each onto the new base
+  is usually the fastest re-apply.
+- **Inherited from `aaditagrawal/t3code`** (sections A–G): the 8-provider
+  expansion and its supporting UI/infra. If you sync by merging `aadit/main`
+  again, this layer comes along for free — only conflicts need attention. If
+  you rebase directly onto `pingdotgg/main` without the aadit fork, this layer
+  is far too large to re-apply piecemeal; treat the aadit fork as the base and
+  merge upstream into it instead.
+
+**Migration caution for every sync:** `apps/server/src/persistence/Migrations/`
+numbering collides between the two lineages (the tree already carries two
+different `020_*` and `021_*` pairs: upstream's auth migrations and the fork's
+provider-kind migrations). Upstream's `026_CanonicalizeModelSelectionOptions`
+was dropped in favor of the fork's reworked `016_CanonicalizeModelSelections`.
+When upstream adds new migrations, renumber fork-only migrations to sort after
+upstream's latest, and verify `Migrations.ts` registers the merged set exactly
+once.
+
+---
+
+## Active changes — this fork
+
+### 1. Windows build: don't use shell mode for the server build step
+
+- **Files:** `apps/server/scripts/cli.ts`
+- **Commit:** `1619f42`
+- **What:** Remove the `shell: process.platform === "win32"` option from the
+  build command spawn in `buildCmd` (it was there to resolve `.cmd` shims on
+  PATH).
+- **Why:** Shell mode broke builds on Windows when the repo path contains
+  spaces; without it the build works.
+- **Re-apply notes:** Anchor on the `Command.make` build step that spawns with
+  `cwd: serverDir`. If upstream still passes a `shell:` option there, delete
+  it. If upstream has replaced the spawn mechanism, verify a Windows build from
+  a path with spaces before carrying anything over.
+- **Redundancy check (as of `ada410b`):** upstream still passed
+  `shell: process.platform === "win32"` — **keep**.
+
+### 2. Register the Copilot provider (detection + status)
+
+- **Files:** `apps/server/src/provider/Layers/CopilotProvider.ts` (new),
+  `apps/server/src/provider/Services/CopilotProvider.ts` (new),
+  `apps/server/src/provider/Layers/ProviderRegistry.ts`,
+  `apps/server/src/provider/providerStatusCache.ts`
+- **Commit:** `3ee45ab`
+- **What:** Add a `CopilotProvider` layer/service and register it in
+  `ProviderRegistry` and the provider status cache, so the Copilot CLI is
+  actually detected and usable. (The Copilot *adapter* itself —
+  `CopilotAdapter.ts`, `copilotCliPath.ts` — is inherited from the aadit fork,
+  section B; this change is the wiring that made it work.)
+- **Why:** The inherited Copilot adapter existed but the provider was never
+  detected ("Copilot CLI provider not working or fully implemented").
+- **Re-apply notes:** Follow the registration pattern of the other managed
+  providers in `ProviderRegistry.ts` (one layer entry + one status-cache
+  entry). Provider kind is `"copilot"` (`apps/server/src/provider/providerKind.ts`).
+- **Redundancy check:** If upstream ships its own Copilot provider, prefer
+  upstream's and drop both this and the inherited adapter — then re-test
+  detection on Windows (see change 3's shim caveats).
+
+### 3. Register the Gemini CLI provider + Windows shim resolution
+
+- **Files:** `apps/server/src/provider/Layers/GeminiCliProvider.ts` (new),
+  `apps/server/src/provider/Services/GeminiCliProvider.ts` (new),
+  `apps/server/src/provider/Layers/ProviderRegistry.ts`,
+  `apps/server/src/provider/providerStatusCache.ts`,
+  `apps/server/src/geminiCliServerManager.ts` (+ its test)
+- **Commits:** `562a44b`, `01b28bb`
+- **What:** Two parts. (a) Register a `GeminiCliProvider` layer/service the
+  same way as change 2. (b) On Windows, resolve the real JS entry point behind
+  the `gemini.cmd` npm shim: `parseGeminiShimEntryPoint` reads the shim file,
+  extracts quoted `*.js` paths, resolves `%~dp0`-style prefixes against the
+  shim directory (`resolveGeminiShimScriptPath`), and falls back to
+  `GEMINI_SHIM_ENTRY_POINT_CANDIDATES`
+  (`node_modules/@google/gemini-cli/dist/index.js` and `bundle/gemini.js`).
+- **Why:** Gemini CLI was "not looking in the right path on Windows and not
+  fully implemented" — npm installs a `.cmd` shim that can't be spawned
+  directly by the server manager.
+- **Re-apply notes:** The shim logic lives in `geminiCliServerManager.ts` and
+  is covered by `geminiCliServerManager.test.ts` — carry the tests with the
+  code. Provider kind is `"geminiCli"` (legacy alias `"gemini"` is normalized
+  in `providerKind.ts`).
+- **Redundancy check:** If upstream gains first-party Gemini support, keep
+  whichever Windows shim resolution is more complete and drop the rest.
+
+### 4. Terminal: forward Ctrl+letter keys to the shell
+
+- **Files:** `apps/web/src/components/ThreadTerminalDrawer.tsx`,
+  `apps/web/src/components/ThreadTerminalDrawer.test.ts` (new),
+  `apps/web/src/components/ThreadTerminalDrawer.browser.tsx`
+- **Commit:** `9f1c136`
+- **What:** Add `terminalControlShortcutData(event, hasSelection)`: on keydown
+  of a plain `Ctrl+[a-z]` (no meta/alt/shift, no active selection), return the
+  corresponding control character (`key.charCodeAt(0) - 96`) and send it via
+  `sendTerminalInput`, with `preventDefault`/`stopPropagation`. Wired into the
+  custom key handler in `TerminalViewport` before the clear-shortcut check.
+- **Why:** The embedded terminal did not capture Ctrl+C (and other control
+  chords) when focused — the app's own keybindings swallowed them.
+- **Re-apply notes:** The selection guard matters: Ctrl+C with a selection must
+  still copy. Insert the check before `isTerminalClearShortcut` so Ctrl+K/L
+  clearing still works. Unit tests in `ThreadTerminalDrawer.test.ts` cover the
+  mapping and guards.
+- **Redundancy check (as of `ada410b`):** upstream had no control-key
+  forwarding — **keep** unless upstream's terminal stack changes wholesale.
+
+### 5. Scope "Changed files" and commit selection to the thread's own work
+
+- **Files:** `apps/web/src/session-logic.ts` (+ test),
+  `apps/web/src/components/ChatView.tsx`,
+  `apps/web/src/components/GitActionsControl.tsx` (+ `.browser.tsx` test),
+  `apps/web/src/components/chat/ChatHeader.tsx`,
+  `apps/web/src/components/chat/MessagesTimeline.tsx`
+- **Commit:** `e6990e3`
+- **What:** Derive the set of files each turn actually touched
+  (`deriveTurnChangedFilesByTurnId` over orchestration activities, with
+  `normalizeWorkspaceRelativeFilePath` handling backslashes, workspace-root
+  prefixes, and case-insensitive comparison). The completion "Changed files"
+  box shows only files changed by this thread, and its commit button opens the
+  commit modal with exactly those files pre-checked (checkboxes shown
+  automatically); the regular commit button still selects all files.
+- **Why:** The changed-files summary previously listed every dirty file in the
+  worktree, including changes made outside the thread.
+- **Re-apply notes:** The pure logic lives in `session-logic.ts` and is the
+  stable anchor (carry `session-logic.test.ts`). The UI wiring threads a
+  preselected-files prop from `ChatView` through `MessagesTimeline`/`ChatHeader`
+  into `GitActionsControl`, whose `allFiles` memo and commit-dialog state
+  handle the preselection. Expect this wiring to need adaptation whenever
+  upstream reworks `GitActionsControl`.
+- **Redundancy check (as of `ada410b`):** upstream showed the full worktree
+  status with no per-thread attribution — **keep**.
+
+### 6. Keep the completed (green) dot until the thread is read
+
+- **Files:** `apps/web/src/uiStateStore.ts` (+ test),
+  `apps/web/src/components/Sidebar.logic.ts` (+ test),
+  `apps/web/src/components/Sidebar.tsx`,
+  `apps/web/src/components/ThreadStatusIndicators.tsx`
+- **Commit:** `2f440ff`
+- **What:** Track `threadLastCompletionAcknowledgedAtById` in the persisted UI
+  state (seeded from `threadLastVisitedAtById` for legacy blobs, pruned with
+  thread sync). The sidebar keeps a thread's green completed dot until the
+  completion is acknowledged by viewing the thread, even though the "completed"
+  tag itself still clears on open.
+- **Why:** Opening a thread instantly cleared the dot, so it was easy to lose
+  track of which completed threads had actually been looked at.
+- **Re-apply notes:** Anchor on the persisted-UI-state shape in
+  `uiStateStore.ts` (mirror everything done for `threadLastVisitedAtById`:
+  initial state, hydrate, persist, `syncThreads` pruning/seeding). The
+  outstanding TODO refinement — only mark read after ~3s of visibility — is
+  not implemented; don't mistake the TODO for shipped behavior.
+- **Redundancy check (as of `ada410b`):** no acknowledged-at tracking upstream
+  — **keep**.
+
+### 7. Per-thread composer message history (arrow-key recall)
+
+- **Files:** `apps/web/src/threadMessageHistory.ts` (new, + test),
+  `apps/web/src/threadMessageHistoryStore.ts` (new),
+  `apps/web/src/components/chat/ChatComposer.tsx`,
+  `apps/web/src/components/ComposerPromptEditor.tsx`
+- **Commit:** `274d317`
+- **What:** Every sent message is appended to a per-thread history (capped at
+  `THREAD_MESSAGE_HISTORY_LIMIT = 100`, persisted via
+  `threadMessageHistoryStore`). In the composer, ArrowUp recalls older
+  messages and ArrowDown moves forward again, shell-style — but only when the
+  cursor is on the first line (up) or last line (down)
+  (`isThreadMessageHistoryBoundary`); otherwise arrows move the cursor
+  normally. The in-progress draft is stashed and restored when navigating back
+  past the newest entry (`resolveThreadMessageHistoryNavigation`).
+- **Why:** Recover/resend prior messages quickly, like terminal input history.
+- **Re-apply notes:** All navigation rules are pure functions in
+  `threadMessageHistory.ts` with tests — re-apply that module verbatim and
+  redo only the `ChatComposer`/`ComposerPromptEditor` key-handler wiring if the
+  composer has been refactored.
+- **Redundancy check (as of `ada410b`):** upstream composer had no message
+  history — **keep**.
+
+### 8. Full timestamp on hover in the message timeline
+
+- **Files:** `apps/web/src/timestampFormat.ts`,
+  `apps/web/src/components/chat/MessagesTimeline.tsx` (+ `.test.tsx`)
+- **Commit:** `30744f7`
+- **What:** Add `formatFullTimestamp` (cached `Intl.DateTimeFormat`,
+  `dateStyle: "full"`, `timeStyle: "medium"`) and set it as the `title`
+  attribute on both message-timestamp `<p>` elements in the timeline.
+- **Why:** Relative/short timestamps are ambiguous; hover reveals the full
+  absolute date/time.
+- **Re-apply notes:** Trivial to re-apply anywhere a short timestamp renders;
+  keep the formatter cached at module level.
+- **Redundancy check (as of `ada410b`):** upstream had no hover title —
+  **keep**.
+
+### 9. Sidebar: always-visible new-thread button beside the env badge
+
+- **Files:** `apps/web/src/components/Sidebar.tsx`
+- **Commit:** `5103758`
+- **What:** Replace the hover-crossfade between the environment badge and the
+  new-thread button with a single `absolute top-1 right-1.5` flex group that
+  shows the remote-environment badge (now with a tooltip listing environment
+  labels) and an always-visible `data-testid="new-thread-button"` button side
+  by side.
+- **Why:** The new-thread button was only discoverable on hover.
+- **Re-apply notes:** Anchors on the project header row in `Sidebar.tsx`. Note
+  the inherited layer (section D) also reworks `Sidebar.tsx` heavily — apply
+  on top of it, not upstream's original.
+- **Redundancy check (as of `ada410b`):** upstream still used the hover
+  crossfade — **keep**.
+
+### 10. Test stability configs for process-spawning packages
+
+- **Files:** `packages/effect-acp/vitest.config.ts` (new),
+  `packages/effect-codex-app-server/vitest.config.ts` (new)
+- **Commit:** `f379f84`
+- **What:** Package-local vitest configs merging the root config with
+  `fileParallelism: false` and 20s test/hook timeouts.
+- **Why:** These suites spawn child processes and blew the default budget when
+  turbo ran multiple packages at once.
+- **Re-apply notes:** Only needed while those packages' tests spawn processes;
+  if upstream adds its own configs, merge rather than duplicate.
+
+### 11. TODO.md: John's TODO / TODID sections
+
+- **Files:** `TODO.md`
+- **Commits:** `82cd7cf`, `3078f01` (and later edits)
+- **What:** A "John's TODO (Only work on these)" section tracking planned fork
+  work and a "John's TODID" section recording completed items, prepended above
+  upstream's TODO content.
+- **Re-apply notes:** Keep the sections at the top of the file; merge
+  upstream's own TODO edits below them.
+
+### 12. Housekeeping
+
+- **Files:** stray `update` file deleted (`de4b997`); `README.md` fork banner
+  and this `FORK_CHANGES.md` file (see the README entry in section A notes).
+- **Re-apply notes:** When syncing, re-prepend the "About this fork" blockquote
+  to `README.md` (before the `# T3 Code` heading) and keep its one-paragraph
+  change summary in sync with this file's Active lists.
+
+---
+
+## Active changes — inherited from `aaditagrawal/t3code`
+
+These arrived via the `aadit/main` merges (`e30772f` and earlier history). They
+are documented at feature-group level: when syncing via the aadit fork they
+merge in wholesale; only consult these notes when resolving conflicts or when
+rebasing directly onto `pingdotgg/main`.
+
+### A. Fork README and docs
+
+- **Files:** `README.md`, `CONTRIBUTING.md`, `AGENTS.md`, `REMOTE.md`,
+  `.docs/architecture.md`, `.plans/17-claude-code.md`,
+  `.plans/18-cursor-agent-provider.md`
+- **What:** README rewritten to describe the multi-provider fork (8 supported
+  agents, installer instructions, credits). `REMOTE.md` gains auth-token
+  security guidance (`--auth-token`, `--bootstrap-fd` envelope). `.plans/`
+  documents the Claude Code and Cursor provider designs.
+- **Re-apply notes:** This repo's own "About this fork" banner sits above the
+  aadit README content (change 12). On conflict, keep banner → aadit fork
+  README → nothing of upstream's README (upstream's install instructions don't
+  apply to the fork).
+
+### B. Provider expansion: Copilot, Gemini CLI, Amp, Kilo, Claude Agent SDK
+
+- **Files (per provider):**
+  - Copilot: `apps/server/src/provider/Layers/CopilotAdapter.ts` (+tests),
+    `copilotCliPath.ts`, `copilotTurnTracking.ts`, `Services/CopilotAdapter.ts`,
+    `apps/server/src/git/Layers/CopilotTextGeneration.ts`,
+    `apps/server/src/provider/copilot-sdk.d.ts`
+  - Gemini CLI: `apps/server/src/geminiCliServerManager.ts` (+tests),
+    `Layers/GeminiCliAdapter.ts`, `Services/GeminiCliAdapter.ts`
+  - Amp: `apps/server/src/ampServerManager.ts`, `Layers/AmpAdapter.ts` (+tests),
+    `Services/AmpAdapter.ts`
+  - Kilo: `apps/server/src/kilo/` (errors, eventHandlers, serverLifecycle,
+    types, utils), `kiloServerManager.ts` (+tests), `Layers/KiloAdapter.ts`
+  - Claude: root dependency `@anthropic-ai/claude-agent-sdk`,
+    `apps/server/src/provider/claude-agent-sdk.d.ts`, expanded
+    `ClaudeAdapter.ts` / `ClaudeProvider.ts` (permission modes, thinking token
+    limits), `git/Layers/ClaudeTextGeneration.ts`
+  - Cursor/OpenCode: fork-side enhancements on top of upstream's ACP Cursor and
+    `@opencode-ai/sdk` OpenCode backends (`CursorProvider.ts`,
+    `scripts/cursor-acp-probe.mjs`, `OpenCodeProvider.ts`)
+- **Shared infra:** `apps/server/src/provider/providerKind.ts` (8 kinds +
+  legacy aliases `claudeCode`→`claudeAgent`, `gemini`→`geminiCli`),
+  `ProviderAdapterRegistry.ts`, `ProviderAdapterUtils.ts`,
+  `ProviderAdapterConformance.test.ts`, `ProviderSessionDirectory.ts`,
+  `providerStatusCache.ts`, `git/Layers/SessionTextGeneration.ts`,
+  `git/Layers/RoutingTextGeneration.ts`, `apps/server/src/commandPath.ts`,
+  `apps/server/src/logger.ts`, migrations
+  `017_NormalizeLegacyClaudeCodeProvider`, `020_NormalizeLegacyProviderKinds`,
+  `021_RepairProjectionThreadProposedPlanImplementationColumns`; model catalog
+  expansion in `packages/shared/src/model.ts` and
+  `packages/contracts/src/{model,provider,orchestration,settings}.ts`
+- **Re-apply notes:** This is the core of the fork and the biggest conflict
+  surface. When upstream adds first-party support for one of these providers,
+  prefer upstream's implementation and drop the fork's (that already happened
+  once for Cursor/OpenCode — see Dropped). The conformance test suite
+  (`ProviderAdapterConformance.test.ts`) is the fastest way to validate all
+  adapters after a sync.
+
+### C. Settings, appearance, and model configuration UI
+
+- **Files:** `apps/web/src/routes/settings.{tsx,general.tsx,connections.tsx,archived.tsx}`,
+  `apps/web/src/appSettings.ts` (+test), `accentColor.ts`, `themeConfig.ts`,
+  `appearance.ts`, `customModels.ts`, `providerModelOptions.ts`,
+  `providerModels.ts`, `modelSelection.ts`, `environmentBootstrap.ts`,
+  `components/settings/SettingsPanels.tsx`, `ConnectionsSettings.tsx`,
+  `hooks/useSettings.ts`
+- **What:** A dedicated `/settings` route with theme (light/dark/system),
+  accent-color presets with contrast-safe terminal color injection, custom
+  model slugs, and provider connection settings.
+- **Re-apply notes:** `appSettings.ts` is the state root; the accent color
+  system also patches `apps/web/src/index.css` and the terminal font/theme
+  helpers (`lib/terminalFont.ts`).
+
+### D. Web UI enhancements
+
+- **Files (highlights):** `components/GhosttyTerminalSplitView.tsx`,
+  `components/ui/toast.tsx` (+`toast.logic.ts` rework),
+  `components/Sidebar.tsx` + `Sidebar.logic.ts` (search/filtering),
+  `components/CommandPalette.tsx` (script running, thread navigation),
+  `components/chat/TraitsPicker.tsx` + `CursorTraitsPicker.tsx`,
+  `components/chat/composerProviderRegistry.tsx` (replaces
+  `composerProviderState.tsx`), `components/ProviderLogo.tsx`,
+  `components/Icons.tsx`, `components/ChatMarkdown.tsx`,
+  `lib/threadDraftDefaults.ts`, `lib/threadProvider.ts`,
+  `hooks/useProjectThreadNavigation.ts`, `hooks/useLocalStorage.ts`,
+  `composerDraftStore.ts`, `gitTextGeneration.ts`, `truncateTitle.ts`
+- **What:** Terminal split view, reworked toast system, sidebar thread search,
+  extended command palette, provider-aware composer/traits pickers, provider
+  logos, and per-provider draft defaults.
+- **Re-apply notes:** These files also host this fork's own changes 5, 6, 7,
+  9 — apply the aadit layer first, then this fork's commits on top.
+
+### E. Desktop, build, and branding
+
+- **Files:** `apps/desktop/scripts/electron-launcher.mjs`,
+  `apps/desktop/src/main.ts` / `preload.ts` (windowReveal removed), Electron
+  `40.8.5` + `trustedDependencies` in `apps/desktop/package.json`,
+  `scripts/install.sh` (interactive installer),
+  `scripts/build-desktop-artifact.ts`, `scripts/lib/macos-icon-composer.ts`,
+  `scripts/lib/brand-assets.ts`, regenerated icons under
+  `apps/desktop/resources/`, `apps/marketing/public/`, and `assets/prod/`
+- **Re-apply notes:** Icons are generated (see `macos-icon-composer.ts`) —
+  regenerate rather than hand-merge binary conflicts.
+
+### F. CI / workflows adapted for the fork
+
+- **Files:** `.github/workflows/ci.yml`, `.github/workflows/pr-size.yml`,
+  `.github/workflows/release.yml`
+- **What:** `ci.yml`: upstream's `blacksmith-8vcpu-ubuntu-2404` runners →
+  `ubuntu-24.04`; release-smoke runs via `bun run`. `pr-size.yml`: label-sync
+  job condition fixed and made a dependency of labeling; head-SHA mismatch is
+  now an error instead of a warning. `release.yml`: reworked into a
+  fork-runnable "Release Desktop" (standard runners, npm CLI publish and
+  release-notes machinery dropped).
+- **Re-apply notes:** Highest-churn area. Like the arcane fork: re-derive from
+  upstream's **new** workflow files and re-apply these transformations (runner
+  swap, drop fork-unavailable secrets/steps), rather than force-keeping stale
+  fork copies.
+
+### G. Fork-maintenance infrastructure (aadit-specific — review before keeping)
+
+- **Files:** `docs/custom-alpha-workflow.md`,
+  `scripts/sync-upstream-pr-tracks.mjs` + `config/upstream-pr-tracks.json`,
+  `.claude/settings.json`, `.claude/scheduled_tasks.lock`
+- **What:** The aadit fork's own maintenance tooling: an alpha-build playbook,
+  an upstream-PR tracking script (`bun run sync:upstream-prs`), and a Claude
+  Code pre-push hook.
+- **Re-apply notes:** These reference the *aadit* fork's layout —
+  `origin = aaditagrawal/t3code` and integration branch `codex/alpha` — and
+  are candidates to **drop or rewrite** for this repo's layout at the next
+  sync. The pre-push hook originally hardcoded `/Users/mav/...` and blocked
+  every push from any other machine; this fork rewrote it to use
+  `$CLAUDE_PROJECT_DIR`. On conflict, keep the portable version.
+
+### H. Dependency / config drift
+
+- **Files:** root `package.json` (turbo `^2.8.14`, tsdown `^0.21.7`, security
+  overrides for `defu`/`h3`/`picomatch`/`smol-toml`/`vite`/`yaml`,
+  `@anthropic-ai/claude-agent-sdk` dependency, `trustedDependencies` moved to
+  the desktop package), `bun.lock`, `apps/server/vitest.config.ts`,
+  `apps/server/tsdown.config.ts`, `turbo.json`,
+  `packages/effect-codex-app-server/src/_generated/*` (regenerated schema)
+- **Re-apply notes:** On sync, take upstream's newer versions where they exist
+  and keep only the overrides upstream lacks. The `_generated` codex schema is
+  script-generated (`packages/effect-codex-app-server/scripts/generate.ts`) —
+  regenerate instead of merging.
+
+---
+
+## Dropped / now upstream
+
+Changes the fork used to carry that upstream has since implemented (do **not**
+re-introduce them):
+
+- **Custom Cursor and OpenCode backends** — the aadit fork originally carried
+  its own Cursor and OpenCode integrations; at the 2026-04-18 sync it adopted
+  upstream's ACP-based Cursor backend and `@opencode-ai/sdk` OpenCode backend
+  (`3f8d328`), keeping only fork-side enhancements on top (section B). When
+  upstream ships first-party support for any other fork provider, follow the
+  same pattern: adopt upstream's backend, re-apply only the fork's deltas.
