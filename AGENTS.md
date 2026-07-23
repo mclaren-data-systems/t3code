@@ -1,5 +1,22 @@
 # AGENTS.md
 
+## Git & GitHub Policy (CRITICAL — DO NOT VIOLATE)
+
+- This repository is a FORK. `origin` is the fork (`mclaren-data-systems/t3code`);
+  `upstream` (`pingdotgg/t3code`) and `aadit` (`aaditagrawal/t3code`) are READ-ONLY for us.
+- **NEVER create PRs, push branches, post comments, or perform ANY write operation
+  against an upstream/third-party repo. All `gh` write commands (`pr create`,
+  `issue create`, `pr comment`, `pr close`, `pr merge`) MUST explicitly target the fork.**
+- The ONLY interaction with an upstream is `git fetch upstream` / `git fetch aadit` to
+  pull changes. Everything else targets `origin` (the fork).
+
+## Fork-First Policy
+
+- The fork's `README.md` (its "About this fork" banner) and `FORK.md` take priority over
+  upstream's. On merge conflicts in those files, keep ours.
+- Do NOT commit scratch/analysis markdown files (e.g. `CONFLICT_ANALYSIS.md`, plan dumps)
+  into the repo. The authoritative list of fork changes lives in `FORK.md`.
+
 ## Task Completion Requirements
 
 - Keep local verification focused on the files and packages changed. Run the smallest relevant test set; do not run the full workspace test suite as a routine completion step.
