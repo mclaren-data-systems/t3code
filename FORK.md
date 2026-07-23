@@ -43,15 +43,32 @@ old pingdotgg + aadit merges) and the fork's changes are being re-applied as **d
   enhancements (D), Desktop branding + installer (E), CI/release workflow tweaks (F).
 - **Dropped:** aadit's fork-maintenance tooling (section G).
 
-**PR plan (merge in dependency order):**
+**PR outcomes** (against `origin` = mclaren-data-systems/t3code; merge in order):
 
-1. **Fork identity docs** — this `FORK.md`, README banner, `AGENTS.md` fork policy.
-2. **Windows/UX independent fixes** — changes 1, 4, 8, 10 (no provider/aadit-UI deps).
-3. **Provider expansion (Copilot + Gemini)** — shared infra + the two adapters + changes 2, 3.
-4. **Settings & appearance UI** (section C; depends on 3).
-5. **Web UI enhancements + layered UX** (section D + changes 5, 6, 7, 9; depends on 3/4).
-6. **Desktop branding + installer** (section E).
-7. **CI/release workflow tweaks** (section F).
+1. **Fork identity docs** (PR #3) — this `FORK.md`, README banner, `AGENTS.md` fork policy.
+2. **Terminal Ctrl-key forwarding** (PR #4) — change 4 only. Changes **1** (Windows build),
+   **8** (hover timestamp), **10** (vitest configs) are now **upstream/obsolete** — dropped.
+3. **Provider expansion — Copilot + Gemini** (PR #5) — shared infra + the two adapters +
+   changes 2/3. Registered in `BUILT_IN_DRIVERS`, **disabled by default** (opt-in).
+4. **Surface Copilot/Gemini in the UI** (PR #6, stacked on #5) — `PROVIDER_OPTIONS`, provider
+   icons, display names. aadit **section C** (settings/appearance UI) is superseded by
+   upstream (theme, accent picker, add-provider wizard) — not ported.
+5. **Fork chat/sidebar UX** (PR #7, stacked on #6) — changes **6** (completed dot), **7**
+   (composer history), **9** (new-thread button). Change **5**'s core (thread-scoped changed
+   files) is already upstream (`AssistantChangedFilesSection` per-turn checkpoints); only its
+   commit-preselect button is unshipped (needs cross-component commit-dialog plumbing).
+   aadit **section D** (web UI) is superseded by upstream — not ported.
+6. **Desktop branding + installer** (section E) — **no PR**: upstream ships the electron
+   launcher, `brand-assets`, desktop build, and the same Electron; the only aadit-unique piece
+   (`scripts/install.sh`) is hardcoded to aadit's repo. Nothing additive for a dev fork.
+7. **CI fork-runnable** (PR #8) — `ci.yml` Blacksmith runners → `ubuntu-24.04`, mobile job
+   dropped. `release.yml` left as-is (release-only; needs secrets a fork lacks).
+
+> **Verification note:** many server tests (Cursor/Grok ACP adapters, some
+> `ProviderRegistry`) fail **locally on Windows** (process-spawn / POSIX-path assumptions) but
+> pass on Linux CI — always diff against clean `main` to tell a real regression from these.
+> The composer arrow-key recall (#7) and completed-dot timing (#6) have **no unit tests**
+> (browser-tested) and should be confirmed in-app.
 
 > **Tooling note:** upstream migrated from **bun** to **pnpm@11 + node ^24** (pnpm catalogs
 > in `pnpm-workspace.yaml`). The old fork's `bun`/`bun run test` commands no longer apply —
@@ -114,7 +131,7 @@ once.
 - **Commit:** `3ee45ab`
 - **What:** Add a `CopilotProvider` layer/service and register it in
   `ProviderRegistry` and the provider status cache, so the Copilot CLI is
-  actually detected and usable. (The Copilot *adapter* itself —
+  actually detected and usable. (The Copilot _adapter_ itself —
   `CopilotAdapter.ts`, `copilotCliPath.ts` — is inherited from the aadit fork,
   section B; this change is the wiring that made it work.)
 - **Why:** The inherited Copilot adapter existed but the provider was never
@@ -450,7 +467,7 @@ rebasing directly onto `pingdotgg/main`.
 - **What:** The aadit fork's own maintenance tooling: an alpha-build playbook,
   an upstream-PR tracking script (`bun run sync:upstream-prs`), and a Claude
   Code pre-push hook.
-- **Re-apply notes:** These reference the *aadit* fork's layout —
+- **Re-apply notes:** These reference the _aadit_ fork's layout —
   `origin = aaditagrawal/t3code` and integration branch `codex/alpha` — and
   are candidates to **drop or rewrite** for this repo's layout at the next
   sync. The pre-push hook originally hardcoded `/Users/mav/...` and blocked
@@ -483,6 +500,30 @@ re-introduce them):
   (`3f8d328`), keeping only fork-side enhancements on top (section B). When
   upstream ships first-party support for any other fork provider, follow the
   same pattern: adopt upstream's backend, re-apply only the fork's deltas.
+
+Dropped at the **2026-07-23 reset** because upstream implemented an equivalent:
+
+- **Change 1 — Windows build shell mode.** Upstream's `buildCmd` now spawns with
+  `shell: false` (`apps/server/scripts/cli.ts`).
+- **Change 8 — hover timestamp.** Upstream added a full-date hover `Tooltip`
+  (`formatChatTimestampTooltip`) on message timestamps.
+- **Change 10 — package-local vitest configs.** Upstream migrated the test
+  runner to `vp` (vite-plus); the old `vitest.config.ts` files no longer apply.
+  Revisit only if those packages' process-spawning tests flake under `vp`.
+- **Change 5 (core) — thread-scoped changed files.** Upstream's
+  `AssistantChangedFilesSection` already shows per-turn checkpoint files. Only
+  the commit-preselect button remains unshipped.
+- **Section C — settings & appearance UI.** Upstream has theme (light/dark/system
+  via `useTheme`), `ProviderAccentColorPicker`, the `AddProviderInstanceDialog`
+  wizard, and `ProviderModelsSection`.
+- **Section D — web UI enhancements.** Terminal split, command palette, sidebar
+  search, toasts, and provider logos are all upstream now.
+- **Section E — desktop branding + installer.** Upstream ships the electron
+  launcher, `brand-assets`, desktop build, and matching Electron. Only aadit's
+  `scripts/install.sh` (hardcoded to aadit's repo) is unique — not worth porting.
+- **Amp / Kilo / Droid providers.** Intentionally not ported (owner chose
+  Copilot + Gemini only). Their adapters remain available in `aadit/main` if
+  wanted later — follow section B's driver-registration pattern.
 
 ---
 
