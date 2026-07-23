@@ -51,6 +51,7 @@ import {
   isTerminalSplitShortcut,
   isTerminalSplitVerticalShortcut,
   isTerminalToggleShortcut,
+  terminalControlShortcutData,
   terminalDeleteShortcutData,
   terminalNavigationShortcutData,
 } from "../keybindings";
@@ -552,6 +553,14 @@ export function TerminalViewport({
         event.preventDefault();
         event.stopPropagation();
         void sendTerminalInput(deleteData, "Failed to delete terminal input");
+        return false;
+      }
+
+      const controlShortcutData = terminalControlShortcutData(event, terminal.hasSelection());
+      if (controlShortcutData !== null) {
+        event.preventDefault();
+        event.stopPropagation();
+        void sendTerminalInput(controlShortcutData, "Failed to send terminal control input");
         return false;
       }
 

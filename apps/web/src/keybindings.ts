@@ -527,3 +527,29 @@ export function terminalNavigationShortcutData(
 
   return null;
 }
+
+/**
+ * Forward a plain Ctrl+<letter> chord to the shell as its control character
+ * (e.g. Ctrl+C -> 0x03). Returns null when the chord should be handled normally
+ * by the app: any other modifier is held, there is an active selection (so
+ * Ctrl+C still copies), or the key is not a single ASCII letter.
+ */
+export function terminalControlShortcutData(
+  event: ShortcutEventLike,
+  hasSelection: boolean,
+): string | null {
+  if (event.type !== undefined && event.type !== "keydown") {
+    return null;
+  }
+
+  if (hasSelection || !event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
+    return null;
+  }
+
+  const key = normalizeEventKey(event.key);
+  if (!/^[a-z]$/.test(key)) {
+    return null;
+  }
+
+  return String.fromCharCode(key.charCodeAt(0) - 96);
+}
