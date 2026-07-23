@@ -109,6 +109,41 @@ export const ProviderRespondToUserInputInput = Schema.Struct({
 });
 export type ProviderRespondToUserInputInput = typeof ProviderRespondToUserInputInput.Type;
 
+// ── Provider usage / quota ──────────────────────────────────────────
+// Plain interfaces (not schemas) describing usage/quota data surfaced by
+// providers that report it (e.g. the Gemini CLI server manager).
+
+export interface ProviderUsageQuota {
+  readonly plan?: string;
+  readonly used?: number;
+  readonly limit?: number;
+  readonly resetDate?: string;
+  readonly percentUsed?: number;
+}
+
+export interface ProviderSessionUsage {
+  readonly totalCostUsd?: number;
+  readonly inputTokens?: number;
+  readonly outputTokens?: number;
+  readonly cachedTokens?: number;
+  readonly totalTokens?: number;
+  readonly turnCount?: number;
+}
+
+export interface ProviderModelMultiplier {
+  readonly model: string;
+  readonly name: string;
+  readonly multiplier: number;
+}
+
+export interface ProviderUsageResult {
+  readonly provider: string;
+  readonly quota?: ProviderUsageQuota;
+  readonly quotas?: ReadonlyArray<ProviderUsageQuota>;
+  readonly sessionUsage?: ProviderSessionUsage;
+  readonly modelMultipliers?: ReadonlyArray<ProviderModelMultiplier>;
+}
+
 const ProviderEventKind = Schema.Literals(["session", "notification", "request", "error"]);
 
 export const ProviderEvent = Schema.Struct({
