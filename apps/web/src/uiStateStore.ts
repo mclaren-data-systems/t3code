@@ -20,6 +20,7 @@ export interface PersistedUiState {
   projectExpandedById?: Record<string, boolean>;
   projectOrder?: string[];
   threadLastVisitedAtById?: Record<string, string>;
+  threadLastCompletionAcknowledgedAtById?: Record<string, string>;
   collapsedProjectCwds?: string[];
   expandedProjectCwds?: string[];
   projectOrderCwds?: string[];
@@ -34,6 +35,14 @@ export interface UiProjectState {
 
 export interface UiThreadState {
   threadLastVisitedAtById: Record<string, string>;
+  /**
+   * When a thread's completion was acknowledged (currently on visit). Backs the
+   * sidebar's green "completed" dot separately from `threadLastVisitedAtById`,
+   * so a future refinement can keep the dot until the thread has actually been
+   * looked at (e.g. visible for a few seconds) without also delaying the
+   * read/unread tag.
+   */
+  threadLastCompletionAcknowledgedAtById: Record<string, string>;
   threadChangedFilesExpandedById: Record<string, Record<string, boolean>>;
 }
 
@@ -47,6 +56,7 @@ const initialState: UiState = {
   projectExpandedById: {},
   projectOrder: [],
   threadLastVisitedAtById: {},
+  threadLastCompletionAcknowledgedAtById: {},
   threadChangedFilesExpandedById: {},
   defaultAdvertisedEndpointKey: null,
 };
@@ -124,6 +134,10 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
     projectExpandedById,
     projectOrder,
     threadLastVisitedAtById: sanitizeTimestampRecord(parsed.threadLastVisitedAtById),
+    // Seed acknowledgement from last-visited for legacy blobs that predate the field.
+    threadLastCompletionAcknowledgedAtById: sanitizeTimestampRecord(
+      parsed.threadLastCompletionAcknowledgedAtById ?? parsed.threadLastVisitedAtById,
+    ),
     threadChangedFilesExpandedById: sanitizePersistedThreadChangedFilesExpanded(
       parsed.threadChangedFilesExpandedById,
     ),
@@ -209,6 +223,7 @@ export function persistState(state: UiState): void {
         projectExpandedById,
         projectOrder: state.projectOrder,
         threadLastVisitedAtById: state.threadLastVisitedAtById,
+        threadLastCompletionAcknowledgedAtById: state.threadLastCompletionAcknowledgedAtById,
         defaultAdvertisedEndpointKey: state.defaultAdvertisedEndpointKey,
         threadChangedFilesExpandedById,
       } satisfies PersistedUiState),
@@ -249,6 +264,31 @@ export function markThreadVisited(state: UiState, threadId: string, visitedAt: s
   };
 }
 
+export function markThreadCompletionAcknowledged(
+  state: UiState,
+  threadId: string,
+  acknowledgedAt: string,
+): UiState {
+  const acknowledgedAtMs = Date.parse(acknowledgedAt);
+  if (!Number.isFinite(acknowledgedAtMs)) {
+    return state;
+  }
+  const previousAcknowledgedAt = state.threadLastCompletionAcknowledgedAtById[threadId];
+  const previousAcknowledgedAtMs = previousAcknowledgedAt
+    ? Date.parse(previousAcknowledgedAt)
+    : NaN;
+  if (Number.isFinite(previousAcknowledgedAtMs) && previousAcknowledgedAtMs >= acknowledgedAtMs) {
+    return state;
+  }
+  return {
+    ...state,
+    threadLastCompletionAcknowledgedAtById: {
+      ...state.threadLastCompletionAcknowledgedAtById,
+      [threadId]: acknowledgedAt,
+    },
+  };
+}
+
 export function markThreadUnread(
   state: UiState,
   threadId: string,
@@ -262,13 +302,22 @@ export function markThreadUnread(
     return state;
   }
   const unreadVisitedAt = new Date(latestTurnCompletedAtMs - 1).toISOString();
-  if (state.threadLastVisitedAtById[threadId] === unreadVisitedAt) {
+  if (
+    state.threadLastVisitedAtById[threadId] === unreadVisitedAt &&
+    state.threadLastCompletionAcknowledgedAtById[threadId] === unreadVisitedAt
+  ) {
     return state;
   }
+  // Reset both the read marker and the completion acknowledgement so the thread
+  // re-surfaces as unread with its green completed dot restored.
   return {
     ...state,
     threadLastVisitedAtById: {
       ...state.threadLastVisitedAtById,
+      [threadId]: unreadVisitedAt,
+    },
+    threadLastCompletionAcknowledgedAtById: {
+      ...state.threadLastCompletionAcknowledgedAtById,
       [threadId]: unreadVisitedAt,
     },
   };
@@ -413,6 +462,7 @@ export function reorderProjects(
 
 interface UiStateStore extends UiState {
   markThreadVisited: (threadId: string, visitedAt: string) => void;
+  markThreadCompletionAcknowledged: (threadId: string, acknowledgedAt: string) => void;
   markThreadUnread: (threadId: string, latestTurnCompletedAt: string | null | undefined) => void;
   setThreadChangedFilesExpanded: (threadId: string, turnId: string, expanded: boolean) => void;
   setDefaultAdvertisedEndpointKey: (key: string | null) => void;
@@ -428,6 +478,8 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
   ...readPersistedState(),
   markThreadVisited: (threadId, visitedAt) =>
     set((state) => markThreadVisited(state, threadId, visitedAt)),
+  markThreadCompletionAcknowledged: (threadId, acknowledgedAt) =>
+    set((state) => markThreadCompletionAcknowledged(state, threadId, acknowledgedAt)),
   markThreadUnread: (threadId, latestTurnCompletedAt) =>
     set((state) => markThreadUnread(state, threadId, latestTurnCompletedAt)),
   setThreadChangedFilesExpanded: (threadId, turnId, expanded) =>
