@@ -389,6 +389,19 @@ export const OpenCodeSettings = makeProviderSettingsSchema(
 );
 export type OpenCodeSettings = typeof OpenCodeSettings.Type;
 
+/**
+ * Generic typed provider config used by drivers that don't yet have a
+ * bespoke settings schema (currently the Gemini CLI driver). Mirrors the
+ * common `enabled`/`customModels`/`binaryPath`/`configDir` shape.
+ */
+export const GenericProviderSettings = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  customModels: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  binaryPath: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  configDir: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+});
+export type GenericProviderSettings = typeof GenericProviderSettings.Type;
+
 export const ObservabilitySettings = Schema.Struct({
   otlpTracesUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   otlpMetricsUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
@@ -433,6 +446,14 @@ export const ServerSettings = Schema.Struct({
     cursor: CursorSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     grok: GrokSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     opencode: OpenCodeSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+    // Extra (fork-added) providers default to disabled — the user opts in via
+    // settings so we don't probe for CLIs they haven't installed.
+    copilot: GenericProviderSettings.pipe(
+      Schema.withDecodingDefault(Effect.succeed({ enabled: false })),
+    ),
+    geminiCli: GenericProviderSettings.pipe(
+      Schema.withDecodingDefault(Effect.succeed({ enabled: false })),
+    ),
   }).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   // New driver-agnostic instance map. Keyed by `ProviderInstanceId`; values
   // are `ProviderInstanceConfig` envelopes. The driver-specific config blob
@@ -536,6 +557,13 @@ const OpenCodeSettingsPatch = Schema.Struct({
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
+const GenericProviderSettingsPatch = Schema.Struct({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  binaryPath: Schema.optionalKey(TrimmedString),
+  configDir: Schema.optionalKey(TrimmedString),
+  customModels: Schema.optionalKey(Schema.Array(Schema.String)),
+});
+
 export const ServerSettingsPatch = Schema.Struct({
   // Server settings
   enableAssistantStreaming: Schema.optionalKey(Schema.Boolean),
@@ -558,6 +586,8 @@ export const ServerSettingsPatch = Schema.Struct({
       cursor: Schema.optionalKey(CursorSettingsPatch),
       grok: Schema.optionalKey(GrokSettingsPatch),
       opencode: Schema.optionalKey(OpenCodeSettingsPatch),
+      copilot: Schema.optionalKey(GenericProviderSettingsPatch),
+      geminiCli: Schema.optionalKey(GenericProviderSettingsPatch),
     }),
   ),
   // Whole-map replacement for the new instance config. Patching individual
