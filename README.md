@@ -1,4 +1,5 @@
 <!-- FORK-BANNER:START -->
+
 > ## About this fork
 >
 > This is a development fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3code),
@@ -7,17 +8,20 @@
 > into `main` here.
 >
 > On top of upstream this fork carries a small, curated set of changes — two extra providers
-> (**Copilot** and **Gemini CLI**, ported from [aaditagrawal/t3code](https://github.com/aaditagrawal/t3code)),
-> Windows build/provider fixes (builds from paths with spaces, Gemini CLI `.cmd` shim
-> resolution, Copilot detection), and UI refinements (terminal Ctrl-key forwarding,
-> thread-scoped changed-files and commit selection, a completed dot that persists until the
-> thread is read, per-thread composer message history, full timestamps on hover, and an
-> always-visible new-thread button).
+> (**Copilot** and **Gemini CLI**, ported from [aaditagrawal/t3code](https://github.com/aaditagrawal/t3code),
+> registered so they are actually detected and opt-in by default), the Windows provider fixes
+> they need (Gemini CLI `.cmd` shim resolution, Copilot detection), terminal Ctrl-key
+> forwarding, and CI adjusted to run on standard GitHub-hosted runners.
+>
+> A few further UX refinements — thread-scoped commit selection, a completed dot that persists
+> until the thread is read, per-thread composer message history, and an always-visible
+> new-thread button — are maintained on separate branches and not yet on `main`.
 >
 > The authoritative, up-to-date list of everything that sets this fork apart from upstream —
 > and the notes for re-applying it when resetting/rebasing — lives in **[FORK.md](FORK.md)**.
 >
 > Upstream README follows.
+
 <!-- FORK-BANNER:END -->
 
 # T3 Code

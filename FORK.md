@@ -1,5 +1,21 @@
 # Fork notes (mclaren-data-systems/t3code)
 
+## Purpose of this fork
+
+This fork exists to run T3 Code on a Windows-first, multi-provider developer
+setup that upstream does not target. It tracks `pingdotgg/t3code` closely and
+deliberately carries only a thin layer of changes: **extra agent providers**
+(GitHub Copilot CLI and Gemini CLI, ported selectively from
+`aaditagrawal/t3code` and registered so they are actually detected — including
+the Windows `.cmd`-shim path resolution Gemini needs), **small workflow and UX
+fixes** the maintainer wants day to day (forwarding Ctrl-chords to the embedded
+terminal, per-thread composer history, sidebar read-state tweaks), and **CI made
+runnable by a fork** (standard GitHub-hosted runners instead of upstream's
+Blacksmith ones). It is not a hard fork: every entry below is provisional, and
+whenever upstream ships an equivalent the fork change is dropped rather than
+defended. The goal is to stay rebasable onto upstream indefinitely, so the
+active diff stays as small as possible.
+
 This file is the authoritative list of changes that set this fork
 (`mclaren-data-systems/t3code`, branch `main`) apart from upstream. It is
 written to be used by a human or an AI agent when **rebasing onto / merging a
@@ -16,17 +32,64 @@ The fork relates to two source repos:
 When you reset/sync, work through every entry below. For each one:
 
 1. Check whether upstream (or the aadit fork, for ported entries) has since implemented an
-   equivalent fix. If it has, **drop** the fork change and move it to "Dropped / now
-   upstream" with a note.
+   equivalent fix. If it has, **drop** the fork change and move it to "Superseded changes"
+   with a note naming the upstream change that replaced it.
 2. Otherwise re-apply it, adapting to any code that moved. Re-run focused verification for
    touched packages (see the tooling note below).
-3. Keep this file in sync: update the "Last synced" marker, and move entries between the
-   "Active" and "Dropped" sections as upstream evolves.
+3. Keep this file in sync: update the "Last rebase" marker, and move entries between the
+   "Active" and "Superseded" sections as upstream evolves.
 
-> **Last synced with upstream:** **reset** to `pingdotgg/t3code` `main` at `b41e89e` on
-> 2026-07-23 — _fix(web): warn before silent Windows updates (#4350)_ (≈ v0.0.29-nightly).
-> The pre-reset fork is preserved at branch/tag **`pre-reset-main-2026-07-23`** (`8744b86`).
-> The aadit fork tip at reset time was `937f301` (branch `aadit/main`).
+> **Last rebase onto upstream:** **2026-07-27**, onto `pingdotgg/t3code` `main` at
+> **`89c5a19`** — _fix(dev): skip browser-blocked ports (#4608)_. Previous base was
+> `b41e89e` (2026-07-23), so this rebase took in **36 upstream commits**.
+> The pre-reset fork is preserved at branch/tag **`pre-reset-main-2026-07-23`** (`8744b86`);
+> the pre-rebase tip of this lineage was `ead4077`.
+> The aadit fork tip at the 2026-07-23 reset was `937f301` (branch `aadit/main`).
+
+---
+
+## 2026-07-27 rebase
+
+`main`'s five fork commits were replayed from base `b41e89e` onto `89c5a19` with
+`git rebase --onto`. **No textual conflicts.** The resulting net diff vs upstream is
+37 files / ~7.1k added lines — unchanged in shape from before the rebase.
+
+Every active entry was re-checked against the 36 incoming commits. Outcome:
+
+- **Newly superseded:** none of the entries carried on `main` — the incoming upstream
+  work does not overlap them. Entries **1**, **8**, **10** and **5 (core)** were already
+  superseded at the 2026-07-23 reset; this pass re-verified each against `89c5a19` and
+  names the replacing upstream change (see "Superseded changes").
+- **Partially superseded:** entry **9** (always-visible new-thread button). Upstream now
+  ships the button itself with the same `data-testid="new-thread-button"` **and** the
+  environment-label tooltip this entry added — but on desktop it is still
+  hover/focus-revealed (`opacity-0` → `group-hover/project-header:opacity-100`), always
+  visible only under `max-sm`. The "always visible" intent survives; the tooltip half is
+  now upstream's. Re-derive from upstream's current `Sidebar.tsx` rather than re-applying
+  the old hunk.
+- **Moot:** entry **11**'s modify/delete conflict on `TODO.md` can no longer occur —
+  `TODO.md` is absent from `89c5a19` entirely, so there is nothing to resolve on sync.
+
+**Verification run at `89c5a19`** (node 24.18.0, pnpm 11.10.0):
+
+- `pnpm install --frozen-lockfile` — **clean**. This matters: upstream rewrote ~145 lines
+  of `pnpm-lock.yaml` and reshuffled the `pnpm-workspace.yaml` catalogs in this range
+  (Clerk upgrade, #4440), and the fork adds its own `@github/copilot*` importer entries.
+  The lockfile survived the replay without drift.
+- `pnpm run typecheck` — **0 errors** across all 15 packages (suggestion-level Effect
+  lint hints only, several of them pre-existing upstream ones).
+- `pnpm run test` — 294/295 passing. The single failure is **pre-existing upstream and
+  environmental**, not a rebase regression; see the verification note below.
+
+> **Known environmental test failure:** `packages/shared/src/Net.test.ts` →
+> _"findAvailablePort returns preferred when it is free"_ fails **in any container without
+> IPv6**. Upstream's `isPortAvailableOnLoopback` requires a port to be bindable on both
+> `127.0.0.1` **and** `::1`; `canListenOnHost` only treats `EADDRNOTAVAIL` as "available",
+> so an IPv6-less host returns `EAFNOSUPPORT` → the preferred port is judged unavailable →
+> `findAvailablePort` falls back to a different port and the assertion fails. This is
+> upstream code the fork does not touch (`git diff upstream/main HEAD -- packages/shared/`
+> is empty) and it arrived with #4608. Reproduces identically on clean upstream. Do not
+> chase it as a fork regression.
 
 ---
 
@@ -64,15 +127,23 @@ old pingdotgg + aadit merges) and the fork's changes are being re-applied as **d
 7. **CI fork-runnable** (PR #8) — `ci.yml` Blacksmith runners → `ubuntu-24.04`, mobile job
    dropped. `release.yml` left as-is (release-only; needs secrets a fork lacks).
 
-> **Verification note:** many server tests (Cursor/Grok ACP adapters, some
-> `ProviderRegistry`) fail **locally on Windows** (process-spawn / POSIX-path assumptions) but
-> pass on Linux CI — always diff against clean `main` to tell a real regression from these.
+> **Verification note:** several classes of test failure are **environmental, not
+> regressions** — always diff against clean upstream before chasing one.
+> (a) Many server tests (Cursor/Grok ACP adapters, some `ProviderRegistry`) fail
+> **locally on Windows** (process-spawn / POSIX-path assumptions) but pass on Linux CI.
+> (b) `packages/shared/src/Net.test.ts` fails **in containers without IPv6** — see the
+> 2026-07-27 rebase section for the full diagnosis.
 > The composer arrow-key recall (#7) and completed-dot timing (#6) have **no unit tests**
 > (browser-tested) and should be confirmed in-app.
 
 > **Tooling note:** upstream migrated from **bun** to **pnpm@11 + node ^24** (pnpm catalogs
 > in `pnpm-workspace.yaml`). The old fork's `bun`/`bun run test` commands no longer apply —
 > use `pnpm` and the `vp` (vite-plus) scripts. Verification requires node + pnpm installed.
+> The **node version matters**: `package.json` pins `engines.node: ^24.13.1`, and a node 22
+> host will need `nvm install 24` before `pnpm install` behaves. The rebase checklist is
+> `pnpm install --frozen-lockfile` → `pnpm run typecheck` → `pnpm run test`; the
+> `--frozen-lockfile` step is the one that catches a `pnpm-lock.yaml` that replayed badly,
+> which is the most likely silent breakage in a rebase that reports no conflicts.
 
 ---
 
@@ -106,21 +177,14 @@ once.
 
 ## Active changes — this fork
 
-### 1. Windows build: don't use shell mode for the server build step
-
-- **Files:** `apps/server/scripts/cli.ts`
-- **Commit:** `1619f42`
-- **What:** Remove the `shell: process.platform === "win32"` option from the
-  build command spawn in `buildCmd` (it was there to resolve `.cmd` shims on
-  PATH).
-- **Why:** Shell mode broke builds on Windows when the repo path contains
-  spaces; without it the build works.
-- **Re-apply notes:** Anchor on the `Command.make` build step that spawns with
-  `cwd: serverDir`. If upstream still passes a `shell:` option there, delete
-  it. If upstream has replaced the spawn mechanism, verify a Windows build from
-  a path with spaces before carrying anything over.
-- **Redundancy check (as of `ada410b`):** upstream still passed
-  `shell: process.platform === "win32"` — **keep**.
+> Entry numbers are **stable identifiers** tied to the original fork commits — they are
+> never renumbered. A gap in the sequence means that entry moved to
+> "Superseded changes"; look for it there.
+>
+> **Carried on `main` today:** 2, 3, 4, 11, 12, 13.
+> **Fork-intentional but not yet on `main`:** 5 (commit-preselect remainder), 6, 7, 9 —
+> these live on the unmerged PR branches `pr/04-surface-copilot-gemini-ui` and
+> `pr/05-fork-ux` and are re-applied there, not here.
 
 ### 2. Register the Copilot provider (detection + status)
 
@@ -139,7 +203,9 @@ once.
 - **Re-apply notes:** Follow the registration pattern of the other managed
   providers in `ProviderRegistry.ts` (one layer entry + one status-cache
   entry). Provider kind is `"copilot"` (`apps/server/src/provider/providerKind.ts`).
-- **Redundancy check:** If upstream ships its own Copilot provider, prefer
+- **Redundancy check (as of `89c5a19`): keep.** Upstream's `BUILT_IN_DRIVERS`
+  still lists only `CodexDriver`, `ClaudeDriver`, `CursorDriver`, `GrokDriver`,
+  `OpenCodeDriver` — no Copilot. If upstream ever ships its own, prefer
   upstream's and drop both this and the inherited adapter — then re-test
   detection on Windows (see change 3's shim caveats).
 
@@ -165,7 +231,8 @@ once.
   is covered by `geminiCliServerManager.test.ts` — carry the tests with the
   code. Provider kind is `"geminiCli"` (legacy alias `"gemini"` is normalized
   in `providerKind.ts`).
-- **Redundancy check:** If upstream gains first-party Gemini support, keep
+- **Redundancy check (as of `89c5a19`): keep.** No Gemini driver upstream (see
+  change 2's check). If upstream gains first-party Gemini support, keep
   whichever Windows shim resolution is more complete and drop the rest.
 
 ### 4. Terminal: forward Ctrl+letter keys to the shell
@@ -185,8 +252,9 @@ once.
   still copy. Insert the check before `isTerminalClearShortcut` so Ctrl+K/L
   clearing still works. Unit tests in `ThreadTerminalDrawer.test.ts` cover the
   mapping and guards.
-- **Redundancy check (as of `ada410b`):** upstream had no control-key
-  forwarding — **keep** unless upstream's terminal stack changes wholesale.
+- **Redundancy check (as of `89c5a19`): keep.** Upstream has not touched
+  `keybindings.ts` or `ThreadTerminalDrawer.tsx` since `b41e89e` and still has no
+  control-key forwarding. Drop only if upstream's terminal stack changes wholesale.
 
 ### 5. Scope "Changed files" and commit selection to the thread's own work
 
@@ -211,8 +279,12 @@ once.
   into `GitActionsControl`, whose `allFiles` memo and commit-dialog state
   handle the preselection. Expect this wiring to need adaptation whenever
   upstream reworks `GitActionsControl`.
-- **Redundancy check (as of `ada410b`):** upstream showed the full worktree
-  status with no per-thread attribution — **keep**.
+- **Redundancy check (as of `89c5a19`): mostly superseded — only the
+  commit-preselect button is still fork work.** Upstream's
+  `AssistantChangedFilesSection` (in `MessagesTimeline.tsx`) already attributes
+  changed files per turn, which is the bulk of this entry; see "Superseded
+  changes". What remains unshipped is opening the commit modal with exactly
+  those files pre-checked, which needs cross-component commit-dialog plumbing.
 
 ### 6. Keep the completed (green) dot until the thread is read
 
@@ -233,8 +305,8 @@ once.
   initial state, hydrate, persist, `syncThreads` pruning/seeding). The
   outstanding TODO refinement — only mark read after ~3s of visibility — is
   not implemented; don't mistake the TODO for shipped behavior.
-- **Redundancy check (as of `ada410b`):** no acknowledged-at tracking upstream
-  — **keep**.
+- **Redundancy check (as of `89c5a19`): keep.** No `threadLastCompletionAcknowledgedAtById`
+  or equivalent acknowledged-at tracking anywhere in upstream's `apps/web/src`.
 
 ### 7. Per-thread composer message history (arrow-key recall)
 
@@ -256,23 +328,8 @@ once.
   `threadMessageHistory.ts` with tests — re-apply that module verbatim and
   redo only the `ChatComposer`/`ComposerPromptEditor` key-handler wiring if the
   composer has been refactored.
-- **Redundancy check (as of `ada410b`):** upstream composer had no message
-  history — **keep**.
-
-### 8. Full timestamp on hover in the message timeline
-
-- **Files:** `apps/web/src/timestampFormat.ts`,
-  `apps/web/src/components/chat/MessagesTimeline.tsx` (+ `.test.tsx`)
-- **Commit:** `30744f7`
-- **What:** Add `formatFullTimestamp` (cached `Intl.DateTimeFormat`,
-  `dateStyle: "full"`, `timeStyle: "medium"`) and set it as the `title`
-  attribute on both message-timestamp `<p>` elements in the timeline.
-- **Why:** Relative/short timestamps are ambiguous; hover reveals the full
-  absolute date/time.
-- **Re-apply notes:** Trivial to re-apply anywhere a short timestamp renders;
-  keep the formatter cached at module level.
-- **Redundancy check (as of `ada410b`):** upstream had no hover title —
-  **keep**.
+- **Redundancy check (as of `89c5a19`): keep.** No `threadMessageHistory` /
+  `THREAD_MESSAGE_HISTORY` symbols upstream; the composer still has no history recall.
 
 ### 9. Sidebar: always-visible new-thread button beside the env badge
 
@@ -287,20 +344,18 @@ once.
 - **Re-apply notes:** Anchors on the project header row in `Sidebar.tsx`. Note
   the inherited layer (section D) also reworks `Sidebar.tsx` heavily — apply
   on top of it, not upstream's original.
-- **Redundancy check (as of `ada410b`):** upstream still used the hover
-  crossfade — **keep**.
-
-### 10. Test stability configs for process-spawning packages
-
-- **Files:** `packages/effect-acp/vitest.config.ts` (new),
-  `packages/effect-codex-app-server/vitest.config.ts` (new)
-- **Commit:** `f379f84`
-- **What:** Package-local vitest configs merging the root config with
-  `fileParallelism: false` and 20s test/hook timeouts.
-- **Why:** These suites spawn child processes and blew the default budget when
-  turbo ran multiple packages at once.
-- **Re-apply notes:** Only needed while those packages' tests spawn processes;
-  if upstream adds its own configs, merge rather than duplicate.
+- **Redundancy check (as of `89c5a19`): partially superseded — re-derive, don't
+  re-apply.** Upstream now renders the new-thread button itself, with the same
+  `data-testid="new-thread-button"`, a `New thread (<shortcut>)` tooltip, and an
+  environment badge whose tooltip already lists the environment labels (the
+  tooltip half of this entry is therefore upstream's now). What upstream still
+  does **not** do is show the button unconditionally: on desktop the wrapper is
+  `opacity-0 … group-hover/project-header:opacity-100
+group-focus-within/project-header:opacity-100`, i.e. still hover/focus-gated,
+  and only `max-sm` gets `pointer-events-auto opacity-100`. **Keep** the
+  always-visible intent, but implement it as a small change to upstream's
+  current markup (drop the `opacity-0`/hover-gating classes on the wrapper)
+  rather than restoring the old fork hunk.
 
 ### 11. TODO list moved into this file; `TODO.md` deleted
 
@@ -309,10 +364,14 @@ once.
 - **What:** John's TODO / TODID lists (formerly prepended to upstream's
   `TODO.md`) now live in the "TODO" section at the bottom of this file, and
   `TODO.md` is removed from the tree.
-- **Re-apply notes:** On sync this shows up as a modify/delete conflict on
+- **Re-apply notes:** On sync this used to show up as a modify/delete conflict on
   `TODO.md` — resolve by keeping the deletion. If upstream added TODO items
   worth tracking, fold them into this file's TODO section instead of
   resurrecting `TODO.md`.
+- **Redundancy check (as of `89c5a19`): moot — no conflict left to resolve.**
+  `TODO.md` is absent from upstream's tree (`git ls-tree upstream/main TODO.md`
+  is empty), so the deletion no longer collides with anything. Nothing to
+  re-apply; keep the TODO section in this file.
 
 ### 12. AGENTS.md: generalize the GitHub fork policy
 
@@ -394,7 +453,7 @@ rebasing directly onto `pingdotgg/main`.
 - **Re-apply notes:** This is the core of the fork and the biggest conflict
   surface. When upstream adds first-party support for one of these providers,
   prefer upstream's implementation and drop the fork's (that already happened
-  once for Cursor/OpenCode — see Dropped). The conformance test suite
+  once for Cursor/OpenCode — see "Superseded changes"). The conformance test suite
   (`ProviderAdapterConformance.test.ts`) is the fastest way to validate all
   adapters after a sync.
 
@@ -448,16 +507,20 @@ rebasing directly onto `pingdotgg/main`.
 
 - **Files:** `.github/workflows/ci.yml`, `.github/workflows/pr-size.yml`,
   `.github/workflows/release.yml`
-- **What:** `ci.yml`: upstream's `blacksmith-8vcpu-ubuntu-2404` runners →
-  `ubuntu-24.04`; release-smoke runs via `bun run`. `pr-size.yml`: label-sync
-  job condition fixed and made a dependency of labeling; head-SHA mismatch is
-  now an error instead of a warning. `release.yml`: reworked into a
-  fork-runnable "Release Desktop" (standard runners, npm CLI publish and
-  release-notes machinery dropped).
-- **Re-apply notes:** Highest-churn area. Like the arcane fork: re-derive from
-  upstream's **new** workflow files and re-apply these transformations (runner
-  swap, drop fork-unavailable secrets/steps), rather than force-keeping stale
-  fork copies.
+- **What:** `ci.yml`: upstream's Blacksmith runners (`blacksmith-8vcpu-ubuntu-2404`
+  on `check` / `test` / `release_smoke`) → `ubuntu-24.04`, and the macOS-only
+  `mobile_native_static_analysis` job dropped (this fork does not target mobile,
+  and `blacksmith-12vcpu-macos-26` is unavailable to it). `pr-size.yml` and
+  `release.yml` were part of the pre-reset fork; as of the 2026-07-23 reset only
+  `ci.yml` is modified — `release.yml` is left as upstream ships it, since it is
+  release-only and needs secrets a fork lacks.
+- **Re-apply notes:** Highest-churn area. Re-derive from upstream's **new**
+  workflow files and re-apply these transformations (runner swap, drop
+  fork-unavailable jobs/secrets), rather than force-keeping stale fork copies.
+- **Redundancy check (as of `89c5a19`): keep.** Upstream has not touched
+  `.github/workflows/ci.yml` since `b41e89e`, so the runner swap replayed
+  cleanly. Re-check on every rebase — a new upstream job would silently be
+  dropped by a stale fork copy of this file.
 
 ### G. Fork-maintenance infrastructure (aadit-specific — review before keeping)
 
@@ -489,30 +552,52 @@ rebasing directly onto `pingdotgg/main`.
 
 ---
 
-## Dropped / now upstream
+## Superseded changes
 
-Changes the fork used to carry that upstream has since implemented (do **not**
-re-introduce them):
+Changes the fork used to carry that upstream has since implemented. **Do not
+re-introduce them.** Each entry names the upstream change that replaced it; all
+were re-verified against `89c5a19` during the 2026-07-27 rebase.
 
+| #        | Fork change                       | Superseded by                                                    | Verified at |
+| -------- | --------------------------------- | ---------------------------------------------------------------- | ----------- |
+| 1        | Windows build: no shell mode      | `edb1240` — _fix(cli): publish nightly branded favicons (#4372)_ | `89c5a19`   |
+| 5 (core) | Thread-scoped changed files       | `AssistantChangedFilesSection` per-turn checkpoints              | `89c5a19`   |
+| 8        | Full timestamp on hover           | `formatChatTimestampTooltip`                                     | `89c5a19`   |
+| 10       | Package-local vitest configs      | `vp` (vite-plus) test-runner migration                           | `89c5a19`   |
+| —        | Custom Cursor / OpenCode backends | `3f8d328` — upstream ACP Cursor + `@opencode-ai/sdk`             | 2026-04-18  |
+| C        | Settings & appearance UI          | upstream theme / accent / add-provider wizard                    | `89c5a19`   |
+| D        | Web UI enhancements               | upstream terminal split, palette, sidebar search, toasts         | `89c5a19`   |
+| E        | Desktop branding + installer      | upstream electron launcher + `brand-assets`                      | `89c5a19`   |
+
+Detail:
+
+- **Change 1 — Windows build shell mode.** The fork removed
+  `shell: process.platform === "win32"` from the `buildCmd` spawn because shell
+  mode broke Windows builds from paths containing spaces. Upstream reworked that
+  spawn entirely in `edb1240` (#4372): `apps/server/scripts/cli.ts` now calls
+  `ChildProcess.make(process.execPath, ["--run", "build:bundle"], { cwd: serverDir,
+… shell: false })` and routes other spawns through `resolveSpawnCommand` from
+  `@t3tools/shared/shell` (`shell: spawnCommand.shell`). Upstream hardcodes
+  `shell: false` on the build step — exactly the fork's intent, arrived at
+  independently. **Nothing left to re-apply.**
+- **Change 5 (core) — thread-scoped changed files.** Upstream's
+  `AssistantChangedFilesSection` already shows per-turn checkpoint files. Only
+  the commit-preselect button remains unshipped — see active entry 5.
+- **Change 8 — hover timestamp.** The fork added `formatFullTimestamp` as a
+  `title` attribute. Upstream now exports `formatChatTimestampTooltip` from
+  `apps/web/src/timestampFormat.ts` and renders it as a real tooltip next to
+  `formatShortTimestamp` in `MessagesTimeline.tsx` (both the `createdAt` and
+  `updatedAt` rows) — a strictly better version of the same idea.
+- **Change 10 — package-local vitest configs.** Upstream migrated the test
+  runner to `vp` (vite-plus); the old `vitest.config.ts` files no longer apply,
+  and upstream still ships none of its own for these packages. Revisit only if
+  those packages' process-spawning tests flake under `vp`.
 - **Custom Cursor and OpenCode backends** — the aadit fork originally carried
   its own Cursor and OpenCode integrations; at the 2026-04-18 sync it adopted
   upstream's ACP-based Cursor backend and `@opencode-ai/sdk` OpenCode backend
   (`3f8d328`), keeping only fork-side enhancements on top (section B). When
   upstream ships first-party support for any other fork provider, follow the
   same pattern: adopt upstream's backend, re-apply only the fork's deltas.
-
-Dropped at the **2026-07-23 reset** because upstream implemented an equivalent:
-
-- **Change 1 — Windows build shell mode.** Upstream's `buildCmd` now spawns with
-  `shell: false` (`apps/server/scripts/cli.ts`).
-- **Change 8 — hover timestamp.** Upstream added a full-date hover `Tooltip`
-  (`formatChatTimestampTooltip`) on message timestamps.
-- **Change 10 — package-local vitest configs.** Upstream migrated the test
-  runner to `vp` (vite-plus); the old `vitest.config.ts` files no longer apply.
-  Revisit only if those packages' process-spawning tests flake under `vp`.
-- **Change 5 (core) — thread-scoped changed files.** Upstream's
-  `AssistantChangedFilesSection` already shows per-turn checkpoint files. Only
-  the commit-preselect button remains unshipped.
 - **Section C — settings & appearance UI.** Upstream has theme (light/dark/system
   via `useTheme`), `ProviderAccentColorPicker`, the `AddProviderInstanceDialog`
   wizard, and `ProviderModelsSection`.
@@ -521,9 +606,14 @@ Dropped at the **2026-07-23 reset** because upstream implemented an equivalent:
 - **Section E — desktop branding + installer.** Upstream ships the electron
   launcher, `brand-assets`, desktop build, and matching Electron. Only aadit's
   `scripts/install.sh` (hardcoded to aadit's repo) is unique — not worth porting.
+
+### Deliberately not ported (not superseded)
+
 - **Amp / Kilo / Droid providers.** Intentionally not ported (owner chose
   Copilot + Gemini only). Their adapters remain available in `aadit/main` if
   wanted later — follow section B's driver-registration pattern.
+- **Section G — aadit fork-maintenance tooling.** Dropped at the 2026-07-23
+  reset; it is wired to the aadit fork's own repo layout.
 
 ---
 
