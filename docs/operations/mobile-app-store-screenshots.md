@@ -79,6 +79,10 @@ names, light/dark appearance, scenes, output directory, capture delay, Android A
 
 ## Capture in GitHub Actions
 
+> **Fork note:** the `Mobile Showcase Screenshots` workflow is not present in this fork — it runs
+> only on Blacksmith macOS/Linux runners this fork cannot schedule. Capture locally with
+> `pnpm screenshots:mobile` (above); the rest of this section is upstream reference.
+
 Run the `Mobile Showcase Screenshots` workflow from GitHub's Actions tab, choose `all`, `ios`, or
 `android`, and select `light`, `dark`, or `both`. The default dispatch captures both appearances and
 runs iOS and Android concurrently: iPhone and iPad capture on a

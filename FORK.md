@@ -126,6 +126,8 @@ old pingdotgg + aadit merges) and the fork's changes are being re-applied as **d
    (`scripts/install.sh`) is hardcoded to aadit's repo. Nothing additive for a dev fork.
 7. **CI fork-runnable** (PR #8) — `ci.yml` Blacksmith runners → `ubuntu-24.04`, mobile job
    dropped. `release.yml` left as-is (release-only; needs secrets a fork lacks).
+   **Superseded 2026-07-27:** every credentialed / Blacksmith-only workflow (including
+   `release.yml`) was deleted and `desktop-artifacts.yml` added — see section F.
 
 > **Verification note:** several classes of test failure are **environmental, not
 > regressions** — always diff against clean upstream before chasing one.
@@ -505,18 +507,56 @@ rebasing directly onto `pingdotgg/main`.
 
 ### F. CI / workflows adapted for the fork
 
-- **Files:** `.github/workflows/ci.yml`, `.github/workflows/pr-size.yml`,
-  `.github/workflows/release.yml`
-- **What:** `ci.yml`: upstream's Blacksmith runners (`blacksmith-8vcpu-ubuntu-2404`
-  on `check` / `test` / `release_smoke`) → `ubuntu-24.04`, and the macOS-only
-  `mobile_native_static_analysis` job dropped (this fork does not target mobile,
-  and `blacksmith-12vcpu-macos-26` is unavailable to it). `pr-size.yml` and
-  `release.yml` were part of the pre-reset fork; as of the 2026-07-23 reset only
-  `ci.yml` is modified — `release.yml` is left as upstream ships it, since it is
-  release-only and needs secrets a fork lacks.
+- **Files:** `.github/workflows/*`, `.github/VOUCHED.td`, `docs/operations/ci.md`,
+  `docs/operations/release.md`, `infra/relay/README.md`,
+  `infra/relay/scripts/deploy.test.ts`, `CONTRIBUTING.md`
+- **Standing rule:** a workflow stays in this fork only if it can actually run
+  here — **standard GitHub-hosted runners** (upstream's `blacksmith-*` labels do
+  not resolve; jobs sit queued for 24h and are auto-cancelled) and **no
+  credentials beyond the automatic `GITHUB_TOKEN`**. Everything else is deleted,
+  not disabled. Verified against the fork's run history: 30+ consecutive
+  scheduled `Release` runs were cancelled after the 24h queue timeout, and the
+  only push-triggered `CI` run ever recorded went the same way.
+- **Kept (2 workflows):**
+  - `ci.yml` — upstream's Blacksmith runners (`blacksmith-8vcpu-ubuntu-2404` on
+    `check` / `test` / `release_smoke`) → `ubuntu-24.04`, and the macOS-only
+    `mobile_native_static_analysis` job dropped (this fork does not target
+    mobile, and `blacksmith-12vcpu-macos-26` is unavailable to it).
+  - `issue-labels.yml` — unmodified; `GITHUB_TOKEN` only, and it bootstraps the
+    labels `.github/ISSUE_TEMPLATE/*.yml` apply.
+- **Added:** `desktop-artifacts.yml` — builds the four platforms upstream's
+  `release.yml` matrix covers (macOS `arm64`/`x64` DMG, Linux `x64` AppImage,
+  Windows `x64` NSIS) on every push to `main` and on dispatch, **unsigned**, and
+  uploads them as workflow artifacts. Carries over the two secret-free steps that
+  matter from upstream's build job: the Linux `node-pty` prebuild bundled into
+  the Windows artifact (non-fatal when missing) and the Spectre-mitigated MSVC
+  libs install. It never passes `--signed`, which is what pulls signing
+  credentials into `scripts/build-desktop-artifact.ts`.
+- **Deleted (needs credentials and/or Blacksmith runners):** `release.yml`
+  (Cloudflare + Clerk + Apple + Azure + npm OIDC + release GitHub App; its
+  3-hourly nightly cron was pure noise here), `deploy-relay.yml` (Cloudflare,
+  PlanetScale, Axiom, Clerk, APNs; ran on every push to `main`),
+  `mobile-eas-preview.yml` / `mobile-eas-production.yml` (`EXPO_TOKEN`),
+  `mobile-showcase-screenshots.yml` (`blacksmith-12vcpu-macos-26` /
+  `blacksmith-16vcpu-ubuntu-2404`).
+- **Deleted (upstream community governance, no value in this fork):**
+  `pr-vouch.yml` + `.github/VOUCHED.td` (trust-gates external contributors
+  against upstream's contributor list) and `pr-size.yml` (size labels on PRs that
+  are all authored by the fork owner and its agents; its `sync-label-definitions`
+  job was also dead code — `if: github.event_name != 'pull_request_target'` on a
+  workflow whose only trigger is `pull_request_target`). Both used
+  `pull_request_target`.
+- **Fallout fixed with the deletions:** the `release workflow tracing config
+  propagation` guard in `infra/relay/scripts/deploy.test.ts` read `release.yml`
+  off disk and would fail `vp run test` once it was gone — dropped, with a
+  restore note in place. `CONTRIBUTING.md` lost its `vouch:*` / `size:*`
+  paragraph; `docs/operations/ci.md`, `docs/operations/release.md`, and
+  `infra/relay/README.md` gained fork notes.
 - **Re-apply notes:** Highest-churn area. Re-derive from upstream's **new**
-  workflow files and re-apply these transformations (runner swap, drop
-  fork-unavailable jobs/secrets), rather than force-keeping stale fork copies.
+  workflow files and re-apply the standing rule above (runner swap, drop
+  credentialed/unavailable jobs) rather than force-keeping stale fork copies. A
+  new upstream workflow arriving in a rebase is opt-**in**: it ships only if it
+  passes the standing rule.
 - **Redundancy check (as of `89c5a19`): keep.** Upstream has not touched
   `.github/workflows/ci.yml` since `b41e89e`, so the runner swap replayed
   cleanly. Re-check on every rebase — a new upstream job would silently be

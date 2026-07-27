@@ -1,0 +1,207 @@
+# Fork workflow: build the desktop binaries for every platform this repo already
+# supports, on every push to `main`.
+#
+# Upstream produces these from `release.yml`, which also reads the production
+# T3 Connect relay config, signs, publishes to npm, and cuts a GitHub Release —
+# all of which need Cloudflare / Apple / Azure / npm / GitHub App credentials
+# this fork does not have. That workflow was removed; this one keeps the part a
+# fork can actually run.
+#
+# Constraints this file deliberately respects:
+#   - no secrets beyond the automatic GITHUB_TOKEN (which it never uses)
+#   - standard GitHub-hosted runners only (upstream's `blacksmith-*` labels do
+#     not resolve here, so those jobs sat queued for 24h and were cancelled)
+#   - builds are unsigned: passing `--signed` is what pulls in signing
+#     credentials, so it is never passed. `build-desktop-artifact.ts` then sets
+#     CSC_IDENTITY_AUTO_DISCOVERY=false and skips notarization.
+name: Desktop Artifacts
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-artifacts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wsl_node_pty:
+    name: Build WSL node-pty (linux-x64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+
+      - name: Build node-pty linux-x64 prebuild
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Resolve node-pty from apps/server (where it's a dependency) and build
+          # its native binary from source for Linux. node-addon-api resolves from
+          # node-pty's own dependency tree, so node-gyp has everything it needs.
+          pty_pkg="$(node -e "console.log(require.resolve('node-pty/package.json', { paths: ['$GITHUB_WORKSPACE/apps/server'] }))")"
+          pty_dir="$(dirname "$pty_pkg")"
+          ( cd "$pty_dir" && npx --yes node-gyp rebuild )
+          mkdir -p wsl-prebuild
+          cp "$pty_dir/build/Release/pty.node" wsl-prebuild/pty.node
+          file wsl-prebuild/pty.node
+
+      - name: Upload node-pty linux-x64 prebuild
+        uses: actions/upload-artifact@v7
+        with:
+          name: wsl-node-pty-x64
+          path: wsl-prebuild/pty.node
+          if-no-files-found: error
+          retention-days: 7
+
+  build:
+    name: ${{ matrix.label }}
+    # Only the Windows entry consumes the prebuild, and it degrades to a warning
+    # when the file is absent, so `!cancelled()` (not `!failure()`) keeps every
+    # platform building even when the prebuild job fails.
+    needs: [wsl_node_pty]
+    if: ${{ !cancelled() }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS x64 cross-builds from the arm64 runner the same way upstream
+          # does: the staged workspace pins pnpm `supportedArchitectures`, so the
+          # native deps are fetched for the target arch, not the host's.
+          - label: macOS arm64
+            runner: macos-latest
+            platform: mac
+            target: dmg
+            arch: arm64
+          - label: macOS x64
+            runner: macos-latest
+            platform: mac
+            target: dmg
+            arch: x64
+          - label: Linux x64
+            runner: ubuntu-24.04
+            platform: linux
+            target: AppImage
+            arch: x64
+          - label: Windows x64
+            runner: windows-2025
+            platform: win
+            target: nsis
+            arch: x64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+
+      - name: Install ImageMagick
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          if ! command -v magick >/dev/null 2>&1 && ! command -v convert >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y imagemagick
+          fi
+
+          if command -v magick >/dev/null 2>&1; then
+              magick -version
+          else
+              convert -version
+          fi
+
+      - name: Install Spectre-mitigated MSVC libs
+        if: matrix.platform == 'win'
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $installPath = & $vswhere -products * -latest -property installationPath
+          $setupExe = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+          $proc = Start-Process -FilePath $setupExe `
+            -ArgumentList "modify", "--installPath", "`"$installPath`"", "--add", `
+            "Microsoft.VisualStudio.Component.VC.Tools.x86.x64.Spectre", "--quiet", "--norestart" `
+            -Wait -PassThru -NoNewWindow
+          if ($null -eq $proc -or $proc.ExitCode -ne 0) {
+            $code = if ($null -ne $proc) { $proc.ExitCode } else { 1 }
+            Write-Error "Visual Studio Installer failed with exit code $code"
+            exit $code
+          }
+
+      # Bundles the Linux node-pty binary so the packaged WSL backend ships a
+      # ready binary. Non-fatal: without it the Windows artifact still builds,
+      # and its WSL backend compiles pty.node on first launch instead.
+      - name: Download WSL node-pty prebuild
+        id: wsl_prebuild
+        if: matrix.platform == 'win'
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: wsl-node-pty-x64
+          path: wsl-prebuild
+
+      - name: Build desktop artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          args=(
+            --platform "${{ matrix.platform }}"
+            --target "${{ matrix.target }}"
+            --arch "${{ matrix.arch }}"
+            --verbose
+          )
+
+          if [[ "${{ matrix.platform }}" == "win" ]]; then
+            if [[ -f "$GITHUB_WORKSPACE/wsl-prebuild/pty.node" ]]; then
+              args+=(--wsl-prebuild "$GITHUB_WORKSPACE/wsl-prebuild/pty.node")
+            else
+              echo "::warning::WSL node-pty prebuild unavailable; the packaged WSL backend will compile pty.node on first launch."
+            fi
+          fi
+
+          vp run dist:desktop:artifact "${args[@]}"
+
+      # build-desktop-artifact.ts copies only files (never the unpacked app
+      # directories) into release/, so the whole directory is safe to upload.
+      - name: Summarize artifacts
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### ${{ matrix.label }} (unsigned)"
+            echo
+            if [[ -d release ]]; then
+              echo '```'
+              ls -lh release
+              echo '```'
+            else
+              echo "No artifacts were produced."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload desktop artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
+          path: release/*
+          if-no-files-found: error
+          retention-days: 14

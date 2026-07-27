@@ -13,6 +13,12 @@
 > they need (Gemini CLI `.cmd` shim resolution, Copilot detection), terminal Ctrl-key
 > forwarding, and CI adjusted to run on standard GitHub-hosted runners.
 >
+> **Fork builds:** every push to `main` here runs the
+> [Desktop Artifacts](https://github.com/mclaren-data-systems/t3code/actions/workflows/desktop-artifacts.yml)
+> workflow, which builds **unsigned** macOS (arm64/x64), Linux (x64), and Windows (x64) desktop
+> binaries and attaches them to the run (14-day retention). This fork publishes no GitHub Releases
+> and no npm package — the install instructions below point at upstream.
+>
 > A few further UX refinements — thread-scoped commit selection, a completed dot that persists
 > until the thread is read, per-thread composer message history, and an always-visible
 > new-thread button — are maintained on separate branches and not yet on `main`.
