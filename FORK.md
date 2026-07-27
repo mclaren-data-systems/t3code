@@ -546,11 +546,11 @@ rebasing directly onto `pingdotgg/main`.
   job was also dead code — `if: github.event_name != 'pull_request_target'` on a
   workflow whose only trigger is `pull_request_target`). Both used
   `pull_request_target`.
-- **Fallout fixed with the deletions:** the `release workflow tracing config
-  propagation` guard in `infra/relay/scripts/deploy.test.ts` read `release.yml`
-  off disk and would fail `vp run test` once it was gone — dropped, with a
-  restore note in place. `CONTRIBUTING.md` lost its `vouch:*` / `size:*`
-  paragraph; `docs/operations/ci.md`, `docs/operations/release.md`, and
+- **Fallout fixed with the deletions:** the release-workflow tracing-config guard
+  in `infra/relay/scripts/deploy.test.ts` read `release.yml` off disk and would
+  fail `vp run test` once it was gone — dropped, with a restore note in place.
+  `CONTRIBUTING.md` lost its `vouch:*` / `size:*` paragraph;
+  `docs/operations/ci.md`, `docs/operations/release.md`, and
   `infra/relay/README.md` gained fork notes.
 - **Re-apply notes:** Highest-churn area. Re-derive from upstream's **new**
   workflow files and re-apply the standing rule above (runner swap, drop
