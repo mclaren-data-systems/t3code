@@ -1,3 +1,26 @@
+<!-- FORK-BANNER:START -->
+
+> ## About this fork
+>
+> This is a development fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3code),
+> maintained at [mclaren-data-systems/t3code](https://github.com/mclaren-data-systems/t3code).
+> Upstream (`pingdotgg`) is treated as the source of truth and `main` here is periodically
+> rebased onto it — most recently onto `de592a00` on 2026-08-05.
+>
+> On top of upstream this fork carries a deliberately thin layer: a **workflow set a fork can
+> actually run** — standard GitHub-hosted runners instead of upstream's Blacksmith ones, no
+> workflow needing credentials a fork lacks, and unsigned desktop artifacts built on every
+> push to `main` — plus this banner and `FORK.md`. Everything under `apps/`, `packages/`, and
+> `native/` is byte-identical to upstream.
+>
+> The authoritative, up-to-date list of everything that sets this fork apart from upstream —
+> including changes upstream has since implemented, and changes dropped by choice — lives in
+> **[FORK.md](FORK.md)**.
+>
+> Upstream README follows.
+
+<!-- FORK-BANNER:END -->
+
 # T3 Code
 
 T3 Code is an "agent harness control surface". It enables control of the agents on your machine with a best-in-class mobile app ([iOS](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824), [Android](https://play.google.com/store/apps/details?id=com.t3tools.t3code)), [web app](https://app.t3.codes) and [Electron-based desktop app](https://t3.codes).
