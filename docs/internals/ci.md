@@ -39,5 +39,14 @@ macOS (`arm64` and `x64`), Linux (`x64`), and Windows (`x64`) desktop artifacts 
 [`.github/workflows/issue-labels.yml`](../../.github/workflows/issue-labels.yml) keeps the labels the
 issue forms apply (`bug`, `enhancement`, `needs-triage`) in sync.
 
+[`.github/workflows/thread-transfer-report.yml`](../../.github/workflows/thread-transfer-report.yml)
+runs after **CI** completes on a pull request and comments the thread-transfer budget diff. It reads
+the `thread-transfer-results` artifact the **Test** job uploads, and loads its publisher script from
+the default branch so pull-request code never executes with the write-capable `workflow_run` token.
+
 Upstream's `release.yml` (tag-driven signed release + npm publish) and `deploy-relay.yml` are not
 present in this fork. See [Release Checklist](../operations/release.md) for what they do upstream.
+Upstream's `web-preview.yml` (Vercel preview deploys — needs `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and
+`VERCEL_PROJECT_ID`) and `mobile-fingerprint-check.yml` (flags PRs that break mobile OTA reach) are
+not present either: the first needs credentials this fork lacks, and the second guards a store/EAS
+release process this fork does not run.
