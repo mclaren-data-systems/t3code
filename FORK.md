@@ -8,7 +8,13 @@ It is not a hard fork: every entry below is provisional, and whenever upstream s
 an equivalent or the change is somehow negated the fork change is dropped rather than defended.
 The goal is to rebase onto upstream indefinitely, so the active diff stays as small as
 possible and changes are reapplied based on intent, not directly based on the specific change's
-existing implementation.
+existing implementation. In practice that thin layer has converged on one substantive thing —
+**a CI/workflow set a fork can actually run** (standard GitHub-hosted runners instead of
+upstream's Blacksmith ones, nothing needing credentials a fork lacks, and unsigned desktop
+artifacts built on every push to `main`) — plus this file and the `README.md` fork banner that
+points at it; as of the 2026-08-17 rebase the fork carries **no source change at all**, with
+`apps/`, `packages/`, `native/`, `scripts/`, `packaging/`, and `pnpm-lock.yaml` byte-identical
+to upstream.
 
 This file is the authoritative list of changes that set this fork
 (`mclaren-data-systems/t3code`, branch `main`) apart from upstream. It is
@@ -26,21 +32,25 @@ When you reset/sync, work through every entry below. For each one:
 3. Keep this file in sync: update the "Last rebase" marker, and move entries between the
    "Active", "Superseded", and "Dropped" sections as upstream evolves.
 
-> **Last rebase onto upstream:** **2026-08-10**, onto `pingdotgg/t3code` `main` at
-> **`9821bca1`** — _fix(web): use themed confirmation dialogs (#5624)_. The `main` this
-> replaces was `baaa8682` (based on `de592a00`, 2026-08-05), which had itself replaced
-> `563d725d` (based on `30c96228`, 2026-08-02). This rebase takes in **123 upstream
+> **Last rebase onto upstream:** **2026-08-17**, onto `pingdotgg/t3code` `main` at
+> **`13458e65`** — _fix(web): center the context usage meter (#7296)_. The `main` this
+> replaces was `8d6b5a56` (based on `9821bca1`, 2026-08-10), which had itself replaced
+> `baaa8682` (based on `de592a00`, 2026-08-05). This rebase takes in **212 upstream
 > commits**.
 >
-> **Entry 9 was superseded at this rebase** — upstream promoted sidebar v2 to the default
-> (#5672) and its new-thread button is always visible, which is exactly what that entry
-> carried. `main` still carries no change under `apps/`, `packages/`, or `native/`: the
-> entire fork diff against upstream remains workflows plus fork documentation.
+> **The symlink half of entry 12 was superseded at this rebase** — upstream replaced the
+> `CLAUDE.md` symlink with a regular file whose content is `@AGENTS.md` in `4cb676cc` (#7171),
+> which is the `@file` import syntax used in the one place it works. The fork's two `AGENTS.md`
+> sections are untouched and entry 12 stays active for them; see "Superseded changes".
+> `main` still carries no change under `apps/`, `packages/`, `native/`, or the new
+> `packaging/`: the entire fork diff against upstream remains workflows plus fork
+> documentation.
 >
-> `main` history was rewritten by force-push at this rebase. The overwritten tip `baaa8682`
-> **was backed up** to `origin/backup/main-pre-rebase-2026-08-10` — unlike the previous two
-> rebases, whose overwritten tips (`563d725d`, `ba07e561`) were never pushed anywhere and
-> remain recoverable only from GitHub's unreachable-object retention.
+> `main` history was rewritten by force-push at this rebase. The overwritten tip `8d6b5a56`
+> **was backed up** to `origin/backup/main-pre-rebase-2026-08-17`, as `baaa8682` was to
+> `origin/backup/main-pre-rebase-2026-08-10`. The two rebases before those overwrote tips
+> (`563d725d`, `ba07e561`) that were never pushed anywhere and remain recoverable only from
+> GitHub's unreachable-object retention.
 
 > **Verification note:** some test failures are **environmental, not regressions** — always
 > diff against clean upstream before chasing one. Three seen repeatedly, all in files this
@@ -72,19 +82,23 @@ When you reset/sync, work through every entry below. For each one:
 > a `pnpm-lock.yaml` that replayed badly, which is the most likely silent breakage in a rebase
 > that reports no conflicts.
 >
-> **What was verified at the 2026-08-10 rebase:** `git diff upstream/main HEAD -- apps/ packages/
-> native/ scripts/ pnpm-lock.yaml pnpm-workspace.yaml` is **empty** — the fork's source tree and
-> lockfile are byte-identical to upstream, so the `--frozen-lockfile` / `typecheck` / `test`
-> checklist would only have been testing upstream against itself, and it was not run (the host
-> also had node 22 against the pinned node ^24.13.1). The checks that were fork-specific ran:
-> the kept `thread-transfer-report.yml` publisher test (`node --test
-> .github/scripts/thread-transfer-report.test.cjs`) passes 6/6, and no file in the tree still
-> references a workflow this fork deletes. **Re-run the full checklist the moment any entry
-> re-introduces a source change** — that is when the lockfile risk comes back.
+> **What was verified at the 2026-08-17 rebase:** `git diff upstream/main HEAD -- apps/ packages/
+> native/ scripts/ packaging/ pnpm-lock.yaml pnpm-workspace.yaml` is **empty** — the fork's source
+> tree and lockfile are byte-identical to upstream, so the `--frozen-lockfile` / `typecheck` /
+> `test` checklist would only have been testing upstream against itself, and it was not run (the
+> host again had node 22 against the pinned node ^24.13.1). The checks that were fork-specific
+> ran: the kept `thread-transfer-report.yml` publisher test (`node --test
+> .github/scripts/thread-transfer-report.test.cjs`) passes 6/6; every kept workflow is on a
+> standard GitHub-hosted runner with no secret beyond `GITHUB_TOKEN` (`grep -rn blacksmith
+> .github/workflows/` now hits only a comment in `desktop-artifacts.yml`); the one new dangling
+> reference to a deleted workflow (`packaging/aur/README.md` → `publish-aur.yml`) was given a fork
+> note; and `infra/relay/scripts/deploy.test.ts` has no leftover reference to the imports its
+> dropped guard used. **Re-run the full checklist the moment any entry re-introduces a source
+> change** — that is when the lockfile risk comes back.
 
 > **Migration caution — no longer applies, but keep the rule.** The fork carries **no**
 > migrations of its own (`git diff upstream/main HEAD -- apps/server/src/persistence/` is
-> empty); upstream's set runs to `036_*` unmodified. If a future change reintroduces a
+> empty); upstream's set runs to `040_*` unmodified. If a future change reintroduces a
 > fork-only migration, renumber it to sort after upstream's latest and verify `Migrations.ts`
 > registers the merged set exactly once — a collision here is a data-corruption bug, not a
 > merge annoyance.
@@ -97,7 +111,8 @@ When you reset/sync, work through every entry below. For each one:
 > never renumbered. A gap in the sequence means that entry moved to "Superseded changes"
 > or "Dropped changes"; look for it there.
 >
-> **Carried on `main` today:** 11, 12, 13, 14 — i.e. workflows and fork documentation only.
+> **Carried on `main` today:** 11, 12 (its `AGENTS.md` sections only — the symlink half is now
+> upstream's), 13, 14 — i.e. workflows and fork documentation only.
 > **Fork-intentional but not on `main` anywhere:** 5 (commit-preselect remainder), 6, 7.
 > Their PR branches were deleted from `origin`; the only surviving copies are
 > `refs/pull/6/head` (`47f1f30b`) and `refs/pull/7/head` (`8c295d66`), which sit on the
@@ -132,13 +147,17 @@ When you reset/sync, work through every entry below. For each one:
   `MessagesTimeline`/`ChatHeader` into `GitActionsControl`, whose `allFiles` memo and
   commit-dialog state handle the preselection. Expect this wiring to need adaptation
   whenever upstream reworks `GitActionsControl`.
-- **Redundancy check (as of `9821bca1`): keep — the display half is superseded, the
+- **Redundancy check (as of `13458e65`): keep — the display half is superseded, the
   commit-preselect button is not.** Upstream's `AssistantChangedFilesSection` (still in
   `MessagesTimeline.tsx`) attributes changed files per turn, which was the bulk of the
   original entry; see "Superseded changes". No `preselect`-style symbol exists anywhere in
   `apps/web/src`, so the commit-modal half is still unshipped. All five last-known files still
-  exist at their recorded paths, and `GitActionsControl.tsx` took **no** upstream change in the
-  `de592a00..9821bca1` range — the plumbing described above should still land as written.
+  exist at their recorded paths. **Unlike the previous rebase, `GitActionsControl.tsx` churned
+  here** — four upstream commits in the `9821bca1..13458e65` range: `cad2c936` (#4849, the
+  multi-provider pull-requests page with in-app reviews, the substantial one), plus `4c1d99d7`
+  (#6392, commit-dialog path overflow), `2db08457` (#6207) and `35172010` (#6194) on action
+  icons. Re-read its `allFiles` memo and commit-dialog state before threading the preselect
+  prop; the plumbing shape should still hold, but the anchors have moved.
 
 ### 6. Keep the completed (green) dot until the thread is read
 
@@ -159,15 +178,20 @@ When you reset/sync, work through every entry below. For each one:
   initial state, hydrate, persist, `syncThreads` pruning/seeding). The
   outstanding TODO refinement — only mark read after ~3s of visibility — is
   not implemented; don't mistake the TODO for shipped behavior.
-- **Redundancy check (as of `9821bca1`): keep.** `uiStateStore.ts` took no upstream change in
-  this range and still tracks only `threadLastVisitedAtById`; there is no acknowledged-at
-  equivalent anywhere in `apps/web/src` (the `hasServerAcknowledgedLocalDispatch` helper in
-  `ChatView.logic.ts` is unrelated — it is composer dispatch bookkeeping). **The component
-  anchors moved at this rebase:** upstream promoted sidebar v2 to the default in #5672, which
-  renamed the old sidebar to `LegacySidebar.tsx` and made `Sidebar.tsx` the v2 component. The
-  file list above now means the **v2** `Sidebar.tsx`; `Sidebar.logic.ts` and
-  `ThreadStatusIndicators.tsx` still exist and both still read `threadLastVisitedAtById`.
-  Re-derive against v2 and do not bother patching `LegacySidebar.tsx`, which is opt-in.
+- **Redundancy check (as of `13458e65`): keep.** `uiStateStore.ts` again took **no** upstream
+  change in this range and still tracks only `threadLastVisitedAtById`; there is no
+  acknowledged-at equivalent anywhere in `apps/web/src` (the `hasServerAcknowledgedLocalDispatch`
+  helper in `ChatView.logic.ts` is unrelated — it is composer dispatch bookkeeping). The v2
+  `Sidebar.tsx` remains the target (`LegacySidebar.tsx` is still opt-in — leave it alone).
+  **The precise hook point is `hasUnseenCompletion` in `Sidebar.logic.ts`**, which compares
+  `latestTurn.completedAt` against a `thread.lastVisitedAt` field passed in on
+  `ThreadStatusInput` — it no longer reads the `threadLastVisitedAtById` map itself, so the
+  acknowledged-at value has to reach it the same way (widen `ThreadStatusInput` and its call
+  sites in `Sidebar.tsx` / `ThreadStatusIndicators.tsx`) rather than by patching the store read.
+  Both sidebar files churned heavily in this range — `Sidebar.tsx` in **16** commits (notably
+  `fee10def` (#7209), which bans native `title` tooltips in favour of the styled `Tooltip`, and
+  the `d7abd7f3` / `804cba43` workspace-layout refresh-and-revert pair) and `Sidebar.logic.ts`
+  in four — so re-read them before wiring.
 
 ### 7. Per-thread composer message history (arrow-key recall)
 
@@ -189,16 +213,19 @@ When you reset/sync, work through every entry below. For each one:
   `threadMessageHistory.ts` with tests — re-apply that module verbatim and
   redo only the `ChatComposer`/`ComposerPromptEditor` key-handler wiring if the
   composer has been refactored.
-- **Redundancy check (as of `9821bca1`): keep.** No `threadMessageHistory` /
+- **Redundancy check (as of `13458e65`): keep.** No `threadMessageHistory` /
   `THREAD_MESSAGE_HISTORY` symbols upstream; the composer still has no history recall.
   The pure `threadMessageHistory.ts` module still ports verbatim, but the composer
-  key wiring must be redone — upstream reworked `ComposerPromptEditor` around Lexical
-  `registerCommand` ArrowUp/ArrowDown handlers, added a per-provider prompt stash (#4453),
-  and has since re-anchored the composer command menu (#5336), all of which claim composer
-  keys. Both composer files churned again in this range — `ChatComposer.tsx` in five commits
-  (notably #5551 removing the Build/Plan toggle and #5558 folding plans into chat) and
-  `ComposerPromptEditor.tsx` in two (#5226, #5495) — so re-read the current key handlers
-  before wiring anything.
+  key wiring must be redone — `ComposerPromptEditor.tsx` still routes ArrowUp/ArrowDown
+  through Lexical `registerCommand` (`unregisterArrowUp` around line 939, feeding a shared
+  `handleCommand(key, event)` typed to `"ArrowDown" | "ArrowUp" | "Enter" | "Tab"`), and that
+  handler is already claimed by the completion/command menu. **That `handleCommand` union is the
+  seam to extend**: the boundary rules from `isThreadMessageHistoryBoundary` have to run only
+  when the menu declines the key. Both composer files churned again in this range — eight
+  upstream commits across them, including `7c55e863` (#6602) and `34a12bc3` (#6574) adding
+  pre-turn prompt/attachment rejection, `a6ac27e7` (#6636) accepting file drops across the chat
+  workspace, and `9885a845` (#6381) simplifying global styling — so re-read the current key
+  handlers before wiring anything.
 
 ### 11. TODO list moved into this file; `TODO.md` deleted
 
@@ -211,7 +238,7 @@ When you reset/sync, work through every entry below. For each one:
   `TODO.md` — resolve by keeping the deletion. If upstream added TODO items
   worth tracking, fold them into this file's TODO section instead of
   resurrecting `TODO.md`.
-- **Redundancy check (as of `9821bca1`): moot — no conflict left to resolve.**
+- **Redundancy check (as of `13458e65`): moot — no conflict left to resolve.**
   `TODO.md` is still absent from upstream's tree (`git ls-tree upstream/main TODO.md`
   is empty), so the deletion no longer collides with anything. Nothing to
   re-apply; keep the TODO section in this file.
@@ -225,15 +252,17 @@ When you reset/sync, work through every entry below. For each one:
   ever `git fetch`ed) and **Fork-First Policy** (`README.md`'s fork banner and this file win
   merge conflicts; no scratch/analysis markdown in the repo).
 - **Re-apply notes:** What is carried is just those two fork sections sitting on upstream's
-  own `AGENTS.md`. `CLAUDE.md` must stay a symlink pointing at the literal path `AGENTS.md`
-  — a `16c78b6`-style retarget to `@AGENTS.md` leaves it dangling (the `@file` import syntax
-  only works inside a file's content, not as a symlink target).
-- **Redundancy check (as of `9821bca1`): keep, clean replay.** The two fork sections still sit
+  own `AGENTS.md`. **`CLAUDE.md` is no longer part of this entry** — take whatever upstream
+  ships for it (as of `13458e65` a regular file containing `@AGENTS.md`) and do not restore
+  the old fork symlink; see "Superseded changes". The rule the old note encoded still holds
+  as a rule, though: `@AGENTS.md` works as *file content* and not as a symlink target, so a
+  `CLAUDE.md` that is a symlink must point at the literal path `AGENTS.md`.
+- **Redundancy check (as of `13458e65`): keep, clean replay.** The two fork sections still sit
   after upstream's two-paragraph intro and before `## What makes T3 Code special?`. Upstream
-  touched `AGENTS.md` once in this range (`a1762fdd`, #5586), but only in the `--share` / dev
-  bullets far below the insertion point, so it replayed without a conflict. `CLAUDE.md` is
-  still a symlink to the literal `AGENTS.md` (verified with `readlink`). Expect a conflict on
-  any rebase that rewrites upstream's intro; keep the fork sections, take upstream's prose.
+  touched `AGENTS.md` once in this range (`9e201941`, #6479 — dropping the rebase-before-PR
+  requirement), far below the insertion point, so it replayed without a conflict. Expect a
+  conflict on any rebase that rewrites upstream's intro; keep the fork sections, take
+  upstream's prose.
 
 ### 13. Housekeeping: `README.md` fork banner and this file
 
@@ -243,19 +272,21 @@ When you reset/sync, work through every entry below. For each one:
 - **Re-apply notes:** The banner is delimited by `<!-- FORK-BANNER:START -->` /
   `<!-- FORK-BANNER:END -->` — re-derive the text between them rather than merging it, since
   it goes stale every time an entry moves out of "Active".
-- **Redundancy check (as of `9821bca1`): keep, refreshed.** The banner's body still describes
+- **Redundancy check (as of `13458e65`): keep, refreshed.** The banner's body still describes
   the fork accurately (workflow set only; everything under `apps/`, `packages/`, `native/`
-  byte-identical to upstream), so only the rebase marker inside it moved to `9821bca1` /
-  2026-08-10. Upstream's one-line `README.md` change in this range landed below the banner
-  without conflict.
+  byte-identical to upstream), so only the rebase marker inside it moved to `13458e65` /
+  2026-08-17. Upstream's two `README.md` changes in this range (`e9ae134c` routing feature
+  requests to Discussions, `e25021af` #4128 splitting the existing Arch/AUR install block into
+  stable and nightly packages) both landed below the banner without conflict.
 
 ### 14. A workflow set this fork can actually run
 
 - **Files:** `.github/workflows/ci.yml`, `.github/workflows/desktop-artifacts.yml` (new),
   deleted `.github/workflows/{release,deploy-relay,mobile-eas-preview,mobile-eas-production,mobile-showcase-screenshots,pr-size,pr-vouch,web-preview,mobile-fingerprint-check}.yml`
-  and `.github/VOUCHED.td`; fork notes in `docs/internals/ci.md`,
-  `docs/operations/release.md`, `docs/operations/mobile-app-store-screenshots.md`,
-  `infra/relay/README.md`; `CONTRIBUTING.md` and `infra/relay/scripts/deploy.test.ts` fallout
+  and `.github/VOUCHED.td`, plus `.github/workflows/publish-aur.yml`; fork notes in
+  `docs/internals/ci.md`, `docs/operations/release.md`,
+  `docs/operations/mobile-app-store-screenshots.md`, `infra/relay/README.md`,
+  `packaging/aur/README.md`; `CONTRIBUTING.md` and `infra/relay/scripts/deploy.test.ts` fallout
 - **Commits:** `dbbb3b07`, `9c3dd8f5`
 - **Standing rule:** a workflow stays in this fork only if it can actually run
   here — **standard GitHub-hosted runners** (upstream's `blacksmith-*` labels do
@@ -268,7 +299,7 @@ When you reset/sync, work through every entry below. For each one:
   - `ci.yml` — upstream's Blacksmith runners (`blacksmith-8vcpu-ubuntu-2404` on
     `check` / `test` / `release_smoke`) → `ubuntu-24.04`, and the macOS-only
     `mobile_native_static_analysis` job dropped (this fork does not target
-    mobile, and `blacksmith-12vcpu-macos-26` is unavailable to it).
+    mobile, and its `blacksmith-6vcpu-macos-26` runner is unavailable to it).
   - `issue-labels.yml` — unmodified; `GITHUB_TOKEN` only, and it bootstraps the
     labels `.github/ISSUE_TEMPLATE/*.yml` apply.
   - `thread-transfer-report.yml` — **adopted at the 2026-08-10 rebase**, unmodified. Arrived
@@ -294,10 +325,17 @@ When you reset/sync, work through every entry below. For each one:
   PlanetScale, Axiom, Clerk, APNs; ran on every push to `main`),
   `mobile-eas-preview.yml` / `mobile-eas-production.yml` (`EXPO_TOKEN`),
   `mobile-showcase-screenshots.yml` (`blacksmith-12vcpu-macos-26` /
-  `blacksmith-16vcpu-ubuntu-2404`), and — **declined at the 2026-08-10 rebase** —
+  `blacksmith-16vcpu-ubuntu-2404`), — **declined at the 2026-08-10 rebase** —
   `web-preview.yml` (arrived with `963ebf5b` (#5465); label-gated Vercel preview deploys
   needing `VERCEL_TOKEN` / `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID`, on
-  `blacksmith-8vcpu-ubuntu-2404`).
+  `blacksmith-8vcpu-ubuntu-2404`), and — **declined at the 2026-08-17 rebase** —
+  `publish-aur.yml` (arrived with `e25021af` (#4128); pushes the `t3code-bin` /
+  `t3code-nightly-bin` AUR packages, needs `AUR_SSH_PRIVATE_KEY` and runs on
+  `blacksmith-8vcpu-ubuntu-2404`, so it fails the standing rule on both counts. It is a
+  `workflow_call` target of the `release.yml` this fork deletes, so nothing here would ever
+  invoke it. Its `packaging/aur/` sources are upstream's and are kept byte-identical —
+  `packaging/aur/scripts/release.sh` can still be run by hand; only the workflow is dropped,
+  with a fork note in `packaging/aur/README.md`).
 - **Deleted (mobile, which this fork does not target):** `mobile-fingerprint-check.yml`,
   **declined at the 2026-08-10 rebase** (arrived with `73b2e8fd` (#5609)). This is the one
   borderline call in the set: it is genuinely credential-free (it computes both native
@@ -318,8 +356,8 @@ When you reset/sync, work through every entry below. For each one:
   fail `vp run test` once it was gone — dropped, with a restore note in place.
   `CONTRIBUTING.md` lost its `vouch:*` / `size:*` paragraph;
   `docs/internals/ci.md`, `docs/operations/release.md`,
-  `docs/operations/mobile-app-store-screenshots.md`, and `infra/relay/README.md` gained
-  fork notes.
+  `docs/operations/mobile-app-store-screenshots.md`, `infra/relay/README.md`, and — added at
+  the 2026-08-17 rebase — `packaging/aur/README.md` gained fork notes.
 - **Re-apply notes:** Highest-churn area, and the one entry that reliably bites. Re-derive
   from upstream's **new** workflow files and re-apply the standing rule above (runner swap,
   drop credentialed/unavailable jobs) rather than force-keeping stale fork copies. A new
@@ -327,21 +365,28 @@ When you reset/sync, work through every entry below. For each one:
   standing rule. Separately, `desktop-artifacts.yml` is fork-owned and can drift against
   upstream's desktop build requirements **without ever showing up as a merge conflict** —
   diff it against upstream's `release.yml` build job on every sync.
-- **Redundancy check (as of `9821bca1`): keep, and this is where the 2026-08-10 rebase did all
-  of its work.** Upstream added **three** new workflows in the `de592a00..9821bca1` range —
-  one adopted (`thread-transfer-report.yml`), two declined (`web-preview.yml`,
-  `mobile-fingerprint-check.yml`); see the Kept and Deleted lists above. `ci.yml` gained the
-  transfer-budget env vars, step-summary publish, and `thread-transfer-results` artifact
-  upload from #5350, all of which replayed cleanly on top of the fork's runner swap — the
-  fork's `ci.yml` delta is still exactly the three `runs-on` lines plus the dropped
-  `mobile_native_static_analysis` job, with no Blacksmith label left in any kept workflow.
-  Two modify/delete conflicts came up and were both resolved as **deletions**, per this
-  entry: `.github/VOUCHED.td` (upstream added four vouch entries, #5763/#5761/#5641/#5637)
-  and `.github/workflows/mobile-eas-production.yml` (upstream automated production EAS
-  releases, #5609). `desktop-artifacts.yml` was diffed against upstream's `release.yml` build
-  job as this entry requires: upstream did not touch `release.yml` in this range, so there is
-  **no drift** to reconcile this time. The fork's workflow set is now `ci.yml`,
-  `desktop-artifacts.yml`, `issue-labels.yml`, `thread-transfer-report.yml`.
+- **Redundancy check (as of `13458e65`): keep, and this is again where the 2026-08-17 rebase did
+  nearly all of its work.** Upstream added **one** new workflow in the `9821bca1..13458e65`
+  range — `publish-aur.yml`, **declined**; see the Deleted list above. Upstream did **not** touch
+  `ci.yml` at all in this range, so the fork's `ci.yml` delta replayed untouched and is still
+  exactly the three `runs-on` lines plus the dropped `mobile_native_static_analysis` job;
+  `issue-labels.yml` and `thread-transfer-report.yml` were likewise unchanged upstream and stay
+  unmodified. `grep -rn blacksmith .github/workflows/` now matches only the explanatory comment
+  in `desktop-artifacts.yml`. Four modify/delete conflicts came up and were all resolved as
+  **deletions**, per this entry: `.github/VOUCHED.td` (upstream kept adding vouch entries),
+  `.github/workflows/release.yml`, `mobile-eas-production.yml`, and
+  `mobile-showcase-screenshots.yml`. `desktop-artifacts.yml` was diffed against upstream's
+  `release.yml` build job as this entry requires, and the check was worth running this time
+  because upstream *did* touch `release.yml` (`1b120f35` #6034, `e25021af` #4128): both changes
+  landed **outside** the build job — a `timeout-minutes` bump on the `release` job and the new
+  `publish_aur` call — and the build job is byte-for-byte identical across the range (346 lines
+  either side), so there is **no drift**. Note that upstream's build **script**
+  `scripts/build-desktop-artifact.ts` did change (`ad117235` #6201 macOS DMG installer
+  background, `c9063f03` #6169, `7e01d33f` #5877); that is shared source the fork does not fork,
+  and the fork's invocation still matches upstream's (`vp run dist:desktop:artifact` with the
+  same `--platform` / `--target` / `--arch` args, minus `--signed` and the credential env
+  block). The fork's workflow set is unchanged: `ci.yml`, `desktop-artifacts.yml`,
+  `issue-labels.yml`, `thread-transfer-report.yml`.
 
 ---
 
@@ -349,16 +394,17 @@ When you reset/sync, work through every entry below. For each one:
 
 Changes the fork used to carry that upstream has since implemented. **Do not
 re-introduce them.** Each entry names the upstream change that replaced it; all
-were re-verified against `9821bca1` during the 2026-08-10 rebase.
+were re-verified against `13458e65` during the 2026-08-17 rebase.
 
-| #        | Fork change                    | Superseded by                                                         | Verified at |
-| -------- | ------------------------------ | --------------------------------------------------------------------- | ----------- |
-| 1        | Windows build: no shell mode   | `edb1240` — _fix(cli): publish nightly branded favicons (#4372)_      | `9821bca1`  |
-| 4        | Terminal Ctrl-chord forwarding | `acf761b2` — _feat(web): render terminals with libghostty-vt (#4860)_ | `9821bca1`  |
-| 5 (core) | Thread-scoped changed files    | `AssistantChangedFilesSection` per-turn checkpoints                   | `9821bca1`  |
-| 8        | Full timestamp on hover        | `formatChatTimestampTooltip`                                          | `9821bca1`  |
-| 9        | Always-visible new-thread btn  | `0de95407` — _feat: sidebar v2 is now the default sidebar (#5672)_    | `9821bca1`  |
-| 10       | Package-local vitest configs   | `vp` (vite-plus) test-runner migration                                | `9821bca1`  |
+| #            | Fork change                       | Superseded by                                                             | Verified at |
+| ------------ | --------------------------------- | ------------------------------------------------------------------------- | ----------- |
+| 1            | Windows build: no shell mode      | `edb1240` — _fix(cli): publish nightly branded favicons (#4372)_          | `13458e65`  |
+| 4            | Terminal Ctrl-chord forwarding    | `acf761b2` — _feat(web): render terminals with libghostty-vt (#4860)_     | `13458e65`  |
+| 5 (core)     | Thread-scoped changed files       | `AssistantChangedFilesSection` per-turn checkpoints                       | `13458e65`  |
+| 8            | Full timestamp on hover           | `formatChatTimestampTooltip`                                              | `13458e65`  |
+| 9            | Always-visible new-thread btn     | `0de95407` — _feat: sidebar v2 is now the default sidebar (#5672)_        | `13458e65`  |
+| 10           | Package-local vitest configs      | `vp` (vite-plus) test-runner migration                                    | `13458e65`  |
+| 12 (symlink) | `CLAUDE.md` symlink → `AGENTS.md` | `4cb676cc` — _docs: point CLAUDE.md at AGENTS.md with an @import (#7171)_ | `13458e65`  |
 
 Detail:
 
@@ -409,6 +455,18 @@ Detail:
   runner to `vp` (vite-plus); the old `vitest.config.ts` files no longer apply,
   and upstream still ships none of its own for these packages. Revisit only if
   those packages' process-spawning tests flake under `vp`.
+- **Change 12 (symlink half) — `CLAUDE.md` as a symlink.** The fork insisted `CLAUDE.md` stay a
+  symlink whose target is the literal path `AGENTS.md`, after a `16c78b6`-style retarget to
+  `@AGENTS.md` had left it dangling. Upstream has now settled the same question the other way
+  and correctly: `2fc67623` (#3929) first restored the symlink target, then `4cb676cc` (#7171)
+  **replaced the symlink with a regular file whose content is `@AGENTS.md`** — which is the
+  `@file` import syntax in the one position where it actually resolves, i.e. inside a file's
+  content rather than as a link target. That is the fork's intent (`CLAUDE.md` resolves to
+  `AGENTS.md`, one source of truth) reached by a mechanism that does not depend on symlink
+  support in the checkout, so the fork now simply takes upstream's file: mode `100644`, content
+  `@AGENTS.md`. **Nothing left to re-apply, and do not restore the symlink** — re-adding it
+  would silently revert #7171 on every future rebase. Active entry 12 continues to carry the
+  two fork sections in `AGENTS.md`; only the `CLAUDE.md` half moved here.
 
 ---
 
