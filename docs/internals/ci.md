@@ -44,4 +44,7 @@ present in this fork. See [Release Checklist](../operations/release.md) for what
 Upstream's `web-preview.yml` (Vercel preview deploys — needs `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and
 `VERCEL_PROJECT_ID`) and `mobile-fingerprint-check.yml` (flags PRs that break mobile OTA reach) are
 not present either: the first needs credentials this fork lacks, and the second guards a store/EAS
-release process this fork does not run.
+release process this fork does not run. Upstream's `publish-aur.yml` (pushes the `t3code-bin` /
+`t3code-nightly-bin` AUR packages — needs `AUR_SSH_PRIVATE_KEY`) is likewise absent: it is a
+`workflow_call` target of the `release.yml` this fork does not keep. See
+[packaging/aur/README.md](../../packaging/aur/README.md).
