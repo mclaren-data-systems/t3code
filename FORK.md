@@ -12,9 +12,10 @@ existing implementation. In practice that thin layer has converged on one substa
 **a CI/workflow set a fork can actually run** (standard GitHub-hosted runners instead of
 upstream's Blacksmith ones, nothing needing credentials a fork lacks, and unsigned desktop
 artifacts built on every push to `main`) — plus this file and the `README.md` fork banner that
-points at it. The 2026-08-17 rebase left the fork carrying **no source change at all**; entry 15
-(Claude provider auth reporting) reintroduced one, so `apps/` and `packages/` now differ from
-upstream again. `native/`, `scripts/`, `packaging/`, and `pnpm-lock.yaml` remain byte-identical.
+points at it. The 2026-08-17 rebase left the fork carrying **no source change at all**; entries 15
+and 16 (multi-instance Claude provider fixes) reintroduced one, so `apps/` and `packages/` now
+differ from upstream again. `native/`, `scripts/`, `packaging/`, and `pnpm-lock.yaml` remain
+byte-identical.
 
 This file is the authoritative list of changes that set this fork
 (`mclaren-data-systems/t3code`, branch `main`) apart from upstream. It is
@@ -112,7 +113,8 @@ native/ scripts/ packaging/ pnpm-lock.yaml pnpm-workspace.yaml` is **empty** —
 > or "Dropped changes"; look for it there.
 >
 > **Carried on `main` today:** 11, 12 (its `AGENTS.md` sections only — the symlink half is now
-> upstream's), 13, 14, 15 — workflows, fork documentation, and one source change (15).
+> upstream's), 13, 14, 15, 16 — workflows, fork documentation, and two source changes (15, 16,
+> both from the same multi-instance provider investigation).
 > **Fork-intentional but not on `main` anywhere:** 5 (commit-preselect remainder), 6, 7.
 > Their PR branches were deleted from `origin`; the only surviving copies are
 > `refs/pull/6/head` (`47f1f30b`) and `refs/pull/7/head` (`8c295d66`), which sit on the
@@ -461,11 +463,8 @@ login`), which works on bash **because the shell expands `~`**. PowerShell does 
   against clean upstream — `0` means this entry is still needed. Partial supersession is likely
   (upstream may fix the auth state without surfacing the directory); keep whichever half is still
   missing rather than dropping the entry wholesale.
-- **Related gap, deliberately not fixed here:** `apps/server/src/usage/UsageService.ts` resolves
-  the Claude transcript directory from `settings.providers.claudeAgent` — the _default_ instance's
-  legacy blob — so usage and limits for any additional Claude instance are never scanned. Same
-  class of bug (default instance treated specially), out of scope for this entry, and worth its
-  own entry if it ever gets fixed here.
+- **Related gap, now entry 16:** the usage scan had the same default-instance-only blind spot.
+  Fixed separately so each entry can be dropped on its own when upstream catches up.
 - **Verified:** `vp test run apps/server/src/provider` (517 passed, 6 skipped), `vp test run
 apps/web/src/components/settings apps/web/src/components/chat/ProviderStatusBanner.test.tsx` plus
   the contracts settings/provider-instance tests (213 passed), `vp run --filter @t3tools/contracts
@@ -479,6 +478,60 @@ apps/web/src/components/settings apps/web/src/components/chat/ProviderStatusBann
   here also reflows a handful of untouched lines (lazy blockquote continuations lose their `> `,
   `*em*` becomes `_em_`). Harmless to render, but it is extra rebase-conflict surface — expect it,
   and do not mistake it for an intentional edit.
+
+### 16. Usage scans every configured provider instance, not just the default one
+
+- **Files:** `apps/server/src/usage/usageTranscriptSources.ts` (new),
+  `apps/server/src/usage/usageTranscriptSources.test.ts` (new),
+  `apps/server/src/usage/UsageService.ts` (`resolveTranscriptDirs` delegates to the new module)
+- **Commits:** branch `claude/multiple-claude-providers-9a0ewg`
+- **Problem.** `resolveTranscriptDirs` built a **fixed two-element list** from the legacy blobs —
+  `settings.providers.claudeAgent` and `settings.providers.codex` — so only the _default_ instance
+  of each driver was ever scanned. `settings.providerInstances` was not consulted anywhere in the
+  usage feature. Add a second Claude account and its transcripts (`<its config dir>/projects`) are
+  silently skipped: the dashboard keeps reporting, the totals just quietly exclude everything that
+  account spent. Same class of bug as entry 15 — the default instance treated as if it were the
+  only one.
+- **What changed.** A new `usageTranscriptSources` module enumerates one directory per configured
+  instance and `UsageService` consumes it. The scan loop already iterated a `dirs` array, emitted
+  one `UsageSource` per directory, and stamped `resolvedHomePath` into each fingerprint, so nothing
+  downstream needed touching: **no contract change, no `USAGE_CONTRACT_VERSION` bump, no UI
+  change.** Buckets stay keyed by `UsageProviderKind` (`"claude" | "codex"`), so the dashboard
+  keeps its two rows — the Claude row simply becomes correct instead of partial.
+- **Three decisions worth keeping if this is re-derived:**
+  1. **Disabled instances are still scanned.** Usage records tokens already spent; switching a
+     provider off must not retroactively erase them. This also matches the old behavior, which
+     ignored `enabled` entirely.
+  2. **Instances resolving to one directory are walked once**, keyed case-insensitively on Windows.
+     Sharing a config dir between presets is a documented setup (`docs/user/providers-claude.md`),
+     and nothing else de-duplicates inside a single environment — the client's
+     duplicate-fingerprint drop only runs _across_ environments. Without this, a shared directory
+     doubles every token it reads.
+  3. **A single undecodable instance config is logged and skipped**, not fatal. One bad envelope
+     must not zero out the whole usage page.
+- **Ordering is deliberate:** Claude sources before Codex ones, default slot before custom
+  instances (custom sorted by instance id). That reproduces the old two-element output exactly for
+  a single-instance environment, which is what keeps this change invisible to anyone not running
+  multiple instances.
+- **The default-slot merge is duplicated, not shared.** `instanceConfigsForDriver` re-implements
+  the rule from `deriveProviderInstanceConfigMap` (explicit `providerInstances` entry owns its id;
+  the legacy `providers.<kind>` blob fills the default slot only when unclaimed) for exactly the
+  two driver kinds that leave transcripts. Importing the hydration helper instead would drag
+  `BUILT_IN_DRIVERS` — the entire driver graph — into the usage module for a pure function. If
+  upstream ever moves that merge somewhere lightweight, collapse the two. **If upstream changes the
+  merge rule, this copy must follow**; that is the one drift risk in this entry.
+- **Not fixed here:** per-instance _breakdown_ in the dashboard (separate rows for "Claude Work"
+  and "Claude Personal"). That needs `instanceId` on `UsageBucket`, a `USAGE_CONTRACT_VERSION`
+  bump, and dynamic presentation/colors in both web and mobile. Deliberately out of scope: this
+  entry fixes wrong numbers, it does not add a feature.
+- **Drop it when:** upstream's `resolveTranscriptDirs` reads `settings.providerInstances`. Check
+  with `grep -n providerInstances apps/server/src/usage/UsageService.ts` against clean upstream —
+  no hit means this entry is still needed.
+- **Verified:** `vp test run apps/server/src/usage` (45 passed, 7 of them new), `vp run --filter t3
+typecheck` clean, `vp lint` and `vp fmt --check` clean on the touched files. The new tests cover
+  default-only output, the nested-vs-flat Claude layout probe, multiple instances per driver with
+  ordering, disabled instances, shared-directory de-duplication, an explicit entry claiming the
+  default slot, and the undecodable-config skip.
 
 ---
 
