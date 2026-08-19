@@ -99,6 +99,9 @@ CLAUDE_CONFIG_DIR=~/.claude_personal_home claude auth login
 Use `CLAUDE_CONFIG_DIR`, not `HOME`. Setting `HOME` writes the login to
 `~/.claude_personal_home/.claude`, which is not where T3 Code looks.
 
+On Windows, write the path out in full instead of using `~` — see
+[On Windows, Do Not Use `~` In PowerShell](#on-windows-do-not-use--in-powershell).
+
 Then add another Claude provider in T3 Code:
 
 ```text
@@ -109,6 +112,46 @@ CLAUDE_CONFIG_DIR path: ~/.claude_personal_home
 
 Use the email shown in Settings to confirm each provider is using the intended account. Emails are
 blurred by default; click the blurred email to reveal it.
+
+If a provider shows `Not authenticated`, Claude Code found no login in the directory that provider
+points at. Expand the provider and check `Resolved config directory`: that is the exact path T3 Code
+hands to Claude Code, and it is the path you need to log in against.
+
+### On Windows, Do Not Use `~` In PowerShell
+
+PowerShell does not expand `~` inside a quoted string, and Claude Code does not expand it either. So
+this looks correct and is not:
+
+```powershell
+$env:CLAUDE_CONFIG_DIR = "~\.claude_personal_home"   # wrong
+```
+
+Claude Code receives the literal text `~\.claude_personal_home`, treats it as a relative path, and
+writes your login into a folder named `~` beside wherever you happened to run the command — for
+example `C:\Users\you\~\.claude_personal_home`.
+
+This is convincing at first. The folder contains the usual Claude Code files, and a new terminal
+still shows you logged in, because a new terminal opens in the same place. Change directory first
+and the login is gone. T3 Code, which does expand `~`, never sees that folder at all, so the
+provider reports `Not authenticated` and every message asks you to log in.
+
+Use an absolute path:
+
+```powershell
+$env:CLAUDE_CONFIG_DIR = "$HOME\.claude_personal_home"
+claude auth login
+```
+
+If you already logged in the other way, move the folder and re-check:
+
+```powershell
+Move-Item -LiteralPath "$HOME\~\.claude_personal_home" -Destination "$HOME\.claude_personal_home"
+Remove-Item -LiteralPath "$HOME\~"
+```
+
+In T3 Code Settings you can write either `~\.claude_personal_home` or the full path. T3 Code expands
+the `~` before handing the path to Claude Code, and shows you the result under `Resolved config
+directory`.
 
 ## Can I Switch Claude Accounts In An Existing Thread?
 

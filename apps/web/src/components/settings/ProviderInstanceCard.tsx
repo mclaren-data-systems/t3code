@@ -441,6 +441,17 @@ export function ProviderInstanceCard({
     enabled && liveProvider?.auth.status === "authenticated"
       ? (liveProvider.auth.label ?? liveProvider.auth.type ?? null)
       : null;
+  const configDirectory = liveProvider?.configDirectory;
+  // A home path that resolves somewhere unexpected is the usual cause of a
+  // provider that is installed but cannot authenticate, so the hint only turns
+  // into a warning once auth has actually failed. An absent credentials file is
+  // not proof on its own: some platforms keep credentials in an OS keystore.
+  const configDirectoryFailedAuth = liveProvider?.auth.status === "unauthenticated";
+  const configDirectoryHint = !configDirectoryFailedAuth
+    ? "The path this instance hands to its CLI. A leading ~ is expanded here — your shell may not expand it the same way."
+    : configDirectory?.credentialsFound
+      ? "This instance is not logged in, even though this directory holds a credentials file."
+      : "This instance is not logged in and no credentials file was found here. Point your shell at this exact path and log in.";
   const versionLabel = getProviderVersionLabel(liveProvider?.version);
   const versionAdvisory = getProviderVersionAdvisoryPresentation(liveProvider?.versionAdvisory);
   const updateCommand = versionAdvisory?.updateCommand ?? null;
@@ -897,6 +908,28 @@ export function ProviderInstanceCard({
                   </p>
                 </>
               )}
+              {configDirectory ? (
+                <>
+                  <span className="pt-1.5 text-xs font-medium text-foreground">
+                    Resolved config directory
+                  </span>
+                  <div className="min-w-0">
+                    <ScrollArea scrollFade className="h-8 rounded-md bg-muted/40 px-2">
+                      <code className="flex h-full w-max items-center whitespace-nowrap font-mono text-[11px] text-foreground">
+                        {configDirectory.path}
+                      </code>
+                    </ScrollArea>
+                    <span
+                      className={cn(
+                        "mt-1 block text-xs",
+                        configDirectoryFailedAuth ? "text-warning" : "text-muted-foreground",
+                      )}
+                    >
+                      {configDirectoryHint}
+                    </span>
+                  </div>
+                </>
+              ) : null}
               <div className={PROVIDER_FIELD_GROUP_LABEL_CLASS_NAME}>Environment</div>
               <div className="col-span-full">
                 <ProviderEnvironmentSection
