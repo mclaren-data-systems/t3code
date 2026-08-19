@@ -36,12 +36,16 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   const title = isUnauthenticated
     ? `${providerName} is unauthenticated`
     : `${providerName} provider status`;
-  const message = isUnauthenticated
-    ? "Sign in via the CLI to authenticate again."
-    : (status.message ??
-      (status.status === "error"
+  // A provider-supplied message names the specific thing to fix (which config
+  // directory to log into, which binary is missing); the generic lines below
+  // are only the fallback when the server had nothing more useful to say.
+  const message =
+    status.message ??
+    (isUnauthenticated
+      ? "Sign in via the CLI to authenticate again."
+      : status.status === "error"
         ? `${providerName} provider is unavailable.`
-        : `${providerName} provider has limited availability.`));
+        : `${providerName} provider has limited availability.`);
 
   return (
     <div className="pointer-events-auto mx-auto w-fit max-w-[calc(100%-2rem)] pt-3">
