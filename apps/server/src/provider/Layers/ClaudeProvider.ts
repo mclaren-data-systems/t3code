@@ -2,6 +2,7 @@ import {
   type ClaudeSettings,
   type ModelCapabilities,
   type ModelSelection,
+  type ServerProviderConfigDirectory,
   type ServerProviderModel,
   type ServerProviderSlashCommand,
 } from "@t3tools/contracts";
@@ -40,7 +41,7 @@ import {
   type ServerProviderDraft,
 } from "../providerSnapshot.ts";
 import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
-import { makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
+import { makeClaudeEnvironment, resolveClaudeConfigDirectory } from "../Drivers/ClaudeHome.ts";
 import { discoverClaudeSkills } from "../Drivers/ClaudeSkills.ts";
 
 const DEFAULT_CLAUDE_MODEL_CAPABILITIES: ModelCapabilities = createModelCapabilities({
@@ -570,6 +571,53 @@ function apiProviderAuthMetadata(
   return apiProvider === "bedrock" ? { type: "bedrock", label: "Amazon Bedrock" } : undefined;
 }
 
+/**
+ * Claude Code's marker for "I hold no credential at all". Anything else in
+ * `tokenSource` — `claude.ai`, `ANTHROPIC_AUTH_TOKEN`, `apiKeyHelper`, … —
+ * names a credential the CLI actually found.
+ */
+const CLAUDE_EMPTY_TOKEN_SOURCE = "none";
+
+/**
+ * Classify a capability probe into an auth status.
+ *
+ * The probe reads the SDK's initialization handshake, which the CLI answers
+ * locally before contacting Anthropic. That handshake always carries an
+ * `account` object for first-party auth, so "the probe returned something" is
+ * NOT evidence of a login — a logged-out CLI answers with every account field
+ * blank and `tokenSource: "none"`. Treating the bare payload as proof is what
+ * made a mis-pointed `CLAUDE_CONFIG_DIR` render as "Authenticated" with no
+ * email while every turn failed with a login prompt.
+ *
+ * `"unknown"` is reserved for payloads that carry no signal either way (an
+ * older CLI, or a shape we do not recognize); the caller reports those the
+ * same way it reports a probe that never answered.
+ */
+function claudeProbeAuthStatus(
+  capabilities: ClaudeCapabilitiesProbe,
+): "authenticated" | "unauthenticated" | "unknown" {
+  // Bedrock/Vertex authenticate through their own cloud credentials; the SDK
+  // reports no account fields for them at all, only the backend name.
+  if (capabilities.apiProvider !== undefined && capabilities.apiProvider !== "firstParty") {
+    return "authenticated";
+  }
+  if (capabilities.email || capabilities.subscriptionType || capabilities.apiKeySource) {
+    return "authenticated";
+  }
+  if (capabilities.tokenSource === undefined) return "unknown";
+  return capabilities.tokenSource === CLAUDE_EMPTY_TOKEN_SOURCE
+    ? "unauthenticated"
+    : "authenticated";
+}
+
+/** Login guidance that names the directory the CLI will actually read. */
+function claudeUnauthenticatedMessage(configDirectory: ServerProviderConfigDirectory): string {
+  const missingCredentials = configDirectory.credentialsFound
+    ? ""
+    : " No credentials file was found there.";
+  return `Claude Code is not logged in for ${configDirectory.path}.${missingCredentials} Set CLAUDE_CONFIG_DIR to that exact path in a terminal and log in, then refresh.`;
+}
+
 // ── SDK capability probe ────────────────────────────────────────────
 
 // Amazon Bedrock initializes far slower than first-party auth: the SDK boots the
@@ -634,7 +682,14 @@ function nonEmptyProbeString(value: string): string | undefined {
 type ClaudeCapabilitiesProbe = {
   readonly email: string | undefined;
   readonly subscriptionType: string | undefined;
+  /**
+   * Where the CLI found its bearer credential. Claude Code reports the literal
+   * string `"none"` when it has none, which is the only positive signal we get
+   * that an instance is logged out.
+   */
   readonly tokenSource: string | undefined;
+  /** Set only when an API key is in play (`ANTHROPIC_API_KEY`, helper, …). */
+  readonly apiKeySource: string | undefined;
   /**
    * Active API backend reported by the SDK's `AccountInfo`. Anthropic OAuth
    * login only applies when `"firstParty"`; for Amazon Bedrock (`"bedrock"`)
@@ -762,6 +817,7 @@ const probeClaudeCapabilities = (
             readonly email?: string;
             readonly subscriptionType?: string;
             readonly tokenSource?: string;
+            readonly apiKeySource?: string;
             readonly apiProvider?: string;
           }
         | undefined;
@@ -769,6 +825,7 @@ const probeClaudeCapabilities = (
         email: account?.email,
         subscriptionType: account?.subscriptionType,
         tokenSource: account?.tokenSource,
+        apiKeySource: account?.apiKeySource,
         apiProvider: account?.apiProvider,
         slashCommands: parseClaudeInitializationCommands(init.commands),
       } satisfies ClaudeCapabilitiesProbe;
@@ -935,8 +992,17 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     ...(capabilities?.slashCommands ?? []),
   ];
   const dedupedSlashCommands = dedupeSlashCommands(slashCommands);
+  // Reported from here on so every auth outcome names the directory the CLI
+  // reads, which is the value a mistyped home path gets wrong.
+  const configDirectory = yield* resolveClaudeConfigDirectory(
+    claudeSettings,
+    resolvedEnvironment,
+    cwd,
+  );
 
-  if (!capabilities) {
+  const authStatus = capabilities ? claudeProbeAuthStatus(capabilities) : "unknown";
+
+  if (!capabilities || authStatus === "unknown") {
     return buildServerProvider({
       presentation: CLAUDE_PRESENTATION,
       enabled: claudeSettings.enabled,
@@ -944,12 +1010,32 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
       models,
       slashCommands: dedupedSlashCommands,
       skills,
+      configDirectory,
       probe: {
         installed: true,
         version: parsedVersion,
         status: "warning",
         auth: { status: "unknown" },
         message: "Could not verify Claude authentication status from initialization result.",
+      },
+    });
+  }
+
+  if (authStatus === "unauthenticated") {
+    return buildServerProvider({
+      presentation: CLAUDE_PRESENTATION,
+      enabled: claudeSettings.enabled,
+      checkedAt,
+      models,
+      slashCommands: dedupedSlashCommands,
+      skills,
+      configDirectory,
+      probe: {
+        installed: true,
+        version: parsedVersion,
+        status: "error",
+        auth: { status: "unauthenticated" },
+        message: claudeUnauthenticatedMessage(configDirectory),
       },
     });
   }
@@ -966,6 +1052,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     models,
     slashCommands: dedupedSlashCommands,
     skills,
+    configDirectory,
     probe: {
       installed: true,
       version: parsedVersion,
