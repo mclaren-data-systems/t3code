@@ -4,7 +4,9 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
@@ -131,16 +133,21 @@ type TestClaudeCapabilities = {
   readonly email: string | undefined;
   readonly subscriptionType: string | undefined;
   readonly tokenSource: string | undefined;
+  readonly apiKeySource: string | undefined;
   readonly apiProvider: string | undefined;
   readonly slashCommands: ReadonlyArray<ServerProviderSlashCommand>;
 };
 
+// Defaults describe a logged-in OAuth CLI: `tokenSource` names the credential
+// Claude Code found. A logged-out CLI reports the literal string "none", which
+// `claudeCapabilities({ tokenSource: "none" })` exercises.
 function claudeCapabilities(overrides: Partial<TestClaudeCapabilities> = {}) {
   return () =>
     Effect.succeed({
       email: undefined,
       subscriptionType: undefined,
-      tokenSource: undefined,
+      tokenSource: "claude.ai",
+      apiKeySource: undefined,
       apiProvider: undefined,
       slashCommands: [],
       ...overrides,
@@ -1810,6 +1817,140 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
           assert.strictEqual(status.auth.type, "bedrock");
           assert.strictEqual(status.auth.label, "Amazon Bedrock");
         }).pipe(
+          Effect.provide(
+            mockSpawnerLayer((args) => {
+              const joined = args.join(" ");
+              if (joined === "--version") return { stdout: "1.0.0\n", stderr: "", code: 0 };
+              throw new Error(`Unexpected args: ${joined}`);
+            }),
+          ),
+        ),
+      );
+
+      it.effect("reports unauthenticated when Claude Code holds no credential", () =>
+        Effect.gen(function* () {
+          const fileSystem = yield* FileSystem.FileSystem;
+          const configDir = yield* fileSystem.makeTempDirectoryScoped({
+            prefix: "t3code-claude-logged-out-",
+          });
+          // A logged-out CLI still answers the initialization handshake; it
+          // just reports `tokenSource: "none"` with every account field blank.
+          const status = yield* checkClaudeProviderStatus(
+            { ...defaultClaudeSettings, homePath: configDir },
+            claudeCapabilities({ tokenSource: "none" }),
+            {},
+          );
+          assert.strictEqual(status.status, "error");
+          assert.strictEqual(status.installed, true);
+          assert.strictEqual(status.auth.status, "unauthenticated");
+          assert.strictEqual(status.auth.email, undefined);
+          assert.strictEqual(status.configDirectory?.path, configDir);
+          assert.strictEqual(status.configDirectory?.credentialsFound, false);
+          assert.ok((status.message ?? "").includes(configDir));
+          assert.ok((status.message ?? "").includes("No credentials file was found there."));
+        }).pipe(
+          Effect.scoped,
+          Effect.provide(
+            mockSpawnerLayer((args) => {
+              const joined = args.join(" ");
+              if (joined === "--version") return { stdout: "1.0.0\n", stderr: "", code: 0 };
+              throw new Error(`Unexpected args: ${joined}`);
+            }),
+          ),
+        ),
+      );
+
+      it.effect("omits the missing-credentials note when the config dir holds one", () =>
+        Effect.gen(function* () {
+          const fileSystem = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const configDir = yield* fileSystem.makeTempDirectoryScoped({
+            prefix: "t3code-claude-stale-",
+          });
+          yield* fileSystem.writeFileString(path.join(configDir, ".credentials.json"), "{}");
+
+          const status = yield* checkClaudeProviderStatus(
+            { ...defaultClaudeSettings, homePath: configDir },
+            claudeCapabilities({ tokenSource: "none" }),
+            {},
+          );
+          assert.strictEqual(status.auth.status, "unauthenticated");
+          assert.strictEqual(status.configDirectory?.credentialsFound, true);
+          assert.ok(!(status.message ?? "").includes("No credentials file was found there."));
+        }).pipe(
+          Effect.scoped,
+          Effect.provide(
+            mockSpawnerLayer((args) => {
+              const joined = args.join(" ");
+              if (joined === "--version") return { stdout: "1.0.0\n", stderr: "", code: 0 };
+              throw new Error(`Unexpected args: ${joined}`);
+            }),
+          ),
+        ),
+      );
+
+      it.effect("reports unknown when the initialization result carries no auth signal", () =>
+        Effect.gen(function* () {
+          // Older CLIs may answer without a `tokenSource`; that is no evidence
+          // either way, so it lands in the same bucket as a probe that never
+          // answered rather than being reported as a login.
+          const status = yield* checkClaudeProviderStatus(
+            defaultClaudeSettings,
+            claudeCapabilities({ tokenSource: undefined }),
+            {},
+          );
+          assert.strictEqual(status.status, "warning");
+          assert.strictEqual(status.auth.status, "unknown");
+          assert.strictEqual(
+            status.message,
+            "Could not verify Claude authentication status from initialization result.",
+          );
+        }).pipe(
+          Effect.provide(
+            mockSpawnerLayer((args) => {
+              const joined = args.join(" ");
+              if (joined === "--version") return { stdout: "1.0.0\n", stderr: "", code: 0 };
+              throw new Error(`Unexpected args: ${joined}`);
+            }),
+          ),
+        ),
+      );
+
+      it.effect("keeps API-key auth authenticated without an OAuth account", () =>
+        Effect.gen(function* () {
+          const status = yield* checkClaudeProviderStatus(
+            defaultClaudeSettings,
+            claudeCapabilities({ tokenSource: "none", apiKeySource: "ANTHROPIC_API_KEY" }),
+            {},
+          );
+          assert.strictEqual(status.status, "ready");
+          assert.strictEqual(status.auth.status, "authenticated");
+        }).pipe(
+          Effect.provide(
+            mockSpawnerLayer((args) => {
+              const joined = args.join(" ");
+              if (joined === "--version") return { stdout: "1.0.0\n", stderr: "", code: 0 };
+              throw new Error(`Unexpected args: ${joined}`);
+            }),
+          ),
+        ),
+      );
+
+      it.effect("reports the resolved config directory alongside a healthy login", () =>
+        Effect.gen(function* () {
+          const fileSystem = yield* FileSystem.FileSystem;
+          const configDir = yield* fileSystem.makeTempDirectoryScoped({
+            prefix: "t3code-claude-home-",
+          });
+          const status = yield* checkClaudeProviderStatus(
+            { ...defaultClaudeSettings, homePath: configDir },
+            claudeCapabilities({ email: "claude@example.com" }),
+            {},
+          );
+          assert.strictEqual(status.auth.status, "authenticated");
+          assert.strictEqual(status.configDirectory?.path, configDir);
+        }).pipe(
+          Effect.scoped,
           Effect.provide(
             mockSpawnerLayer((args) => {
               const joined = args.join(" ");
