@@ -53,6 +53,35 @@ describe("ProviderStatusBanner", () => {
     expect(markup).toContain('data-variant="warning"');
   });
 
+  it("prefers the server's message over the generic unauthenticated line", () => {
+    const markup = renderToStaticMarkup(
+      <ProviderStatusBanner
+        status={{
+          ...warningProvider(),
+          status: "error",
+          auth: { status: "unauthenticated" },
+          message: "Claude Code is not logged in for C:\\Users\\dev\\.claude-work.",
+        }}
+        onDismiss={() => {}}
+      />,
+    );
+
+    expect(markup).toContain("is not logged in for");
+    expect(markup).not.toContain("Sign in via the CLI to authenticate again.");
+  });
+
+  it("falls back to the generic unauthenticated line when the server sent no message", () => {
+    const { message: _omitted, ...withoutMessage } = warningProvider();
+    const markup = renderToStaticMarkup(
+      <ProviderStatusBanner
+        status={{ ...withoutMessage, status: "error", auth: { status: "unauthenticated" } }}
+        onDismiss={() => {}}
+      />,
+    );
+
+    expect(markup).toContain("Sign in via the CLI to authenticate again.");
+  });
+
   it("labels error dismiss controls with the correct severity", () => {
     const markup = renderToStaticMarkup(
       <ProviderStatusBanner

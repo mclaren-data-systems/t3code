@@ -12,9 +12,9 @@ existing implementation. In practice that thin layer has converged on one substa
 **a CI/workflow set a fork can actually run** (standard GitHub-hosted runners instead of
 upstream's Blacksmith ones, nothing needing credentials a fork lacks, and unsigned desktop
 artifacts built on every push to `main`) — plus this file and the `README.md` fork banner that
-points at it; as of the 2026-08-17 rebase the fork carries **no source change at all**, with
-`apps/`, `packages/`, `native/`, `scripts/`, `packaging/`, and `pnpm-lock.yaml` byte-identical
-to upstream.
+points at it. The 2026-08-17 rebase left the fork carrying **no source change at all**; entry 15
+(Claude provider auth reporting) reintroduced one, so `apps/` and `packages/` now differ from
+upstream again. `native/`, `scripts/`, `packaging/`, and `pnpm-lock.yaml` remain byte-identical.
 
 This file is the authoritative list of changes that set this fork
 (`mclaren-data-systems/t3code`, branch `main`) apart from upstream. It is
@@ -83,14 +83,14 @@ When you reset/sync, work through every entry below. For each one:
 > that reports no conflicts.
 >
 > **What was verified at the 2026-08-17 rebase:** `git diff upstream/main HEAD -- apps/ packages/
-> native/ scripts/ packaging/ pnpm-lock.yaml pnpm-workspace.yaml` is **empty** — the fork's source
+native/ scripts/ packaging/ pnpm-lock.yaml pnpm-workspace.yaml` is **empty** — the fork's source
 > tree and lockfile are byte-identical to upstream, so the `--frozen-lockfile` / `typecheck` /
 > `test` checklist would only have been testing upstream against itself, and it was not run (the
 > host again had node 22 against the pinned node ^24.13.1). The checks that were fork-specific
 > ran: the kept `thread-transfer-report.yml` publisher test (`node --test
-> .github/scripts/thread-transfer-report.test.cjs`) passes 6/6; every kept workflow is on a
+.github/scripts/thread-transfer-report.test.cjs`) passes 6/6; every kept workflow is on a
 > standard GitHub-hosted runner with no secret beyond `GITHUB_TOKEN` (`grep -rn blacksmith
-> .github/workflows/` now hits only a comment in `desktop-artifacts.yml`); the one new dangling
+.github/workflows/` now hits only a comment in `desktop-artifacts.yml`); the one new dangling
 > reference to a deleted workflow (`packaging/aur/README.md` → `publish-aur.yml`) was given a fork
 > note; and `infra/relay/scripts/deploy.test.ts` has no leftover reference to the imports its
 > dropped guard used. **Re-run the full checklist the moment any entry re-introduces a source
@@ -112,7 +112,7 @@ When you reset/sync, work through every entry below. For each one:
 > or "Dropped changes"; look for it there.
 >
 > **Carried on `main` today:** 11, 12 (its `AGENTS.md` sections only — the symlink half is now
-> upstream's), 13, 14 — i.e. workflows and fork documentation only.
+> upstream's), 13, 14, 15 — workflows, fork documentation, and one source change (15).
 > **Fork-intentional but not on `main` anywhere:** 5 (commit-preselect remainder), 6, 7.
 > Their PR branches were deleted from `origin`; the only surviving copies are
 > `refs/pull/6/head` (`47f1f30b`) and `refs/pull/7/head` (`8c295d66`), which sit on the
@@ -255,7 +255,7 @@ When you reset/sync, work through every entry below. For each one:
   own `AGENTS.md`. **`CLAUDE.md` is no longer part of this entry** — take whatever upstream
   ships for it (as of `13458e65` a regular file containing `@AGENTS.md`) and do not restore
   the old fork symlink; see "Superseded changes". The rule the old note encoded still holds
-  as a rule, though: `@AGENTS.md` works as *file content* and not as a symlink target, so a
+  as a rule, though: `@AGENTS.md` works as _file content_ and not as a symlink target, so a
   `CLAUDE.md` that is a symlink must point at the literal path `AGENTS.md`.
 - **Redundancy check (as of `13458e65`): keep, clean replay.** The two fork sections still sit
   after upstream's two-paragraph intro and before `## What makes T3 Code special?`. Upstream
@@ -339,8 +339,8 @@ When you reset/sync, work through every entry below. For each one:
 - **Deleted (mobile, which this fork does not target):** `mobile-fingerprint-check.yml`,
   **declined at the 2026-08-10 rebase** (arrived with `73b2e8fd` (#5609)). This is the one
   borderline call in the set: it is genuinely credential-free (it computes both native
-  fingerprints in one job, no `EXPO_TOKEN`), so a runner swap alone would make it *run*. It
-  was still dropped, because what it runs *for* does not exist here — it labels PRs that would
+  fingerprints in one job, no `EXPO_TOKEN`), so a runner swap alone would make it _run_. It
+  was still dropped, because what it runs _for_ does not exist here — it labels PRs that would
   break OTA reach until the next store build, and this fork ships no store builds, no EAS
   workflows, and no mobile CI (same reasoning that dropped `mobile_native_static_analysis`
   from `ci.yml`). Revisit only if this fork ever starts releasing the mobile app.
@@ -377,7 +377,7 @@ When you reset/sync, work through every entry below. For each one:
   `.github/workflows/release.yml`, `mobile-eas-production.yml`, and
   `mobile-showcase-screenshots.yml`. `desktop-artifacts.yml` was diffed against upstream's
   `release.yml` build job as this entry requires, and the check was worth running this time
-  because upstream *did* touch `release.yml` (`1b120f35` #6034, `e25021af` #4128): both changes
+  because upstream _did_ touch `release.yml` (`1b120f35` #6034, `e25021af` #4128): both changes
   landed **outside** the build job — a `timeout-minutes` bump on the `release` job and the new
   `publish_aur` call — and the build job is byte-for-byte identical across the range (346 lines
   either side), so there is **no drift**. Note that upstream's build **script**
@@ -387,6 +387,98 @@ When you reset/sync, work through every entry below. For each one:
   same `--platform` / `--target` / `--arch` args, minus `--signed` and the credential env
   block). The fork's workflow set is unchanged: `ci.yml`, `desktop-artifacts.yml`,
   `issue-labels.yml`, `thread-transfer-report.yml`.
+
+### 15. Claude providers report a real unauthenticated state, and show the config dir they resolved
+
+- **Files:** `packages/contracts/src/server.ts` (new `ServerProviderConfigDirectory`, new optional
+  `ServerProvider.configDirectory`), `apps/server/src/provider/providerSnapshot.ts`
+  (`buildServerProvider` passes it through), `apps/server/src/provider/providerStatusCache.ts`
+  (`hydrateCachedProvider` carries it alongside `auth`),
+  `apps/server/src/provider/Drivers/ClaudeHome.ts`
+  (`resolveClaudeConfigDirPath` moved in from `ClaudeSkills.ts`, new
+  `resolveClaudeConfigDirectory`), `apps/server/src/provider/Drivers/ClaudeSkills.ts` (imports the
+  moved helper), `apps/server/src/provider/Layers/ClaudeProvider.ts` (auth classification),
+  `apps/web/src/components/settings/ProviderInstanceCard.tsx` (resolved-directory row),
+  `apps/web/src/components/chat/ProviderStatusBanner.tsx` (prefer the server's message); tests in
+  `apps/server/src/provider/Layers/{ProviderRegistry,ClaudeCapabilitiesProbe}.test.ts` and
+  `apps/web/src/components/chat/ProviderStatusBanner.test.tsx`; docs in
+  `docs/user/providers-claude.md`
+- **Commits:** branch `claude/multiple-claude-providers-9a0ewg`
+- **Problem.** `checkClaudeProviderStatus` treated "the SDK capability probe returned an object" as
+  proof of a login. It is not. Claude Code answers the initialization handshake **locally**, before
+  contacting Anthropic, and for first-party auth it always emits an `account` object — a logged-out
+  CLI just fills it with blanks plus the literal `tokenSource: "none"`. So every Claude instance
+  that could start its CLI reported `status: "ready"` / `auth.status: "authenticated"`, and
+  `ClaudeProvider.ts` was the only provider layer that could never emit `"unauthenticated"` (Codex
+  and Cursor both do). A second Claude instance pointed at a config directory with no login
+  rendered as a bare "Authenticated" with an empty email while every turn failed asking the user
+  to log in — the failure was invisible everywhere except inside a chat.
+- **What changed:**
+  1. **Auth classification** (`claudeProbeAuthStatus`). Three-way, not two: any positive evidence
+     (`email`, `subscriptionType`, `apiKeySource`, or a non-`firstParty` `apiProvider` such as
+     Bedrock) → `authenticated`; the explicit `tokenSource: "none"` marker with nothing else →
+     `unauthenticated` + `status: "error"` + a message naming the directory; **no signal at all** →
+     the pre-existing `unknown` + `warning` bucket, the same one a probe that never answered lands
+     in. The third case is deliberate and load-bearing: a CLI authenticated through a `profile`
+     source reports an empty account object, and an older CLI may omit `tokenSource` entirely.
+     Neither must be called logged-out. The probe also now captures `apiKeySource`, without which
+     a raw `ANTHROPIC_API_KEY` setup would be misreported.
+  2. **Resolved config directory on the snapshot.** New optional `ServerProvider.configDirectory` =
+     `{ path, credentialsFound }`, populated by the Claude driver with the absolute path it exports
+     as `CLAUDE_CONFIG_DIR` plus whether a `.credentials.json` sits there. Driver-agnostic on the
+     wire so Codex could adopt it. `credentialsFound: false` is **not** proof of a logged-out CLI —
+     macOS keeps credentials in the login keychain — so it is only ever rendered as detail on an
+     already-failed auth state.
+  3. **UI.** The provider card shows `Resolved config directory` in its expanded body, next to the
+     `CLAUDE_CONFIG_DIR path` field that produces it; the hint turns warning-coloured only when
+     auth actually failed. `ProviderStatusBanner` now prefers the server's `message` over its
+     hardcoded "Sign in via the CLI to authenticate again." line, so the specific directory reaches
+     the user in-chat. That fallback still applies when the server sent no message.
+  4. **Docs.** `docs/user/providers-claude.md` gained a Windows/PowerShell section. Upstream's
+     multi-account instructions only show the bash form (`CLAUDE_CONFIG_DIR=~/.claude_x claude auth
+login`), which works on bash **because the shell expands `~`**. PowerShell does not expand `~`
+     inside a quoted string and neither does Claude Code, so the same instruction writes the login
+     into a relative folder literally named `~` next to the caller's cwd. It is convincing — the
+     folder looks right and a fresh terminal still shows a login, because it opens in the same
+     place — and T3 Code, which _does_ expand `~` before exporting `CLAUDE_CONFIG_DIR`, never sees
+     it. That asymmetry is the whole bug, and it is not going away: T3 Code must expand, since a
+     spawned process gets no shell expansion.
+- **Why this is not just a UI nicety.** With `unauthenticated` now reachable, the existing filters
+  in `apps/mobile/src/lib/modelOptions.ts`, `apps/web/src/components/CommandPalette.tsx`, and
+  `packages/client-runtime/src/operations/projects.ts` start applying to Claude for the first time
+  — a logged-out instance drops out of pickers instead of being offered and failing. That is the
+  behavior those call sites always intended; only Claude was exempt.
+- **Re-apply notes:** The fragile coupling is the `tokenSource: "none"` contract, which is Claude
+  Code's, not T3 Code's. Before re-deriving, confirm it still holds against the CLI version in play
+  (the initialization `account` payload is built from an internal helper that returns `{}` for
+  non-first-party backends and `{ tokenSource: "none" }` when it holds no credential). If that ever
+  changes shape, the _classification_ has to move but the three-way structure should stay — the one
+  thing this entry exists to prevent is a binary "probe answered ⇒ authenticated". Everything else
+  is additive: the contract field is optional, `buildServerProvider` ignores it when absent, and
+  the two UI changes degrade to today's behavior with no `configDirectory` present.
+- **Drop it when:** upstream's `ClaudeProvider.ts` emits `auth.status: "unauthenticated"` on its
+  own. Check with `grep -c '"unauthenticated"' apps/server/src/provider/Layers/ClaudeProvider.ts`
+  against clean upstream — `0` means this entry is still needed. Partial supersession is likely
+  (upstream may fix the auth state without surfacing the directory); keep whichever half is still
+  missing rather than dropping the entry wholesale.
+- **Related gap, deliberately not fixed here:** `apps/server/src/usage/UsageService.ts` resolves
+  the Claude transcript directory from `settings.providers.claudeAgent` — the _default_ instance's
+  legacy blob — so usage and limits for any additional Claude instance are never scanned. Same
+  class of bug (default instance treated specially), out of scope for this entry, and worth its
+  own entry if it ever gets fixed here.
+- **Verified:** `vp test run apps/server/src/provider` (517 passed, 6 skipped), `vp test run
+apps/web/src/components/settings apps/web/src/components/chat/ProviderStatusBanner.test.tsx` plus
+  the contracts settings/provider-instance tests (213 passed), `vp run --filter @t3tools/contracts
+--filter t3 --filter @t3tools/web typecheck` clean, and `vp lint` / `vp fmt --check` clean on the
+  touched source files. Node 22 host against the pinned node ^24.13.1; `pnpm install` (not
+  `--frozen-lockfile`) succeeded and **`pnpm-lock.yaml` is left unchanged** — this entry adds no
+  dependency. The install did rewrite two `deprecated:` annotation lines under `@xmldom/xmldom`
+  (registry metadata drift, unrelated to this change); those were reverted so the lockfile stays
+  byte-identical to upstream. Expect the same noise on the next install. Note also that the
+  **pre-commit hook runs `vp fmt` over `FORK.md`**, which does not conform on upstream: any edit
+  here also reflows a handful of untouched lines (lazy blockquote continuations lose their `> `,
+  `*em*` becomes `_em_`). Harmless to render, but it is extra rebase-conflict surface — expect it,
+  and do not mistake it for an intentional edit.
 
 ---
 
