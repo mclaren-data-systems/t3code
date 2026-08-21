@@ -12,10 +12,11 @@ existing implementation. In practice that thin layer has converged on one substa
 **a CI/workflow set a fork can actually run** (standard GitHub-hosted runners instead of
 upstream's Blacksmith ones, nothing needing credentials a fork lacks, and unsigned desktop
 artifacts built on every push to `main`) — plus this file and the `README.md` fork banner that
-points at it. The 2026-08-17 rebase left the fork carrying **no source change at all**; entries 15
-and 16 (multi-instance Claude provider fixes) reintroduced one, so `apps/` and `packages/` now
-differ from upstream again. `native/`, `scripts/`, `packaging/`, and `pnpm-lock.yaml` remain
-byte-identical.
+points at it. Alongside it the fork carries the two multi-instance Claude provider fixes
+(entries 15 and 16), so `apps/` and `packages/` differ from upstream. `native/`, `scripts/`,
+`pnpm-lock.yaml`, and `pnpm-workspace.yaml` are byte-identical to upstream; the only thing
+under `packaging/` and `infra/` that differs is a fork note in a README (plus the dropped
+release-workflow guard in `infra/relay/scripts/deploy.test.ts` — see entry 14).
 
 This file is the authoritative list of changes that set this fork
 (`mclaren-data-systems/t3code`, branch `main`) apart from upstream. It is
@@ -33,22 +34,26 @@ When you reset/sync, work through every entry below. For each one:
 3. Keep this file in sync: update the "Last rebase" marker, and move entries between the
    "Active", "Superseded", and "Dropped" sections as upstream evolves.
 
-> **Last rebase onto upstream:** **2026-08-17**, onto `pingdotgg/t3code` `main` at
-> **`13458e65`** — _fix(web): center the context usage meter (#7296)_. The `main` this
-> replaces was `8d6b5a56` (based on `9821bca1`, 2026-08-10), which had itself replaced
-> `baaa8682` (based on `de592a00`, 2026-08-05). This rebase takes in **212 upstream
-> commits**.
+> **Last rebase onto upstream:** **2026-08-21**, onto `pingdotgg/t3code` `main` at
+> **`c3e37094`** — _fix(web): render oversized terminal graphemes without crashing (#7809)_.
+> The `main` this replaces was `1ffbbbbb` (based on `db0659fe`), which had itself replaced
+> `8d6b5a56` (based on `9821bca1`, 2026-08-10) and `baaa8682` (based on `de592a00`,
+> 2026-08-05). This rebase takes in **74 upstream commits**.
 >
-> **The symlink half of entry 12 was superseded at this rebase** — upstream replaced the
-> `CLAUDE.md` symlink with a regular file whose content is `@AGENTS.md` in `4cb676cc` (#7171),
-> which is the `@file` import syntax used in the one place it works. The fork's two `AGENTS.md`
-> sections are untouched and entry 12 stays active for them; see "Superseded changes".
-> `main` still carries no change under `apps/`, `packages/`, `native/`, or the new
-> `packaging/`: the entire fork diff against upstream remains workflows plus fork
-> documentation.
+> **Nothing was superseded at this rebase.** All six carried entries (11, 12, 13, 14, 15, 16)
+> and all three fork-intentional-but-unshipped ones (5, 6, 7) were re-checked against
+> `c3e37094` and still apply; see each entry's redundancy check.
 >
-> `main` history was rewritten by force-push at this rebase. The overwritten tip `8d6b5a56`
-> **was backed up** to `origin/backup/main-pre-rebase-2026-08-17`, as `baaa8682` was to
+> **The `1ffbbbbb` history contained a merge commit** — `f78d68fa`, _Merge branch
+> 'pingdotgg:main' into main_, which pulled `13458e65..db0659fe` in rather than rebasing onto
+> it. This rebase linearized that away: the fork's seven own commits now sit directly on
+> `c3e37094`. Keep syncing by rebase, not merge — a merge commit costs nothing here but it
+> makes "what does this fork actually carry?" a graph question instead of a `git diff
+upstream/main HEAD` one.
+>
+> `main` history was rewritten by force-push at this rebase. The overwritten tip `1ffbbbbb`
+> **was backed up** to `origin/backup/main-pre-rebase-2026-08-21`, as `8d6b5a56` was to
+> `origin/backup/main-pre-rebase-2026-08-17` and `baaa8682` to
 > `origin/backup/main-pre-rebase-2026-08-10`. The two rebases before those overwrote tips
 > (`563d725d`, `ba07e561`) that were never pushed anywhere and remain recoverable only from
 > GitHub's unreachable-object retention.
@@ -69,6 +74,12 @@ When you reset/sync, work through every entry below. For each one:
 >   regression; re-run as a non-root user to see them pass.
 > - Several server tests (ACP adapters, some `ProviderRegistry`) fail **locally on Windows**
 >   (process-spawn / POSIX-path assumptions) but pass on Linux CI.
+> - **Timing-sensitive server tests flake on a loaded or CPU-starved runner.** Seen at the
+>   2026-08-21 rebase: `GrokAdapter.test.ts` (_retains turn transcript when sendTurn is
+>   interrupted after prompt success_) and one spawn-ordering assertion in
+>   `ProviderRegistry.test.ts` each failed once inside a 574-test run, then passed three
+>   consecutive times when run as their own file pair, and the full run went green on a
+>   re-run. Re-run the failing file alone before treating this class as a regression.
 >
 > Note that `vp run` **bails on the first failing task**, so one environmental failure hides
 > every package after it — re-run the survivors with `--filter` before concluding the suite
@@ -83,19 +94,29 @@ When you reset/sync, work through every entry below. For each one:
 > a `pnpm-lock.yaml` that replayed badly, which is the most likely silent breakage in a rebase
 > that reports no conflicts.
 >
-> **What was verified at the 2026-08-17 rebase:** `git diff upstream/main HEAD -- apps/ packages/
-native/ scripts/ packaging/ pnpm-lock.yaml pnpm-workspace.yaml` is **empty** — the fork's source
-> tree and lockfile are byte-identical to upstream, so the `--frozen-lockfile` / `typecheck` /
-> `test` checklist would only have been testing upstream against itself, and it was not run (the
-> host again had node 22 against the pinned node ^24.13.1). The checks that were fork-specific
-> ran: the kept `thread-transfer-report.yml` publisher test (`node --test
-.github/scripts/thread-transfer-report.test.cjs`) passes 6/6; every kept workflow is on a
-> standard GitHub-hosted runner with no secret beyond `GITHUB_TOKEN` (`grep -rn blacksmith
-.github/workflows/` now hits only a comment in `desktop-artifacts.yml`); the one new dangling
-> reference to a deleted workflow (`packaging/aur/README.md` → `publish-aur.yml`) was given a fork
-> note; and `infra/relay/scripts/deploy.test.ts` has no leftover reference to the imports its
-> dropped guard used. **Re-run the full checklist the moment any entry re-introduces a source
-> change** — that is when the lockfile risk comes back.
+> **What was verified at the 2026-08-21 rebase:** entries 15 and 16 make this the first rebase
+> since 2026-08-05 that carries a source change, so the full checklist ran. The host had node
+> 22, so **node 24.19.0 was fetched from `nodejs.org/dist/latest-v24.x` and put on `PATH`**
+> before anything else — the cheapest way to satisfy `engines.node: ^24.13.1` without a version
+> manager. `pnpm install --frozen-lockfile` **succeeded and left `pnpm-lock.yaml` untouched**
+> (`git status` clean afterwards), which is the check that a replayed lockfile is sound; the
+> `@xmldom/xmldom` `deprecated:` drift the previous entry warned about did not reappear.
+> `vp run --filter @t3tools/contracts --filter t3 --filter @t3tools/web typecheck` is clean
+> (only pre-existing `unnecessaryFailYieldableError` _suggestions_ in untouched upstream files —
+> `orchestration/decider.ts`, `orchestration/workflowScriptQuery.ts`,
+> `pullRequest/GitLabPullRequestCli.ts`). `vp test run apps/server/src/provider
+apps/server/src/usage` is **568 passed / 6 skipped**, and `vp test run
+apps/web/src/components/settings apps/web/src/components/chat/ProviderStatusBanner.test.tsx` is
+> **115 passed** — see the flake note above for the two failures that appeared on the first
+> attempt and did not reproduce. `vp lint` and `vp fmt --check` are clean over all 15
+> fork-touched `.ts`/`.tsx` files.
+>
+> Fork-specific checks: the kept `thread-transfer-report.yml` publisher test (`node --test
+.github/scripts/thread-transfer-report.test.cjs`) passes 6/6; `infra/relay/scripts/deploy.test.ts`
+> passes 9/9 with its dropped release-workflow guard; every kept workflow is on a standard
+> GitHub-hosted runner with no secret beyond `GITHUB_TOKEN` (`grep -rn blacksmith
+.github/workflows/` still hits only the explanatory comment in `desktop-artifacts.yml`); and a
+> repo-wide grep for the deleted workflow filenames turns up only the two intentional fork notes.
 
 > **Migration caution — no longer applies, but keep the rule.** The fork carries **no**
 > migrations of its own (`git diff upstream/main HEAD -- apps/server/src/persistence/` is
@@ -149,17 +170,17 @@ native/ scripts/ packaging/ pnpm-lock.yaml pnpm-workspace.yaml` is **empty** —
   `MessagesTimeline`/`ChatHeader` into `GitActionsControl`, whose `allFiles` memo and
   commit-dialog state handle the preselection. Expect this wiring to need adaptation
   whenever upstream reworks `GitActionsControl`.
-- **Redundancy check (as of `13458e65`): keep — the display half is superseded, the
+- **Redundancy check (as of `c3e37094`): keep — the display half is superseded, the
   commit-preselect button is not.** Upstream's `AssistantChangedFilesSection` (still in
   `MessagesTimeline.tsx`) attributes changed files per turn, which was the bulk of the
   original entry; see "Superseded changes". No `preselect`-style symbol exists anywhere in
   `apps/web/src`, so the commit-modal half is still unshipped. All five last-known files still
-  exist at their recorded paths. **Unlike the previous rebase, `GitActionsControl.tsx` churned
-  here** — four upstream commits in the `9821bca1..13458e65` range: `cad2c936` (#4849, the
-  multi-provider pull-requests page with in-app reviews, the substantial one), plus `4c1d99d7`
-  (#6392, commit-dialog path overflow), `2db08457` (#6207) and `35172010` (#6194) on action
-  icons. Re-read its `allFiles` memo and commit-dialog state before threading the preselect
-  prop; the plumbing shape should still hold, but the anchors have moved.
+  exist at their recorded paths. **`GitActionsControl.tsx` took zero upstream commits in the
+  `db0659fe..c3e37094` range**, so the anchors the previous rebase flagged as moved have now
+  settled: `allFiles` is still the plain `gitStatusForActions?.workingTree.files ?? []` memo
+  (with `selectedFiles` derived from it through `excludedFiles`) that the preselect prop has to
+  seed. `MessagesTimeline.tsx` churned three times; re-read it before threading the prop
+  through.
 
 ### 6. Keep the completed (green) dot until the thread is read
 
@@ -180,20 +201,20 @@ native/ scripts/ packaging/ pnpm-lock.yaml pnpm-workspace.yaml` is **empty** —
   initial state, hydrate, persist, `syncThreads` pruning/seeding). The
   outstanding TODO refinement — only mark read after ~3s of visibility — is
   not implemented; don't mistake the TODO for shipped behavior.
-- **Redundancy check (as of `13458e65`): keep.** `uiStateStore.ts` again took **no** upstream
-  change in this range and still tracks only `threadLastVisitedAtById`; there is no
-  acknowledged-at equivalent anywhere in `apps/web/src` (the `hasServerAcknowledgedLocalDispatch`
-  helper in `ChatView.logic.ts` is unrelated — it is composer dispatch bookkeeping). The v2
-  `Sidebar.tsx` remains the target (`LegacySidebar.tsx` is still opt-in — leave it alone).
-  **The precise hook point is `hasUnseenCompletion` in `Sidebar.logic.ts`**, which compares
+- **Redundancy check (as of `c3e37094`): keep.** `uiStateStore.ts` has now gone **three**
+  consecutive rebases without an upstream change and still tracks only
+  `threadLastVisitedAtById`; there is no acknowledged-at equivalent anywhere in `apps/web/src`
+  (the `hasServerAcknowledgedLocalDispatch` helper in `ChatView.logic.ts` is unrelated — it is
+  composer dispatch bookkeeping). The v2 `Sidebar.tsx` remains the target
+  (`LegacySidebar.tsx` is still opt-in — leave it alone). **The precise hook point is
+  `hasUnseenCompletion` in `Sidebar.logic.ts`** (now at line 259), which compares
   `latestTurn.completedAt` against a `thread.lastVisitedAt` field passed in on
-  `ThreadStatusInput` — it no longer reads the `threadLastVisitedAtById` map itself, so the
+  `ThreadStatusInput` — it does not read the `threadLastVisitedAtById` map itself, so the
   acknowledged-at value has to reach it the same way (widen `ThreadStatusInput` and its call
   sites in `Sidebar.tsx` / `ThreadStatusIndicators.tsx`) rather than by patching the store read.
-  Both sidebar files churned heavily in this range — `Sidebar.tsx` in **16** commits (notably
-  `fee10def` (#7209), which bans native `title` tooltips in favour of the styled `Tooltip`, and
-  the `d7abd7f3` / `804cba43` workspace-layout refresh-and-revert pair) and `Sidebar.logic.ts`
-  in four — so re-read them before wiring.
+  That shape is unchanged from the last rebase. `Sidebar.logic.ts` took one commit in this
+  range (`1afe5545`, #7103, thread reordering) and `Sidebar.tsx` eight — none of them near
+  `hasUnseenCompletion` — so this is the calmest these anchors have been in three rebases.
 
 ### 7. Per-thread composer message history (arrow-key recall)
 
@@ -215,19 +236,20 @@ native/ scripts/ packaging/ pnpm-lock.yaml pnpm-workspace.yaml` is **empty** —
   `threadMessageHistory.ts` with tests — re-apply that module verbatim and
   redo only the `ChatComposer`/`ComposerPromptEditor` key-handler wiring if the
   composer has been refactored.
-- **Redundancy check (as of `13458e65`): keep.** No `threadMessageHistory` /
+- **Redundancy check (as of `c3e37094`): keep.** No `threadMessageHistory` /
   `THREAD_MESSAGE_HISTORY` symbols upstream; the composer still has no history recall.
   The pure `threadMessageHistory.ts` module still ports verbatim, but the composer
   key wiring must be redone — `ComposerPromptEditor.tsx` still routes ArrowUp/ArrowDown
-  through Lexical `registerCommand` (`unregisterArrowUp` around line 939, feeding a shared
-  `handleCommand(key, event)` typed to `"ArrowDown" | "ArrowUp" | "Enter" | "Tab"`), and that
-  handler is already claimed by the completion/command menu. **That `handleCommand` union is the
-  seam to extend**: the boundary rules from `isThreadMessageHistoryBoundary` have to run only
-  when the menu declines the key. Both composer files churned again in this range — eight
-  upstream commits across them, including `7c55e863` (#6602) and `34a12bc3` (#6574) adding
-  pre-turn prompt/attachment rejection, `a6ac27e7` (#6636) accepting file drops across the chat
-  workspace, and `9885a845` (#6381) simplifying global styling — so re-read the current key
-  handlers before wiring anything.
+  through Lexical `registerCommand` (`unregisterArrowUp` at line 939, feeding a shared
+  `handleCommand(key, event)` at line 913 typed to `"ArrowDown" | "ArrowUp" | "Enter" | "Tab"`),
+  and that handler is already claimed by the completion/command menu. **That `handleCommand`
+  union is the seam to extend**: the boundary rules from `isThreadMessageHistoryBoundary` have
+  to run only when the menu declines the key. `ComposerPromptEditor.tsx` took one commit in this
+  range (`792a1404`, #7150, attached composer state drawers) and the anchors landed at the same
+  line numbers as last rebase, but `ChatComposer.tsx` took five — including `e7235012` (#7737),
+  which puts **skills into the slash-command menu** and so adds another claimant on ArrowUp /
+  ArrowDown. Re-read the current key handlers, and expect the menu to decline the key less often
+  than it used to.
 
 ### 11. TODO list moved into this file; `TODO.md` deleted
 
@@ -240,7 +262,7 @@ native/ scripts/ packaging/ pnpm-lock.yaml pnpm-workspace.yaml` is **empty** —
   `TODO.md` — resolve by keeping the deletion. If upstream added TODO items
   worth tracking, fold them into this file's TODO section instead of
   resurrecting `TODO.md`.
-- **Redundancy check (as of `13458e65`): moot — no conflict left to resolve.**
+- **Redundancy check (as of `c3e37094`): moot — no conflict left to resolve.**
   `TODO.md` is still absent from upstream's tree (`git ls-tree upstream/main TODO.md`
   is empty), so the deletion no longer collides with anything. Nothing to
   re-apply; keep the TODO section in this file.
@@ -255,16 +277,17 @@ native/ scripts/ packaging/ pnpm-lock.yaml pnpm-workspace.yaml` is **empty** —
   merge conflicts; no scratch/analysis markdown in the repo).
 - **Re-apply notes:** What is carried is just those two fork sections sitting on upstream's
   own `AGENTS.md`. **`CLAUDE.md` is no longer part of this entry** — take whatever upstream
-  ships for it (as of `13458e65` a regular file containing `@AGENTS.md`) and do not restore
+  ships for it (as of `c3e37094` a regular file containing `@AGENTS.md`) and do not restore
   the old fork symlink; see "Superseded changes". The rule the old note encoded still holds
   as a rule, though: `@AGENTS.md` works as _file content_ and not as a symlink target, so a
   `CLAUDE.md` that is a symlink must point at the literal path `AGENTS.md`.
-- **Redundancy check (as of `13458e65`): keep, clean replay.** The two fork sections still sit
-  after upstream's two-paragraph intro and before `## What makes T3 Code special?`. Upstream
-  touched `AGENTS.md` once in this range (`9e201941`, #6479 — dropping the rebase-before-PR
-  requirement), far below the insertion point, so it replayed without a conflict. Expect a
-  conflict on any rebase that rewrites upstream's intro; keep the fork sections, take
-  upstream's prose.
+- **Redundancy check (as of `c3e37094`): keep, clean replay.** The two fork sections still sit
+  after upstream's two-paragraph intro and before `## What makes T3 Code special?` (lines 7 and
+  17). Upstream touched `AGENTS.md` three times in this range — `45a2c4b2` (#7658, user count),
+  `9167622a` (#7665, implementation plans move out of the repo) and `9f12eab3` (#7762, PR assets
+  stop being committed) — all far below the insertion point, so it replayed without a conflict.
+  `CLAUDE.md` is upstream's regular file containing `@AGENTS.md`, unchanged. Expect a conflict on
+  any rebase that rewrites upstream's intro; keep the fork sections, take upstream's prose.
 
 ### 13. Housekeeping: `README.md` fork banner and this file
 
@@ -274,12 +297,12 @@ native/ scripts/ packaging/ pnpm-lock.yaml pnpm-workspace.yaml` is **empty** —
 - **Re-apply notes:** The banner is delimited by `<!-- FORK-BANNER:START -->` /
   `<!-- FORK-BANNER:END -->` — re-derive the text between them rather than merging it, since
   it goes stale every time an entry moves out of "Active".
-- **Redundancy check (as of `13458e65`): keep, refreshed.** The banner's body still describes
-  the fork accurately (workflow set only; everything under `apps/`, `packages/`, `native/`
-  byte-identical to upstream), so only the rebase marker inside it moved to `13458e65` /
-  2026-08-17. Upstream's two `README.md` changes in this range (`e9ae134c` routing feature
-  requests to Discussions, `e25021af` #4128 splitting the existing Arch/AUR install block into
-  stable and nightly packages) both landed below the banner without conflict.
+- **Redundancy check (as of `c3e37094`): keep, refreshed.** Upstream made **no** `README.md`
+  change in this range, so the banner replayed untouched. Its body needed a real edit rather
+  than just a marker bump this time: the previous text claimed the fork's diff was the workflow
+  set alone and that `apps/` / `packages/` were byte-identical to upstream, which stopped being
+  true when entries 15 and 16 landed. The banner now names the two source changes as well, and
+  the rebase marker inside it moved to `c3e37094` / 2026-08-21.
 
 ### 14. A workflow set this fork can actually run
 
@@ -298,10 +321,14 @@ native/ scripts/ packaging/ pnpm-lock.yaml pnpm-workspace.yaml` is **empty** —
   scheduled `Release` runs were cancelled after the 24h queue timeout, and the
   only push-triggered `CI` run ever recorded went the same way.
 - **Kept (3 upstream workflows):**
-  - `ci.yml` — upstream's Blacksmith runners (`blacksmith-8vcpu-ubuntu-2404` on
-    `check` / `test` / `release_smoke`) → `ubuntu-24.04`, and the macOS-only
-    `mobile_native_static_analysis` job dropped (this fork does not target
-    mobile, and its `blacksmith-6vcpu-macos-26` runner is unavailable to it).
+  - `ci.yml` — every Blacksmith runner → `ubuntu-24.04` (as of `c3e37094` that is
+    `blacksmith-8vcpu-ubuntu-2404` on `check` / `test` / `test_server` / `release_smoke` and
+    `blacksmith-4vcpu-ubuntu-2404` on `rust`), and **both** mobile jobs dropped: the macOS-only
+    `mobile_native_static_analysis` (this fork does not target mobile, and its
+    `blacksmith-6vcpu-macos-26` runner is unavailable to it) and the
+    `mobile_native_changes` gate that exists only to decide whether to boot it. Note the
+    thread-transfer budget report is published from the `test_server` job, not `test` — see
+    `thread-transfer-report.yml` below.
   - `issue-labels.yml` — unmodified; `GITHUB_TOKEN` only, and it bootstraps the
     labels `.github/ISSUE_TEMPLATE/*.yml` apply.
   - `thread-transfer-report.yml` — **adopted at the 2026-08-10 rebase**, unmodified. Arrived
@@ -309,9 +336,12 @@ native/ scripts/ packaging/ pnpm-lock.yaml pnpm-workspace.yaml` is **empty** —
     `ubuntu-24.04` (not Blacksmith) with `secrets.GITHUB_TOKEN` only. It runs on
     `workflow_run` against `workflows: [CI]` — a workflow this fork keeps — and comments the
     thread-transfer budget diff from the `thread-transfer-results` artifact that #5350 also
-    added to `ci.yml`'s Test job. Its `.github/scripts/thread-transfer-report.cjs` publisher
-    and test came along; `node --test .github/scripts/thread-transfer-report.test.cjs` passes
-    6/6 here.
+    added to `ci.yml`. **As of `d7b9a689` (#7286) that artifact is produced by the sharded
+    `test_server` job, not `Test`** — one shard writes it and the upload is gated on the file's
+    presence so exactly one `thread-transfer-results` artifact exists per run, which is the name
+    this workflow resolves. Dropping or renaming `test_server` would silently break it. Its
+    `.github/scripts/thread-transfer-report.cjs` publisher and test came along; `node --test
+.github/scripts/thread-transfer-report.test.cjs` passes 6/6 here.
 - **Added:** `desktop-artifacts.yml` — builds the four platforms upstream's
   `release.yml` matrix covers (macOS `arm64`/`x64` DMG, Linux `x64` AppImage,
   Windows `x64` NSIS) on every push to `main` and on dispatch, **unsigned**, and
@@ -367,28 +397,42 @@ native/ scripts/ packaging/ pnpm-lock.yaml pnpm-workspace.yaml` is **empty** —
   standing rule. Separately, `desktop-artifacts.yml` is fork-owned and can drift against
   upstream's desktop build requirements **without ever showing up as a merge conflict** —
   diff it against upstream's `release.yml` build job on every sync.
-- **Redundancy check (as of `13458e65`): keep, and this is again where the 2026-08-17 rebase did
-  nearly all of its work.** Upstream added **one** new workflow in the `9821bca1..13458e65`
-  range — `publish-aur.yml`, **declined**; see the Deleted list above. Upstream did **not** touch
-  `ci.yml` at all in this range, so the fork's `ci.yml` delta replayed untouched and is still
-  exactly the three `runs-on` lines plus the dropped `mobile_native_static_analysis` job;
-  `issue-labels.yml` and `thread-transfer-report.yml` were likewise unchanged upstream and stay
-  unmodified. `grep -rn blacksmith .github/workflows/` now matches only the explanatory comment
-  in `desktop-artifacts.yml`. Four modify/delete conflicts came up and were all resolved as
-  **deletions**, per this entry: `.github/VOUCHED.td` (upstream kept adding vouch entries),
-  `.github/workflows/release.yml`, `mobile-eas-production.yml`, and
-  `mobile-showcase-screenshots.yml`. `desktop-artifacts.yml` was diffed against upstream's
-  `release.yml` build job as this entry requires, and the check was worth running this time
-  because upstream _did_ touch `release.yml` (`1b120f35` #6034, `e25021af` #4128): both changes
-  landed **outside** the build job — a `timeout-minutes` bump on the `release` job and the new
-  `publish_aur` call — and the build job is byte-for-byte identical across the range (346 lines
-  either side), so there is **no drift**. Note that upstream's build **script**
-  `scripts/build-desktop-artifact.ts` did change (`ad117235` #6201 macOS DMG installer
-  background, `c9063f03` #6169, `7e01d33f` #5877); that is shared source the fork does not fork,
-  and the fork's invocation still matches upstream's (`vp run dist:desktop:artifact` with the
-  same `--platform` / `--target` / `--arch` args, minus `--signed` and the credential env
-  block). The fork's workflow set is unchanged: `ci.yml`, `desktop-artifacts.yml`,
-  `issue-labels.yml`, `thread-transfer-report.yml`.
+- **Redundancy check (as of `c3e37094`): keep, and once again this entry is where the rebase
+  spent its effort.** Upstream added **no** new workflow in the `db0659fe..c3e37094` range, so
+  there was nothing new to accept or decline — the first rebase in a while with no opt-in
+  decision to make. It did, however, **restructure `ci.yml` substantially**, which is why the
+  fork's `ci.yml` delta could not simply replay:
+  - `d7b9a689` (#7286) split the suite into `test` (everything except `t3`, run with
+    `--parallel`) and a **new sharded `test_server`** job (`t3` alone, 3 shards, because
+    `apps/server` sets `fileParallelism: false`), and pulled the Rust checks out of `check` /
+    `test` into a **new `rust`** job on `blacksmith-4vcpu-ubuntu-2404`. The thread-transfer
+    budget report moved to `test_server` along with the server tests.
+  - `8f7da3b9` (#7283) added the **new `mobile_native_changes`** gate job on
+    `blacksmith-2vcpu-ubuntu-2404`, whose only purpose is to decide whether the macOS
+    `mobile_native_static_analysis` job boots.
+  - `9f12eab3` (#7762) added a `Reject repository-owned PR assets` step to `check` (a plain
+    `git ls-files` guard — credential-free, kept as-is) and deleted `.github/pr-assets/`.
+
+  **Resolved per this entry's re-derive rule:** upstream's new `ci.yml` was taken wholesale and
+  the standing rule re-applied to it, rather than replaying the old hunks. That is now **five**
+  `runs-on` swaps to `ubuntu-24.04` (`check`, `test`, `test_server`, `rust`, `release_smoke`) and
+  **two** dropped jobs. Dropping `mobile_native_changes` alongside
+  `mobile_native_static_analysis` is the new call here and it is deliberate: the gate is
+  credential-free and would run on a swapped runner, but with its only consumer gone it is a job
+  that computes an output nothing reads. Same reasoning that dropped
+  `mobile-fingerprint-check.yml` — keep what this fork's CI actually uses.
+  `issue-labels.yml` and `thread-transfer-report.yml` were unchanged upstream and stay
+  unmodified; `grep -rn blacksmith .github/workflows/` still matches only the explanatory comment
+  in `desktop-artifacts.yml`. Two conflicts came up: `.github/VOUCHED.td` (modify/delete —
+  upstream kept adding vouch entries; resolved as a **deletion**, per this entry) and
+  `docs/internals/ci.md`, whose fork note was **rewritten** rather than merged so it describes
+  the five jobs the fork now runs instead of the old three.
+
+  `desktop-artifacts.yml` was diffed against upstream's `release.yml` build job as this entry
+  requires. Upstream touched neither `release.yml` nor `scripts/build-desktop-artifact.ts` in
+  this range (`git log db0659fe..upstream/main` on both paths is empty), so there is **no drift**
+  and nothing to reconcile. The fork's workflow set is unchanged: `ci.yml`,
+  `desktop-artifacts.yml`, `issue-labels.yml`, `thread-transfer-report.yml`.
 
 ### 15. Claude providers report a real unauthenticated state, and show the config dir they resolved
 
@@ -463,6 +507,19 @@ login`), which works on bash **because the shell expands `~`**. PowerShell does 
   against clean upstream — `0` means this entry is still needed. Partial supersession is likely
   (upstream may fix the auth state without surfacing the directory); keep whichever half is still
   missing rather than dropping the entry wholesale.
+- **Redundancy check (as of `c3e37094`): keep, clean replay — neither half is superseded.** Both
+  drop-checks come back empty against clean upstream: `grep -c '"unauthenticated"'` on upstream's
+  `ClaudeProvider.ts` is **0**, and `configDirectory` does not appear in upstream's
+  `packages/contracts/src/server.ts`. Upstream made three changes under
+  `apps/server/src/provider/` in this range — `e7f6a30c` (#7459, stop probing Grok/Cursor/OpenCode
+  unless turned on), `cf251c3b` (#3154, OpenCode skill discovery) and `4bdbd8ce` (#7659, Daybreak
+  models out of legacy models) — and none collided: every fork file replayed without a conflict.
+  The one worth re-checking by hand was `cf251c3b`, since this entry **moves
+  `resolveClaudeConfigDirPath` out of `ClaudeSkills.ts` into `ClaudeHome.ts`**; the import survived
+  (`ClaudeSkills.ts:20` still pulls it from `./ClaudeHome.ts` and uses it at line 72), and
+  `apps/server/src/provider` is green at 568 passed / 6 skipped. Note `e7f6a30c` narrows which
+  providers get probed at all — it does not touch how a Claude probe's answer is classified, which
+  is what this entry changes.
 - **Related gap, now entry 16:** the usage scan had the same default-instance-only blind spot.
   Fixed separately so each entry can be dropped on its own when upstream catches up.
 - **Verified:** `vp test run apps/server/src/provider` (517 passed, 6 skipped), `vp test run
@@ -527,6 +584,14 @@ apps/web/src/components/settings apps/web/src/components/chat/ProviderStatusBann
 - **Drop it when:** upstream's `resolveTranscriptDirs` reads `settings.providerInstances`. Check
   with `grep -n providerInstances apps/server/src/usage/UsageService.ts` against clean upstream —
   no hit means this entry is still needed.
+- **Redundancy check (as of `c3e37094`): keep, clean replay.** The drop-check comes back empty:
+  `providerInstances` still does not appear in upstream's `UsageService.ts`, and upstream's
+  `apps/server/src/usage/` has no `usageTranscriptSources.ts` equivalent. Upstream made **no**
+  change under `apps/server/src/usage/` in this range at all, so the entry replayed untouched and
+  the drift risk this entry names — upstream moving the default-slot merge rule that
+  `instanceConfigsForDriver` duplicates from `deriveProviderInstanceConfigMap` — did not
+  materialize. Re-verify that duplication on the next rebase regardless; it is the one part of
+  this entry that can go silently wrong. `vp test run apps/server/src/usage` is green.
 - **Verified:** `vp test run apps/server/src/usage` (45 passed, 7 of them new), `vp run --filter t3
 typecheck` clean, `vp lint` and `vp fmt --check` clean on the touched files. The new tests cover
   default-only output, the nested-vs-flat Claude layout probe, multiple instances per driver with
@@ -539,17 +604,17 @@ typecheck` clean, `vp lint` and `vp fmt --check` clean on the touched files. The
 
 Changes the fork used to carry that upstream has since implemented. **Do not
 re-introduce them.** Each entry names the upstream change that replaced it; all
-were re-verified against `13458e65` during the 2026-08-17 rebase.
+were re-verified against `c3e37094` during the 2026-08-21 rebase.
 
 | #            | Fork change                       | Superseded by                                                             | Verified at |
 | ------------ | --------------------------------- | ------------------------------------------------------------------------- | ----------- |
-| 1            | Windows build: no shell mode      | `edb1240` — _fix(cli): publish nightly branded favicons (#4372)_          | `13458e65`  |
-| 4            | Terminal Ctrl-chord forwarding    | `acf761b2` — _feat(web): render terminals with libghostty-vt (#4860)_     | `13458e65`  |
-| 5 (core)     | Thread-scoped changed files       | `AssistantChangedFilesSection` per-turn checkpoints                       | `13458e65`  |
-| 8            | Full timestamp on hover           | `formatChatTimestampTooltip`                                              | `13458e65`  |
-| 9            | Always-visible new-thread btn     | `0de95407` — _feat: sidebar v2 is now the default sidebar (#5672)_        | `13458e65`  |
-| 10           | Package-local vitest configs      | `vp` (vite-plus) test-runner migration                                    | `13458e65`  |
-| 12 (symlink) | `CLAUDE.md` symlink → `AGENTS.md` | `4cb676cc` — _docs: point CLAUDE.md at AGENTS.md with an @import (#7171)_ | `13458e65`  |
+| 1            | Windows build: no shell mode      | `edb1240` — _fix(cli): publish nightly branded favicons (#4372)_          | `c3e37094`  |
+| 4            | Terminal Ctrl-chord forwarding    | `acf761b2` — _feat(web): render terminals with libghostty-vt (#4860)_     | `c3e37094`  |
+| 5 (core)     | Thread-scoped changed files       | `AssistantChangedFilesSection` per-turn checkpoints                       | `c3e37094`  |
+| 8            | Full timestamp on hover           | `formatChatTimestampTooltip`                                              | `c3e37094`  |
+| 9            | Always-visible new-thread btn     | `0de95407` — _feat: sidebar v2 is now the default sidebar (#5672)_        | `c3e37094`  |
+| 10           | Package-local vitest configs      | `vp` (vite-plus) test-runner migration                                    | `c3e37094`  |
+| 12 (symlink) | `CLAUDE.md` symlink → `AGENTS.md` | `4cb676cc` — _docs: point CLAUDE.md at AGENTS.md with an @import (#7171)_ | `c3e37094`  |
 
 Detail:
 
