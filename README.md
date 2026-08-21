@@ -5,13 +5,15 @@
 > This is a development fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3code),
 > maintained at [mclaren-data-systems/t3code](https://github.com/mclaren-data-systems/t3code).
 > Upstream (`pingdotgg`) is treated as the source of truth and `main` here is periodically
-> rebased onto it — most recently onto `13458e65` on 2026-08-17.
+> rebased onto it — most recently onto `c3e37094` on 2026-08-21.
 >
 > On top of upstream this fork carries a deliberately thin layer: a **workflow set a fork can
 > actually run** — standard GitHub-hosted runners instead of upstream's Blacksmith ones, no
 > workflow needing credentials a fork lacks, and unsigned desktop artifacts built on every
-> push to `main` — plus this banner and `FORK.md`. Everything under `apps/`, `packages/`, and
-> `native/` is byte-identical to upstream.
+> push to `main` — plus two server fixes for **running more than one Claude provider instance**
+> (a logged-out instance now reports as unauthenticated instead of ready, and usage totals scan
+> every configured instance rather than only the default one), plus this banner and `FORK.md`.
+> `native/`, `scripts/`, `packaging/`, and `pnpm-lock.yaml` are byte-identical to upstream.
 >
 > The authoritative, up-to-date list of everything that sets this fork apart from upstream —
 > including changes upstream has since implemented, and changes dropped by choice — lives in
