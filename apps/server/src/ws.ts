@@ -62,6 +62,7 @@ import {
   WsRpcGroup,
 } from "@t3tools/contracts";
 import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgroundActivitySettings";
+import { applyWorktreeBranchPrefix } from "@t3tools/shared/git";
 import { HttpRouter, HttpServerRequest, HttpServerRespondable } from "effect/unstable/http";
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 
@@ -1003,10 +1004,21 @@ const makeWsRpcLayer = (
                 });
                 worktreeBaseRef = resolvedRemoteBase.commitSha;
               }
+              // Clients mint the placeholder branch name, so the server is the
+              // one place that knows the configured prefix. Re-namespace it
+              // here; a branch the user named is passed through untouched.
+              const requestedBranch = bootstrap.prepareWorktree.branch;
+              const worktreeBranch =
+                requestedBranch === undefined
+                  ? undefined
+                  : applyWorktreeBranchPrefix(
+                      requestedBranch,
+                      (yield* serverSettings.getSettings).worktreeBranchPrefix,
+                    );
               const worktree = yield* gitWorkflow.createWorktree({
                 cwd: bootstrap.prepareWorktree.projectCwd,
                 refName: worktreeBaseRef,
-                newRefName: bootstrap.prepareWorktree.branch,
+                newRefName: worktreeBranch,
                 baseRefName: bootstrap.prepareWorktree.baseBranch,
                 path: null,
               });

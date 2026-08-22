@@ -152,6 +152,7 @@ describe("ProviderCommandReactor", () => {
     readonly titleRegenerationBeforeStart?: "one" | "two";
     readonly interruptTurnEffect?: () => Effect.Effect<void, ProviderAdapterRequestError>;
     readonly stopSessionEffect?: () => Effect.Effect<void, ProviderAdapterRequestError>;
+    readonly worktreeBranchPrefix?: string;
     readonly startSessionEffect?: (
       session: ProviderSession,
     ) => Effect.Effect<ProviderSession, ProviderAdapterRequestError>;
@@ -426,7 +427,13 @@ describe("ProviderCommandReactor", () => {
           generateThreadTitle,
         }),
       ),
-      Layer.provideMerge(ServerSettingsService.layerTest()),
+      Layer.provideMerge(
+        ServerSettingsService.layerTest(
+          input?.worktreeBranchPrefix === undefined
+            ? {}
+            : { worktreeBranchPrefix: input.worktreeBranchPrefix },
+        ),
+      ),
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), baseDir)),
       Layer.provideMerge(NodeServices.layer),
     );
@@ -1568,6 +1575,58 @@ describe("ProviderCommandReactor", () => {
     expect(harness.createWorktree.mock.invocationCallOrder[0]).toBeLessThan(
       harness.startSession.mock.invocationCallOrder[0]!,
     );
+  });
+
+  it("renames the worktree branch under the configured branch prefix", async () => {
+    const harness = await createHarness({ worktreeBranchPrefix: "theo" });
+    const now = "2026-01-01T00:00:00.000Z";
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-thread-branch-prefix"),
+        threadId: ThreadId.make("thread-1"),
+        // Minted by the client under the default prefix, so it stays eligible
+        // for rename after the prefix changed.
+        branch: "t3code/1234abcd",
+        worktreePath: "/tmp/provider-project-worktree",
+      }),
+    );
+
+    harness.generateBranchName.mockImplementation((_: unknown) =>
+      Effect.succeed({ branch: "Safer reconnect backoff" }),
+    );
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-turn-start-branch-prefix"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-branch-prefix"),
+          role: "user",
+          text: "Add a safer reconnect backoff.",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.renameBranch.mock.calls.length === 1);
+    expect(harness.renameBranch.mock.calls[0]?.[0]).toMatchObject({
+      oldBranch: "t3code/1234abcd",
+      newBranch: "theo/safer-reconnect-backoff",
+    });
+
+    await waitFor(async () => {
+      const readModel = await harness.readModel();
+      return (
+        readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"))?.branch ===
+        "theo/safer-reconnect-backoff"
+      );
+    });
   });
 
   it("forwards codex model options through session start and turn send", async () => {
