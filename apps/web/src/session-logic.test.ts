@@ -12,6 +12,7 @@ import { resolveWorkEntryToolPresentation } from "@t3tools/client-runtime/work-l
 import {
   deriveActiveWorkStartedAt,
   deriveActivePlanState,
+  deriveCommitExcludedFilePaths,
   derivePendingApprovals,
   derivePendingUserInputs,
   deriveTimelineEntries,
@@ -2487,5 +2488,26 @@ describe("session activity performance", () => {
       command: "git diff",
       toolLifecycleStatus: "completed",
     });
+  });
+});
+
+describe("deriveCommitExcludedFilePaths", () => {
+  it("excludes only the working-tree files outside the preselected set", () => {
+    expect(
+      deriveCommitExcludedFilePaths(["src/a.ts", "src/b.ts", "docs/readme.md"], ["src/b.ts"]),
+    ).toEqual(["src/a.ts", "docs/readme.md"]);
+  });
+
+  it("matches across separators, ./ prefixes, and case", () => {
+    expect(
+      deriveCommitExcludedFilePaths(
+        ["src\\Nested\\File.ts", "src/other.ts"],
+        ["./src/nested/file.ts"],
+      ),
+    ).toEqual(["src/other.ts"]);
+  });
+
+  it("excludes everything when nothing is preselected", () => {
+    expect(deriveCommitExcludedFilePaths(["src/a.ts"], [])).toEqual(["src/a.ts"]);
   });
 });

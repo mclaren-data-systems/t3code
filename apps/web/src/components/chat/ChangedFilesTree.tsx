@@ -13,6 +13,7 @@ import {
   FileDiffIcon,
   FolderIcon,
   FolderClosedIcon,
+  GitCommitIcon,
 } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
@@ -37,6 +38,8 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
   onExpandedChange: (expanded: boolean) => void;
   onToggleAllDirectories: () => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  /** When present, offers committing exactly this turn's files. */
+  onCommitTurnFiles?: ((turnId: TurnId, filePaths: string[]) => void) | undefined;
 }) {
   const {
     turnId,
@@ -48,6 +51,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
     onExpandedChange,
     onToggleAllDirectories,
     onOpenTurnDiff,
+    onCommitTurnFiles,
   } = props;
   const summaryStat = useMemo(() => summarizeTurnDiffStats(files), [files]);
   const scopeSummary = useMemo(() => summarizeChangedFileScopes(files), [files]);
@@ -148,6 +152,30 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
             </TooltipTrigger>
             <TooltipPopup side="top">Open the full diff</TooltipPopup>
           </Tooltip>
+          {onCommitTurnFiles ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="outline"
+                    aria-label="Commit these files"
+                    onClick={() =>
+                      onCommitTurnFiles(
+                        turnId,
+                        files.map((file) => file.path),
+                      )
+                    }
+                  />
+                }
+              >
+                <GitCommitIcon className="size-3" />
+                <span className="hidden @[24rem]/changed-files:inline">Commit</span>
+              </TooltipTrigger>
+              <TooltipPopup side="top">Commit with only these files selected</TooltipPopup>
+            </Tooltip>
+          ) : null}
         </div>
       </div>
       {expanded ? (
