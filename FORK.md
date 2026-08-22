@@ -13,8 +13,11 @@ existing implementation. In practice that thin layer has converged on one substa
 upstream's Blacksmith ones, nothing needing credentials a fork lacks, and unsigned desktop
 artifacts built on every push to `main`) — plus this file and the `README.md` fork banner that
 points at it. Alongside it the fork carries the three multi-instance provider changes
-(entries 15, 16 and 19), a configurable worktree branch prefix (entry 17), and one sidebar layout
-change (entry 18), so `apps/` and `packages/` differ from upstream. `native/`, `scripts/`,
+(entries 15, 16 and 19), a configurable worktree branch prefix (entry 17), one sidebar layout
+change (entry 18), and three web UX changes re-derived at the 2026-08-22 rebase (entries 5, 6
+and 7 — commit-preselect from a turn's changed files, the completed dot persisting until read,
+and shell-style composer message recall), so `apps/` and `packages/` differ from upstream.
+`native/`, `scripts/`,
 `pnpm-lock.yaml`, and `pnpm-workspace.yaml` are byte-identical to upstream; the only thing
 under `packaging/` and `infra/` that differs is a fork note in a README (plus the dropped
 release-workflow guard in `infra/relay/scripts/deploy.test.ts` — see entry 14).
@@ -35,29 +38,32 @@ When you reset/sync, work through every entry below. For each one:
 3. Keep this file in sync: update the "Last rebase" marker, and move entries between the
    "Active", "Superseded", and "Dropped" sections as upstream evolves.
 
-> **Last rebase onto upstream:** **2026-08-21**, onto `pingdotgg/t3code` `main` at
-> **`c3e37094`** — _fix(web): render oversized terminal graphemes without crashing (#7809)_.
-> The `main` this replaces was `1ffbbbbb` (based on `db0659fe`), which had itself replaced
-> `8d6b5a56` (based on `9821bca1`, 2026-08-10) and `baaa8682` (based on `de592a00`,
-> 2026-08-05). This rebase takes in **74 upstream commits**.
+> **Last rebase onto upstream:** **2026-08-22**, onto `pingdotgg/t3code` `main` at
+> **`2c4158f8`** — _fix(web): handle wide ordered-list marker edge cases (#7856)_. This rebase
+> takes in **12 upstream commits** (`c3e37094..2c4158f8`) and replayed the fork's 16 commits
+> **without a single conflict**. It was performed on the working branch
+> `claude/fork-alignment-reimplement-4pk37r`; until that branch lands on `main`, `origin/main`
+> still points at the pre-rebase tip `35664cdc` (based on `c3e37094`, 2026-08-21) and serves as
+> its own backup. The `35664cdc` history had replaced `1ffbbbbb` (based on `db0659fe`), which
+> had itself replaced `8d6b5a56` (based on `9821bca1`, 2026-08-10) and `baaa8682` (based on
+> `de592a00`, 2026-08-05).
 >
-> **Nothing was superseded at this rebase.** All six carried entries (11, 12, 13, 14, 15, 16)
-> and all three fork-intentional-but-unshipped ones (5, 6, 7) were re-checked against
-> `c3e37094` and still apply; see each entry's redundancy check.
+> **Nothing was superseded at this rebase.** All eight carried entries (12, 13, 14, 15, 16, 17,
+> 18, 19) were re-checked against `2c4158f8` and still apply — upstream touched no workflow, no
+> usage code, no provider-status code, and neither `Sidebar.tsx` nor `git.ts` in this range (its
+> 12 commits are composer/markdown/terminal fixes, project favicons, thread-search hardening,
+> and a new `041_AuthSessionClientConnection` migration). The three previously-unshipped
+> entries (5, 6, 7) were **re-implemented on this branch at this rebase** after their own
+> redundancy checks came back "keep"; see their entries.
 >
-> **The `1ffbbbbb` history contained a merge commit** — `f78d68fa`, _Merge branch
-> 'pingdotgg:main' into main_, which pulled `13458e65..db0659fe` in rather than rebasing onto
-> it. This rebase linearized that away: the fork's seven own commits now sit directly on
-> `c3e37094`. Keep syncing by rebase, not merge — a merge commit costs nothing here but it
-> makes "what does this fork actually carry?" a graph question instead of a `git diff
-upstream/main HEAD` one.
->
-> `main` history was rewritten by force-push at this rebase. The overwritten tip `1ffbbbbb`
-> **was backed up** to `origin/backup/main-pre-rebase-2026-08-21`, as `8d6b5a56` was to
-> `origin/backup/main-pre-rebase-2026-08-17` and `baaa8682` to
+> Older marker history: `main` was rewritten by force-push at the 2026-08-21 rebase. The
+> overwritten tip `1ffbbbbb` **was backed up** to `origin/backup/main-pre-rebase-2026-08-21`,
+> as `8d6b5a56` was to `origin/backup/main-pre-rebase-2026-08-17` and `baaa8682` to
 > `origin/backup/main-pre-rebase-2026-08-10`. The two rebases before those overwrote tips
 > (`563d725d`, `ba07e561`) that were never pushed anywhere and remain recoverable only from
-> GitHub's unreachable-object retention.
+> GitHub's unreachable-object retention. Keep syncing by rebase, not merge — a merge commit
+> costs nothing here but it makes "what does this fork actually carry?" a graph question
+> instead of a `git diff upstream/main HEAD` one.
 
 > **Verification note:** some test failures are **environmental, not regressions** — always
 > diff against clean upstream before chasing one. Three seen repeatedly, all in files this
@@ -84,8 +90,10 @@ upstream/main HEAD` one.
 >
 > Note that `vp run` **bails on the first failing task**, so one environmental failure hides
 > every package after it — re-run the survivors with `--filter` before concluding the suite
-> is green. The composer arrow-key recall (entry 7) and completed-dot timing (entry 6) have
-> **no unit tests** (browser-tested) and must be confirmed in-app if they are ever re-derived.
+> is green. The composer arrow-key recall (entry 7) has unit tests for its pure navigation
+> rules only and the commit-preselect button (entry 5) for its path matching only — the
+> actual key handling and dialog interactions are **browser-only** and must be confirmed
+> in-app after any composer or git-dialog rework.
 
 > **Tooling note:** upstream uses **pnpm@11 + node ^24** (pnpm catalogs in
 > `pnpm-workspace.yaml`) and the `vp` (vite-plus) scripts. The **node version matters**:
@@ -95,22 +103,24 @@ upstream/main HEAD` one.
 > a `pnpm-lock.yaml` that replayed badly, which is the most likely silent breakage in a rebase
 > that reports no conflicts.
 >
-> **What was verified at the 2026-08-21 rebase:** entries 15 and 16 make this the first rebase
-> since 2026-08-05 that carries a source change, so the full checklist ran. The host had node
-> 22, so **node 24.19.0 was fetched from `nodejs.org/dist/latest-v24.x` and put on `PATH`**
-> before anything else — the cheapest way to satisfy `engines.node: ^24.13.1` without a version
-> manager. `pnpm install --frozen-lockfile` **succeeded and left `pnpm-lock.yaml` untouched**
-> (`git status` clean afterwards), which is the check that a replayed lockfile is sound; the
-> `@xmldom/xmldom` `deprecated:` drift the previous entry warned about did not reappear.
-> `vp run --filter @t3tools/contracts --filter t3 --filter @t3tools/web typecheck` is clean
-> (only pre-existing `unnecessaryFailYieldableError` _suggestions_ in untouched upstream files —
-> `orchestration/decider.ts`, `orchestration/workflowScriptQuery.ts`,
-> `pullRequest/GitLabPullRequestCli.ts`). `vp test run apps/server/src/provider
-apps/server/src/usage` is **568 passed / 6 skipped**, and `vp test run
-apps/web/src/components/settings apps/web/src/components/chat/ProviderStatusBanner.test.tsx` is
-> **115 passed** — see the flake note above for the two failures that appeared on the first
-> attempt and did not reproduce. `vp lint` and `vp fmt --check` are clean over all 15
-> fork-touched `.ts`/`.tsx` files.
+> **What was verified at the 2026-08-22 rebase:** the host had node 22, so **node 24.19.0 was
+> fetched from `nodejs.org/dist/latest-v24.x` and put on `PATH`** before anything else — the
+> cheapest way to satisfy `engines.node: ^24.13.1` without a version manager.
+> `pnpm install --frozen-lockfile` **succeeded and left `pnpm-lock.yaml` untouched**
+> (`git status` clean afterwards), which is the check that a replayed lockfile is sound.
+> `vp run --filter @t3tools/contracts --filter @t3tools/shared --filter t3 --filter
+@t3tools/web typecheck` is clean (only pre-existing `unnecessaryFailYieldableError`
+> _suggestions_ in untouched upstream files — `orchestration/decider.ts`,
+> `orchestration/workflowScriptQuery.ts`, `pullRequest/GitLabPullRequestCli.ts`). `vp test run
+apps/server/src/provider apps/server/src/usage packages/shared/src/git.test.ts
+packages/shared/src/usageMerge.test.ts packages/shared/src/usageFormat.test.ts` is
+> **620 passed / 6 skipped**, and the web/settings/usage/sidebar/reactor batch (`vp test run
+apps/web/src/components/settings apps/web/src/components/chat/ProviderStatusBanner.test.tsx
+apps/web/src/components/Sidebar.logic.test.ts apps/web/src/components/usage
+apps/server/src/orchestration/Layers/ProviderCommandReactor.test.ts`) is **287 passed**, all
+> on the first attempt. The re-implemented entries 5, 6 and 7 each ran their own focused tests
+> green (see their entries), and `vp lint` / `vp fmt --check` are clean over every file they
+> touch.
 >
 > Fork-specific checks: the kept `thread-transfer-report.yml` publisher test (`node --test
 .github/scripts/thread-transfer-report.test.cjs`) passes 6/6; `infra/relay/scripts/deploy.test.ts`
@@ -121,7 +131,7 @@ apps/web/src/components/settings apps/web/src/components/chat/ProviderStatusBann
 
 > **Migration caution — no longer applies, but keep the rule.** The fork carries **no**
 > migrations of its own (`git diff upstream/main HEAD -- apps/server/src/persistence/` is
-> empty); upstream's set runs to `040_*` unmodified. If a future change reintroduces a
+> empty); upstream's set runs to `041_*` unmodified. If a future change reintroduces a
 > fork-only migration, renumber it to sort after upstream's latest and verify `Migrations.ts`
 > registers the merged set exactly once — a collision here is a data-corruption bug, not a
 > merge annoyance.
@@ -134,125 +144,137 @@ apps/web/src/components/settings apps/web/src/components/chat/ProviderStatusBann
 > never renumbered. A gap in the sequence means that entry moved to "Superseded changes"
 > or "Dropped changes"; look for it there.
 >
-> **Carried on `main` today:** 11, 12 (its `AGENTS.md` sections only — the symlink half is now
-> upstream's), 13, 14, 15, 16, 17, 18 — workflows, fork documentation, and four source changes: 15
-> and 16 (both from the same multi-instance provider investigation), 17 (configurable worktree
-> branch prefix), and 18 (sidebar new thread button). **On this branch, not yet on `main`:** 19
-> (per-instance usage reporting — the third change from the multi-instance provider investigation).
-> **Fork-intentional but not on `main` anywhere:** 5 (commit-preselect remainder), 6, 7.
-> Their PR branches were deleted from `origin`; the only surviving copies are
-> `refs/pull/6/head` (`47f1f30b`) and `refs/pull/7/head` (`8c295d66`), which sit on the
-> **2026-07-23** base and predate upstream's libghostty terminal, sidebar-v2 default, and
-> composer rework. Re-deriving them against current upstream is the only realistic path;
-> the old hunks will not apply.
+> **Carried on `main` today:** 12 (its `AGENTS.md` sections only — the symlink half is now
+> upstream's), 13, 14, 15, 16, 17, 18, 19 — workflows, fork documentation, and five source
+> changes: 15, 16 and 19 (all three from the same multi-instance provider investigation), 17
+> (configurable worktree branch prefix), and 18 (sidebar new thread button). **On the
+> `claude/fork-alignment-reimplement-4pk37r` branch, not yet on `main`:** the 2026-08-22 rebase
+> onto `2c4158f8` and the **re-implementations of 5 (commit-preselect remainder), 6
+> (completed dot until read), and 7 (composer arrow-key recall)**. Those three had been
+> fork-intent-only since their PR branches were deleted; they were re-derived against current
+> upstream at this rebase (entries 6 and 7 with `refs/pull/7/head` `8c295d66` and its parent
+> `85082673` as references, entry 5 from this file's notes alone — its original commit
+> `e6990e3` survives nowhere).
 >
-> Note that entries 5, 6, and 7 have now gone several consecutive rebases without being
-> re-derived. They are still listed as fork intent, not as work in flight — nothing is lost by
-> leaving them here, but do not read their presence as a claim that the behavior exists on
-> `main`.
+> Entry 11 (TODO list moved into this file) was **removed from this list by the maintainer**
+> in `f194c2d6` — the TODO section at the bottom of this file remains, only the entry
+> documenting the old `TODO.md` deletion is gone. Treat 11 as a permanently retired number.
 
 ### 5. Open the commit modal with only the thread's own changed files pre-checked
 
-- **Files (last known):** `apps/web/src/session-logic.ts` (+ test),
+- **Files:** `apps/web/src/session-logic.ts` (+ test),
   `apps/web/src/components/ChatView.tsx`,
-  `apps/web/src/components/GitActionsControl.tsx` (+ `.browser.tsx` test),
+  `apps/web/src/components/GitActionsControl.tsx`,
+  `apps/web/src/components/chat/ChangedFilesTree.tsx`,
   `apps/web/src/components/chat/ChatHeader.tsx`,
   `apps/web/src/components/chat/MessagesTimeline.tsx`
-- **Commit:** `e6990e3`
-- **What (remaining intent):** The completion "Changed files" box gets a commit button that
-  opens the commit modal with exactly the files this thread touched pre-checked (checkboxes
-  shown automatically); the regular commit button still selects all files.
+- **Commits:** branch `claude/fork-alignment-reimplement-4pk37r` (**re-implemented
+  2026-08-22**; the original `e6990e3` survives nowhere and this was re-derived from this
+  entry's notes alone)
+- **What:** The completion "Changed files" card gets a **Commit** button beside "Open diff"
+  that opens the commit modal with exactly the files this turn touched pre-checked
+  (checkboxes shown automatically via `isEditingFiles`); the regular commit button still
+  selects all files.
 - **Why:** Committing a thread's work should not require hand-unchecking every unrelated
   dirty file in the worktree.
-- **Re-apply notes:** The original derived the per-turn file set itself
-  (`deriveTurnChangedFilesByTurnId` in `session-logic.ts`, with
-  `normalizeWorkspaceRelativeFilePath` handling backslashes, workspace-root prefixes, and
-  case-insensitive comparison). That half is upstream's now — source the file list from
-  upstream's per-turn checkpoint data instead of re-deriving it. What is left is
-  cross-component plumbing: thread a preselected-files prop from `ChatView` through
-  `MessagesTimeline`/`ChatHeader` into `GitActionsControl`, whose `allFiles` memo and
-  commit-dialog state handle the preselection. Expect this wiring to need adaptation
-  whenever upstream reworks `GitActionsControl`.
-- **Redundancy check (as of `c3e37094`): keep — the display half is superseded, the
-  commit-preselect button is not.** Upstream's `AssistantChangedFilesSection` (still in
-  `MessagesTimeline.tsx`) attributes changed files per turn, which was the bulk of the
-  original entry; see "Superseded changes". No `preselect`-style symbol exists anywhere in
-  `apps/web/src`, so the commit-modal half is still unshipped. All five last-known files still
-  exist at their recorded paths. **`GitActionsControl.tsx` took zero upstream commits in the
-  `db0659fe..c3e37094` range**, so the anchors the previous rebase flagged as moved have now
-  settled: `allFiles` is still the plain `gitStatusForActions?.workingTree.files ?? []` memo
-  (with `selectedFiles` derived from it through `excludedFiles`) that the preselect prop has to
-  seed. `MessagesTimeline.tsx` churned three times; re-read it before threading the prop
-  through.
+- **How it is wired:** The file list comes from the turn's checkpoint diff summary — the same
+  `TurnDiffSummary` upstream's `AssistantChangedFilesSection` renders — so nothing re-derives
+  per-turn attribution. `ChangedFilesCard` takes an optional `onCommitTurnFiles`; ChatView
+  provides it through the timeline row context and holds a `GitCommitPreselection`
+  (`{ filePaths, requestId }`) state that flows through `ChatHeader` into
+  `GitActionsControl`, where an effect keyed on `requestId` seeds `excludedFiles` (working
+  tree minus the preselection), turns on the checkbox list, and opens the dialog.
+  `deriveCommitExcludedFilePaths` / `normalizeWorkspaceRelativeFilePath` in
+  `session-logic.ts` do the checkpoint-vs-git-status path matching (separators, `./`
+  prefixes, case) with unit tests. Expect the `GitActionsControl` wiring to need adaptation
+  whenever upstream reworks that dialog.
+- **Redundancy check (as of `2c4158f8`): keep — the display half is upstream's, the
+  commit-preselect button is fork-carried.** Upstream's `AssistantChangedFilesSection`
+  attributes changed files per turn (see "Superseded changes"); no `preselect`-style symbol
+  exists in upstream's `apps/web/src`, and `GitActionsControl.tsx` took zero upstream commits
+  in `c3e37094..2c4158f8`.
+- **Verified:** `vp test run apps/web/src/session-logic.test.ts` (78 passed, 3 new),
+  `apps/web/src/components/chat/MessagesTimeline.test.tsx` +
+  `GitActionsControl.logic.test.ts` (90 passed) and `ChangedFilesTree.test.tsx` (9 passed)
+  untouched-green, web typecheck clean, `vp lint` / `vp fmt --check` clean on the touched
+  files. The button-to-dialog flow itself is browser-only and should be confirmed in-app.
 
 ### 6. Keep the completed (green) dot until the thread is read
 
-- **Files (last known):** `apps/web/src/uiStateStore.ts` (+ test),
+- **Files:** `apps/web/src/uiStateStore.ts` (+ test),
   `apps/web/src/components/Sidebar.logic.ts` (+ test),
   `apps/web/src/components/Sidebar.tsx`,
-  `apps/web/src/components/ThreadStatusIndicators.tsx`
-- **Commit:** `2f440ff`
+  `apps/web/src/components/ThreadStatusIndicators.tsx`,
+  `apps/web/src/components/ChatView.tsx`
+- **Commits:** branch `claude/fork-alignment-reimplement-4pk37r` (**re-implemented
+  2026-08-22**, re-derived with `85082673` — the parent of `refs/pull/7/head` — as reference;
+  the original `2f440ff` survives nowhere)
 - **What:** Track `threadLastCompletionAcknowledgedAtById` in the persisted UI
-  state (seeded from `threadLastVisitedAtById` for legacy blobs, pruned with
-  thread sync). The sidebar keeps a thread's green completed dot until the
-  completion is acknowledged by viewing the thread, even though the "completed"
-  tag itself still clears on open.
+  state (seeded from `threadLastVisitedAtById` for legacy blobs, persisted and
+  reset alongside it on mark-unread). `hasUnseenCompletion` prefers the
+  acknowledgement timestamp over last-visited (falling back for callers that
+  don't pass it), and `ChatView` stamps the acknowledgement on visit at the
+  turn's `completedAt` — the same effect that stamps the visit. The sidebar
+  keeps a thread's green completed dot until the completion is acknowledged by
+  viewing the thread; wake-driven visit bumps (`markThreadVisited` from the
+  snooze/wake paths) no longer clear it.
 - **Why:** Opening a thread instantly cleared the dot, so it was easy to lose
   track of which completed threads had actually been looked at.
 - **Re-apply notes:** Anchor on the persisted-UI-state shape in
   `uiStateStore.ts` (mirror everything done for `threadLastVisitedAtById`:
-  initial state, hydrate, persist, `syncThreads` pruning/seeding). The
-  outstanding TODO refinement — only mark read after ~3s of visibility — is
-  not implemented; don't mistake the TODO for shipped behavior.
-- **Redundancy check (as of `c3e37094`): keep.** `uiStateStore.ts` has now gone **three**
-  consecutive rebases without an upstream change and still tracks only
-  `threadLastVisitedAtById`; there is no acknowledged-at equivalent anywhere in `apps/web/src`
-  (the `hasServerAcknowledgedLocalDispatch` helper in `ChatView.logic.ts` is unrelated — it is
-  composer dispatch bookkeeping). The v2 `Sidebar.tsx` remains the target
-  (`LegacySidebar.tsx` is still opt-in — leave it alone). **The precise hook point is
-  `hasUnseenCompletion` in `Sidebar.logic.ts`** (now at line 259), which compares
-  `latestTurn.completedAt` against a `thread.lastVisitedAt` field passed in on
-  `ThreadStatusInput` — it does not read the `threadLastVisitedAtById` map itself, so the
-  acknowledged-at value has to reach it the same way (widen `ThreadStatusInput` and its call
-  sites in `Sidebar.tsx` / `ThreadStatusIndicators.tsx`) rather than by patching the store read.
-  That shape is unchanged from the last rebase. `Sidebar.logic.ts` took one commit in this
-  range (`1afe5545`, #7103, thread reordering) and `Sidebar.tsx` eight — none of them near
-  `hasUnseenCompletion` — so this is the calmest these anchors have been in three rebases.
+  initial state, hydrate seed, persist, mark-unread reset). The acknowledged-at
+  value reaches `hasUnseenCompletion` through `ThreadStatusInput` (widened with
+  `completionAcknowledgedAt`) and its call sites in `Sidebar.tsx`
+  (`SidebarThreadRow`'s `isUnread`) and `ThreadStatusIndicators.tsx`
+  (`ThreadRowLeadingStatus`) — not by patching the store read. The outstanding
+  TODO refinement — only mark read after ~3s of visibility — is **still not
+  implemented**; the acknowledgement field is the seam for it. `LegacySidebar.tsx`
+  is opt-in and untouched.
+- **Redundancy check (as of `2c4158f8`): keep.** Upstream's `uiStateStore.ts` still tracks
+  only `threadLastVisitedAtById`; no acknowledged-at equivalent exists anywhere in upstream's
+  `apps/web/src`. Neither `uiStateStore.ts`, `Sidebar.logic.ts`, `Sidebar.tsx` nor
+  `ThreadStatusIndicators.tsx` took an upstream commit in `c3e37094..2c4158f8`.
+- **Verified:** `vp test run apps/web/src/uiStateStore.test.ts
+apps/web/src/components/Sidebar.logic.test.ts` (128 passed, 4 new: acknowledgement
+  monotonic guard, mark-unread reset, hydrate seeding, acknowledgement-over-visit in
+  `hasUnseenCompletion`), web typecheck clean, `vp lint` / `vp fmt --check` clean on the
+  touched files.
 
 ### 7. Per-thread composer message history (arrow-key recall)
 
-- **Files (last known):** `apps/web/src/threadMessageHistory.ts` (new, + test),
+- **Files:** `apps/web/src/threadMessageHistory.ts` (new, + test),
   `apps/web/src/threadMessageHistoryStore.ts` (new),
-  `apps/web/src/components/chat/ChatComposer.tsx`,
-  `apps/web/src/components/ComposerPromptEditor.tsx`
-- **Commit:** `274d317`
+  `apps/web/src/components/chat/ChatComposer.tsx`
+- **Commits:** branch `claude/fork-alignment-reimplement-4pk37r` (**re-implemented
+  2026-08-22**, with `refs/pull/7/head` `8c295d66` as reference; the original `274d317`
+  survives nowhere)
 - **What:** Every sent message is appended to a per-thread history (capped at
   `THREAD_MESSAGE_HISTORY_LIMIT = 100`, persisted via
-  `threadMessageHistoryStore`). In the composer, ArrowUp recalls older
-  messages and ArrowDown moves forward again, shell-style — but only when the
-  cursor is on the first line (up) or last line (down)
+  `threadMessageHistoryStore`, keyed by `scopedThreadKey`). In the composer,
+  ArrowUp recalls older messages and ArrowDown moves forward again, shell-style
+  — but only when the cursor is on the first line (up) or last line (down)
   (`isThreadMessageHistoryBoundary`); otherwise arrows move the cursor
   normally. The in-progress draft is stashed and restored when navigating back
-  past the newest entry (`resolveThreadMessageHistoryNavigation`).
+  past the newest entry (`resolveThreadMessageHistoryNavigation`), and editing
+  a recalled message restarts navigation from the newest one.
 - **Why:** Recover/resend prior messages quickly, like terminal input history.
-- **Re-apply notes:** All navigation rules are pure functions in
-  `threadMessageHistory.ts` with tests — re-apply that module verbatim and
-  redo only the `ChatComposer`/`ComposerPromptEditor` key-handler wiring if the
-  composer has been refactored.
-- **Redundancy check (as of `c3e37094`): keep.** No `threadMessageHistory` /
+- **How it is wired (the part that must be redone on composer rework):** the pure module
+  ported verbatim; the composer hook sits in `ChatComposer`'s `onComposerCommandKey`,
+  **after** the slash/mention/skills menu handling and the Enter submission intent, so
+  history only sees arrow keys the menu declined (Lexical's `registerCommand` in
+  `ComposerPromptEditor.tsx` feeds that handler and stays untouched). Navigation reads the
+  editor through the existing `readComposerSnapshot`, applies prompts through the draft-store
+  `setPrompt` path plus cursor/trigger updates, and the history append sits behind
+  `submitComposerDraft`'s `didDispatch` so validation failures don't record phantom entries.
+- **Redundancy check (as of `2c4158f8`): keep.** No `threadMessageHistory` /
   `THREAD_MESSAGE_HISTORY` symbols upstream; the composer still has no history recall.
-  The pure `threadMessageHistory.ts` module still ports verbatim, but the composer
-  key wiring must be redone — `ComposerPromptEditor.tsx` still routes ArrowUp/ArrowDown
-  through Lexical `registerCommand` (`unregisterArrowUp` at line 939, feeding a shared
-  `handleCommand(key, event)` at line 913 typed to `"ArrowDown" | "ArrowUp" | "Enter" | "Tab"`),
-  and that handler is already claimed by the completion/command menu. **That `handleCommand`
-  union is the seam to extend**: the boundary rules from `isThreadMessageHistoryBoundary` have
-  to run only when the menu declines the key. `ComposerPromptEditor.tsx` took one commit in this
-  range (`792a1404`, #7150, attached composer state drawers) and the anchors landed at the same
-  line numbers as last rebase, but `ChatComposer.tsx` took five — including `e7235012` (#7737),
-  which puts **skills into the slash-command menu** and so adds another claimant on ArrowUp /
-  ArrowDown. Re-read the current key handlers, and expect the menu to decline the key less often
-  than it used to.
+  `ChatComposer.tsx` took two upstream commits in `c3e37094..2c4158f8` (`e0b4f463` #7821
+  cmd+enter background threads, `b381fdb1` #7794 launcher-shortcut guard) — both replayed
+  clean and neither adds an ArrowUp/ArrowDown claimant.
+- **Verified:** `vp test run apps/web/src/threadMessageHistory.test.ts` (3 passed — limit
+  trimming, boundary detection, backward/forward walk with draft restore), web typecheck
+  clean, `vp lint` / `vp fmt --check` clean on the touched files. The arrow-key interaction
+  itself is browser-only (no composer unit tests exist) and should be confirmed in-app.
 
 ### 12. `AGENTS.md`: fork Git/GitHub policy
 
@@ -268,7 +290,7 @@ apps/web/src/components/settings apps/web/src/components/chat/ProviderStatusBann
   the old fork symlink; see "Superseded changes". The rule the old note encoded still holds
   as a rule, though: `@AGENTS.md` works as _file content_ and not as a symlink target, so a
   `CLAUDE.md` that is a symlink must point at the literal path `AGENTS.md`.
-- **Redundancy check (as of `c3e37094`): keep, clean replay.** The two fork sections still sit
+- **Redundancy check (as of `c3e37094`; re-checked clean at `2c4158f8` — upstream did not touch `AGENTS.md` or `CLAUDE.md` in that range): keep, clean replay.** The two fork sections still sit
   after upstream's two-paragraph intro and before `## What makes T3 Code special?` (lines 7 and
   17). Upstream touched `AGENTS.md` three times in this range — `45a2c4b2` (#7658, user count),
   `9167622a` (#7665, implementation plans move out of the repo) and `9f12eab3` (#7762, PR assets
@@ -284,12 +306,12 @@ apps/web/src/components/settings apps/web/src/components/chat/ProviderStatusBann
 - **Re-apply notes:** The banner is delimited by `<!-- FORK-BANNER:START -->` /
   `<!-- FORK-BANNER:END -->` — re-derive the text between them rather than merging it, since
   it goes stale every time an entry moves out of "Active".
-- **Redundancy check (as of `c3e37094`): keep, refreshed.** Upstream made **no** `README.md`
-  change in this range, so the banner replayed untouched. Its body needed a real edit rather
-  than just a marker bump this time: the previous text claimed the fork's diff was the workflow
-  set alone and that `apps/` / `packages/` were byte-identical to upstream, which stopped being
-  true when entries 15 and 16 landed. The banner now names the two source changes as well, and
-  the rebase marker inside it moved to `c3e37094` / 2026-08-21.
+- **Redundancy check (as of `2c4158f8`): keep, refreshed.** Upstream made **no** `README.md`
+  change in `c3e37094..2c4158f8`, so the banner replayed untouched. Its body needed a real
+  edit again: the previous text still described "two server fixes" from entries 15 and 16,
+  which went stale when 17, 18 and 19 landed on `main` and staler still when 5, 6 and 7 were
+  re-implemented at this rebase. The banner now summarizes the carried layer at that
+  granularity, and the rebase marker inside it moved to `2c4158f8` / 2026-08-22.
 
 ### 14. A workflow set this fork can actually run
 
@@ -384,7 +406,7 @@ apps/web/src/components/settings apps/web/src/components/chat/ProviderStatusBann
   standing rule. Separately, `desktop-artifacts.yml` is fork-owned and can drift against
   upstream's desktop build requirements **without ever showing up as a merge conflict** —
   diff it against upstream's `release.yml` build job on every sync.
-- **Redundancy check (as of `c3e37094`): keep, and once again this entry is where the rebase
+- **Redundancy check (as of `c3e37094`; re-checked at `2c4158f8` — upstream added no workflow and touched nothing under `.github/` in that range, so the set replayed untouched): keep, and at the 2026-08-21 rebase this entry is where the rebase
   spent its effort.** Upstream added **no** new workflow in the `db0659fe..c3e37094` range, so
   there was nothing new to accept or decline — the first rebase in a while with no opt-in
   decision to make. It did, however, **restructure `ci.yml` substantially**, which is why the
@@ -494,7 +516,7 @@ login`), which works on bash **because the shell expands `~`**. PowerShell does 
   against clean upstream — `0` means this entry is still needed. Partial supersession is likely
   (upstream may fix the auth state without surfacing the directory); keep whichever half is still
   missing rather than dropping the entry wholesale.
-- **Redundancy check (as of `c3e37094`): keep, clean replay — neither half is superseded.** Both
+- **Redundancy check (as of `c3e37094`; re-checked at `2c4158f8` — both drop-check greps still come back empty and upstream's only provider change in that range is the Codex adapter): keep, clean replay — neither half is superseded.** Both
   drop-checks come back empty against clean upstream: `grep -c '"unauthenticated"'` on upstream's
   `ClaudeProvider.ts` is **0**, and `configDirectory` does not appear in upstream's
   `packages/contracts/src/server.ts`. Upstream made three changes under
@@ -572,7 +594,7 @@ apps/web/src/components/settings apps/web/src/components/chat/ProviderStatusBann
 - **Drop it when:** upstream's `resolveTranscriptDirs` reads `settings.providerInstances`. Check
   with `grep -n providerInstances apps/server/src/usage/UsageService.ts` against clean upstream —
   no hit means this entry is still needed.
-- **Redundancy check (as of `c3e37094`): keep, clean replay.** The drop-check comes back empty:
+- **Redundancy check (as of `c3e37094`; re-checked at `2c4158f8` — upstream still has no `providerInstances` in `UsageService.ts` and made no change under `apps/server/src/usage/`): keep, clean replay.** The drop-check comes back empty:
   `providerInstances` still does not appear in upstream's `UsageService.ts`, and upstream's
   `apps/server/src/usage/` has no `usageTranscriptSources.ts` equivalent. Upstream made **no**
   change under `apps/server/src/usage/` in this range at all, so the entry replayed untouched and
@@ -649,6 +671,10 @@ typecheck` clean, `vp lint` and `vp fmt --check` clean on the touched files. The
 - **Drop it when:** upstream makes the prefix configurable. Check with `grep -rn
 "WORKTREE_BRANCH_PREFIX\|worktreeBranchPrefix" packages/shared/src/git.ts` against clean upstream
   — a lone `export const WORKTREE_BRANCH_PREFIX = "t3code"` means this entry is still needed.
+- **Redundancy check (as of `2c4158f8`): keep.** The drop-check still shows the lone hardcoded
+  `WORKTREE_BRANCH_PREFIX` const upstream. Upstream touched `ws.ts` and `server.test.ts` in
+  `c3e37094..2c4158f8` (`11f05137`, #7774 — client attribution on sessions), away from the
+  `prepareWorktree` block and the branch-prefix test; both replayed clean.
 - **Re-apply notes:** The rename site is
   `maybeGenerateAndRenameWorktreeBranchForFirstTurn` in `ProviderCommandReactor.ts`; the settings
   read has to sit **inside** the guarded `Effect.gen` whose `catchCause` logs failures, otherwise a
@@ -667,79 +693,60 @@ typecheck` clean, `vp lint` and `vp fmt --check` clean on the touched files. The
 
 ---
 
-### 18. Usage reports each provider instance separately
+### 18. New thread button under the project selector, and scoped to it
 
-- **Files:** `packages/contracts/src/usage.ts`, `packages/shared/src/usageMerge.ts`,
-  `packages/shared/src/usageFormat.ts`, `apps/server/src/usage/usageTranscriptSources.ts`,
-  `apps/server/src/usage/usageAggregation.ts`, `apps/server/src/usage/UsageService.ts`,
-  `apps/web/src/components/usage/*`, `apps/mobile/src/features/usage/*`, `docs/user/usage.md`,
-  plus the five test files for those modules
-- **Commits:** branch `claude/usage-report-multi-provider-2dsrkq`
-- **Problem.** Entry 16 made the _scan_ read every configured instance, but everything downstream
-  still grouped by `UsageProviderKind`. Two consequences:
-  1. **The dashboard could not tell two accounts apart.** A work and a personal Claude Code
-     collapsed into one "Claude Code" row, one chart line, one column — the exact question a
-     second account is configured to answer ("which one is costing me this?") was unanswerable.
-  2. **A real double count in the client-side merge.** `ownedContribution` resolved ownership per
-     provider _kind_: if environment A owned a shared Claude directory and environment B reported
-     that same directory _plus_ a second one, B still owned "claude" through the second directory,
-     so **every** Claude bucket B reported survived — including the shared directory's, which A had
-     already counted. Kind-level ownership cannot express "this directory yes, that one no", and
-     that only becomes reachable once an environment has two directories of one kind.
-- **What changed.** The report's unit of grouping is now the **provider instance**:
-  - `UsageBucket` gains `instanceId`; `UsageSource` gains `instanceId`, `displayName` and
-    `accentColor`. `USAGE_CONTRACT_VERSION` 4 → 5.
-  - The aggregator keys buckets by `(day, hourStart?, provider, instanceId, model)`, and
-    `UsageAggregator.add` takes the instance the record's transcripts came from.
-  - `mergeUsage` resolves ownership per instance, exposes `instances` in place of `providers`,
-    keys the per-period maps `byInstance`, and keys models by instance too.
-  - Web and mobile draw one series, row and column per instance, labelled and colored from what
-    the user configured.
-- **Decisions worth keeping if this is re-derived:**
-  1. **Series are keyed by instance id alone, not by `(environment, instance)`.** Every
-     environment's default Claude instance is `claudeAgent`, so keying by the pair would split one
-     person's laptop and desktop into two rows — a change to today's behavior for the _common_
-     case in service of the rare one. Keying by instance id leaves multi-device setups merged
-     exactly as they were and splits only where the user explicitly created a second instance.
-  2. **`UsageSourceFingerprint` stays physical** — host, provider, path, volume, no instance id.
-     It answers "is this the same directory", and two environments can reach one directory under
-     instance ids they named differently; folding the id in would break cross-environment
-     de-duplication.
-  3. **Presentation travels on the wire** (`displayName`, `accentColor` on `UsageSource`) rather
-     than the client joining usage against the provider snapshot stream. Mobile has no equivalent
-     of web's `providerInstances` projection, and the join would be a second source of truth for a
-     label. The client still owns the _rule_: `formatInstanceLabel` in `usageFormat` resolves
-     configured name → brand label for a default instance → humanized instance id.
-  4. **De-duplication stays global across instances.** A record copied forward when a session is
-     resumed under a second account is still one response; it counts once, for whichever instance
-     the scan reached first. Per-instance dedupe would double it.
-  5. **Instances sharing one directory report as one**, under the first instance id in scan order.
-     Their transcripts are physically indistinguishable, so any split would be invented.
-  6. **Colors:** a configured `accentColor` wins; otherwise a per-provider ramp indexed by
-     `shadeIndex`, which the merge assigns in an order (default instance first, then by id) that
-     does not move when spending does. Index 0 is always the brand color, so a single-instance
-     environment looks untouched.
-  7. **The empty state still renders one row per provider.** With nothing reported the clients
-     fall back to stand-in series for each provider's default instance, so the page does not
-     collapse to a bare headline the way it would if it only drew what was reported.
-- **The contract bump is the cost.** A fleet running mixed server versions will exclude the older
-  environments from totals until they update. That path already existed and already says so in the
-  UI ("runs an older server version and is excluded from totals"); no new failure mode, but it is
-  the reason this was not folded into entry 16.
-- **Drop it when:** upstream's `UsageBucket` carries an instance id. Check with
-  `grep -n instanceId packages/contracts/src/usage.ts` against clean upstream — no hit means this
-  entry is still needed. If upstream ships its own per-instance breakdown, drop **both** this entry
-  and entry 16 and re-verify the merge's ownership rule against theirs; the double count in
-  decision-point 2 above is the thing to test, since a kind-level `ownedContribution` is the
-  natural shape to write and is wrong.
-- **Verified:** `vp test run apps/server/src/usage apps/web/src/components/usage
-packages/shared/src/usageMerge.test.ts packages/shared/src/usageFormat.test.ts` (82 passed, 10 of
-  them new), `vp run --filter t3 --filter @t3tools/web --filter @t3tools/mobile --filter
-@t3tools/shared --filter @t3tools/contracts typecheck` clean, `vp lint` and `vp fmt --check` clean.
-  New tests cover: two instances of one provider staying in separate buckets; a record copied
-  between two accounts counted once; instance metadata reaching the source list; separate instance
-  rows, model rows and per-day cells in the merge; the shade order; the partial-duplicate ownership
-  regression; per-instance chart bands; and the label resolution rules.
+- **Files:** `apps/web/src/components/Sidebar.tsx`,
+  `apps/web/src/components/Sidebar.logic.ts` (+ test),
+  `docs/user/thread-sidebar.md` ("Starting a thread" section)
+- **Commits:** branch `claude/thread-button-positioning-bt4gba`
+- **Problem.** The sidebar header stacked its controls against the reading order. Row one was
+  the thread search box with an icon-only new thread button pinned to its right; row two was
+  the project scope menu with the new project button pinned to _its_ right. So the two "create"
+  affordances sat on different rows, the new thread one _above_ the project selector that gives
+  it its context, and it was a bare glyph next to a text field it has nothing to do with.
+  Behaviorally it also ignored the scope menu directly beneath it: with several projects a
+  plain click always opened the command palette picker, even when the sidebar was already
+  scoped to one project and the answer was on screen.
+- **What changed.** The new thread button moves below the project row and becomes a full-width
+  `SidebarMenuButton` — icon plus a "New thread" label, content centered — so the header reads
+  search → scope → act. The search row keeps only the search box; the new project button stays
+  where it was, beside the scope menu. The button also follows the scope:
+  - scoped to a project → create there immediately, no picker;
+  - "All projects" → unchanged behavior (create in the current project when there is nothing
+    to pick or shift is held, otherwise open the palette's "New thread in..." picker).
+- **Three decisions worth keeping if this is re-derived:**
+  1. **The branch lives in a pure helper.** `resolveNewThreadClickTarget` in `Sidebar.logic.ts`
+     returns `"scoped-project" | "current-project" | "picker"` and delegates the unscoped case
+     to the existing `shouldCreateNewThreadInCurrentProject`, so the added behavior is one
+     testable function and the old rule is untouched.
+  2. **The scoped target resolves through `buildSidebarProjectPickerEntries`**, the same entry
+     builder the command palette picker uses, seeded with `resolveThreadActionProjectRef` as the
+     preferred ref. A scope entry is a _logical_ project (several checkouts of one repo grouped
+     together), so picking its representative by hand would silently target a different member
+     than the picker does for the same row.
+  3. **The scoped tooltip drops the shortcut and names the project** ("New thread in _Foo_").
+     `chat.new` is not scope-aware — it still opens the picker from the keyboard — so printing
+     its shortcut next to a scoped button would advertise the wrong target. Making the keybinding
+     scope-aware would mean lifting the sidebar's local `projectScopeKey` into shared state;
+     deliberately out of scope.
+- **Also gone:** the button no longer renders `disabled` when there are no projects. It now
+  renders with the project row, which is already hidden in that state, and the list's existing
+  "No projects yet → Add project" empty state remains the way in.
+- **Not touched:** `LegacySidebar.tsx` (opt-in legacy layout, different header), the mobile
+  home header, and the `chat.new` / `chat.newLocal` keybindings.
+- **Drop it when:** upstream's `Sidebar.tsx` renders the new thread button below the project
+  scope menu with a text label. Check with `grep -n "New thread" apps/web/src/components/Sidebar.tsx`
+  against clean upstream — an icon-only button in the search row means this entry is still needed.
+- **Redundancy check (as of `2c4158f8`): keep.** Upstream's `Sidebar.tsx` still renders the
+  icon-only new thread button in the search row (`aria-label="New thread"` beside the search
+  box) and took no commit in `c3e37094..2c4158f8`; `resolveNewThreadClickTarget` exists only in
+  this fork.
+- **Verified:** `vp test run apps/web/src/components/Sidebar.logic.test.ts` (110 passed, 5 of them
+  new), `tsgo --noEmit` clean in `apps/web`, `vp lint` and `vp fmt --check` clean on the touched
+  files. The new tests cover the scoped target winning at any project count and on shift+click,
+  the picker from "All projects" with several projects, and both unscoped direct-create cases.
+  Not browser-verified — the layout move is a header re-stack that wants one look in a real client
+  if this is ever re-derived.
 
 ---
 
@@ -808,6 +815,10 @@ packages/shared/src/usageMerge.test.ts packages/shared/src/usageFormat.test.ts` 
   and entry 16 and re-verify the merge's ownership rule against theirs; the double count in
   decision-point 2 above is the thing to test, since a kind-level `ownedContribution` is the
   natural shape to write and is wrong.
+- **Redundancy check (as of `2c4158f8`): keep.** `instanceId` still does not appear in
+  upstream's `packages/contracts/src/usage.ts`, and upstream made no change under
+  `apps/server/src/usage/`, `packages/shared/src/usageMerge.ts` or either client's usage
+  feature in `c3e37094..2c4158f8`.
 - **Verified:** `vp test run apps/server/src/usage apps/web/src/components/usage
 packages/shared/src/usageMerge.test.ts packages/shared/src/usageFormat.test.ts` (82 passed, 10 of
   them new), `vp run --filter t3 --filter @t3tools/web --filter @t3tools/mobile --filter
