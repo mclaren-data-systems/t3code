@@ -1,3 +1,4 @@
+import { ProviderInstanceId } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 
 import { UsageAggregator } from "./usageAggregation.ts";
@@ -36,8 +37,11 @@ function record(overrides: Partial<UsageRecord> = {}): UsageRecord {
   };
 }
 
+const CLAUDE_INSTANCE = ProviderInstanceId.make("claudeAgent");
+const CLAUDE_WORK_INSTANCE = ProviderInstanceId.make("claudeAgent_work");
+
 function aggregate(
-  records: readonly UsageRecord[],
+  records: readonly (UsageRecord | readonly [UsageRecord, ProviderInstanceId])[],
   timeZone = "UTC",
   resolution: "day" | "hour" = "day",
 ) {
@@ -56,7 +60,10 @@ function aggregate(
     ...hourlyBounds,
     rates,
   });
-  for (const item of records) aggregator.add(item);
+  for (const item of records) {
+    if (Array.isArray(item)) aggregator.add(item[0], item[1]);
+    else aggregator.add(item as UsageRecord, CLAUDE_INSTANCE);
+  }
   return aggregator.finish();
 }
 
@@ -187,9 +194,11 @@ describe("UsageAggregator", () => {
       rates,
     });
 
-    expect(aggregator.add(record({ dedupeKey: "msg_1:" }))).toBe(true);
-    expect(aggregator.add(record({ dedupeKey: "msg_1:" }))).toBe(false);
-    expect(aggregator.add(record({ timestampMs: Date.parse("2026-07-01T12:00:00Z") }))).toBe(false);
+    expect(aggregator.add(record({ dedupeKey: "msg_1:" }), CLAUDE_INSTANCE)).toBe(true);
+    expect(aggregator.add(record({ dedupeKey: "msg_1:" }), CLAUDE_INSTANCE)).toBe(false);
+    expect(
+      aggregator.add(record({ timestampMs: Date.parse("2026-07-01T12:00:00Z") }), CLAUDE_INSTANCE),
+    ).toBe(false);
   });
 
   it("separates providers and models into their own buckets", () => {
@@ -200,5 +209,32 @@ describe("UsageAggregator", () => {
     ]);
 
     expect(result.buckets).toHaveLength(3);
+  });
+
+  it("keeps two instances of one provider in separate buckets", () => {
+    // Same provider, same model, same day: only the account differs. Merging
+    // them would hand the dashboard one row for two Claude subscriptions.
+    const result = aggregate([
+      [record(), CLAUDE_INSTANCE],
+      [record(), CLAUDE_WORK_INSTANCE],
+    ]);
+
+    expect(result.buckets.map((bucket) => [bucket.instanceId, bucket.records])).toEqual([
+      ["claudeAgent", 1],
+      ["claudeAgent_work", 1],
+    ]);
+  });
+
+  it("counts a record copied between two accounts once", () => {
+    // Resuming a session under a second account copies its records forward.
+    // The response happened once, so it lands under whichever instance the
+    // scan reached first rather than being counted twice.
+    const result = aggregate([
+      [record({ dedupeKey: "msg_1:" }), CLAUDE_INSTANCE],
+      [record({ dedupeKey: "msg_1:" }), CLAUDE_WORK_INSTANCE],
+    ]);
+
+    expect(result.duplicatesDropped).toBe(1);
+    expect(result.buckets.map((bucket) => bucket.instanceId)).toEqual(["claudeAgent"]);
   });
 });
