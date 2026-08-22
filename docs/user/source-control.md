@@ -69,7 +69,8 @@ Prefixes can be nested (`theo/wip`), and the setting is cleaned up into a valid 
 capitals and spaces are fine to type. Leave it empty to go back to `t3code`.
 
 Threads that already have a branch keep it. So does any branch you named yourself — picking a branch
-before you send your first message opts that thread out of automatic naming entirely.
+before you send your first message opts that thread out of automatic naming entirely, even when that
+branch sits under the same prefix.
 
 ### Know Your Setup at a Glance
 
