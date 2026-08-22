@@ -93,6 +93,7 @@ import { releaseComposerDraftUploads } from "../lib/composerDraftUploads";
 import { readLocalApi } from "../localApi";
 import { getProjectOrderKey, selectProjectGroupingSettings } from "../logicalProject";
 import {
+  buildSidebarProjectPickerEntries,
   buildSidebarProjectSnapshots,
   type SidebarProjectSnapshot,
 } from "../sidebarProjectGrouping";
@@ -101,7 +102,7 @@ import { useThreadSelectionStore } from "../threadSelectionStore";
 import { useThreadActions } from "../hooks/useThreadActions";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { openCommandPalette } from "../commandPaletteBus";
-import { startNewThreadFromContext } from "../lib/chatThreadActions";
+import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
 import { useClientSettings } from "../hooks/useSettings";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../hooks/useLocalStorage";
@@ -133,10 +134,10 @@ import {
   orderItemsByPreferredIds,
   planPinnedReorder,
   resolveAdjacentThreadId,
+  resolveNewThreadClickTarget,
   resolveSettledTimestamp,
   resolveSidebarThreadStatus,
   searchSidebarThreadsByTitle,
-  shouldCreateNewThreadInCurrentProject,
   resolveWorkingStartedAt,
   sortLogicalProjectsForSidebar,
   sortPinnedThreadsForSidebar,
@@ -3351,34 +3352,61 @@ export default function Sidebar() {
     autoAnimate(node, { duration: 150, easing: "ease-out" });
   }, []);
 
-  // New thread defaults to the project you're in (active thread's project,
-  // falling back to the top project) — same resolution the command palette
-  // uses. The command palette already offers a "New thread in..." submenu
-  // for multi-project setups.
+  // Scoping the sidebar to one project makes it the target: the button below
+  // the scope menu creates there instead of re-asking which project. Resolved
+  // through the picker's own entry builder so a grouped project (several
+  // checkouts of one repo) lands on the same member either way.
+  const scopedNewThreadProjectRef = useMemo(() => {
+    if (!scopedProjectGroup) return null;
+    const entry = buildSidebarProjectPickerEntries({
+      groups: [scopedProjectGroup],
+      preferredProjectRef: resolveThreadActionProjectRef({
+        activeDraftThread: newThreadContext.activeDraftThread,
+        activeThread: newThreadContext.activeThread ?? undefined,
+        defaultProjectRef: newThreadContext.defaultProjectRef,
+        handleNewThread: newThreadContext.handleNewThread,
+      }),
+    })[0];
+    if (!entry) return null;
+    return scopeProjectRef(entry.targetProject.environmentId, entry.targetProject.id);
+  }, [newThreadContext, scopedProjectGroup]);
+
+  // Unscoped, new thread defaults to the project you're in (active thread's
+  // project, falling back to the top project) — same resolution the command
+  // palette uses. The command palette already offers a "New thread in..."
+  // submenu for multi-project setups.
   const handleNewThreadClick = useCallback(
     (event?: ReactMouseEvent) => {
       // One project: nothing to pick, create immediately. Shift+click creates
       // directly in the current project even with several projects, skipping
       // the palette picker.
-      if (shouldCreateNewThreadInCurrentProject(event?.shiftKey ?? false, projectGroups.length)) {
-        if (isMobile) setOpenMobile(false);
-        void startNewThreadFromContext({
-          activeDraftThread: newThreadContext.activeDraftThread,
-          activeThread: newThreadContext.activeThread ?? undefined,
-          defaultProjectRef: newThreadContext.defaultProjectRef,
-          handleNewThread: newThreadContext.handleNewThread,
-        });
+      const target = resolveNewThreadClickTarget({
+        hasScopedProject: scopedNewThreadProjectRef !== null,
+        shiftKey: event?.shiftKey ?? false,
+        projectGroupCount: projectGroups.length,
+      });
+      if (isMobile) setOpenMobile(false);
+      if (target === "scoped-project" && scopedNewThreadProjectRef) {
+        void newThreadContext.handleNewThread(scopedNewThreadProjectRef);
         return;
       }
-      if (isMobile) setOpenMobile(false);
-      openCommandPalette({ open: "new-thread-in" });
+      if (target === "picker") {
+        openCommandPalette({ open: "new-thread-in" });
+        return;
+      }
+      void startNewThreadFromContext({
+        activeDraftThread: newThreadContext.activeDraftThread,
+        activeThread: newThreadContext.activeThread ?? undefined,
+        defaultProjectRef: newThreadContext.defaultProjectRef,
+        handleNewThread: newThreadContext.handleNewThread,
+      });
     },
-    [isMobile, newThreadContext, projectGroups.length, setOpenMobile],
+    [isMobile, newThreadContext, projectGroups.length, scopedNewThreadProjectRef, setOpenMobile],
   );
 
-  // The button mirrors chat.new: in multi-project setups both route through
-  // the command palette's "New thread in..." picker, and in single-project
-  // setups both create immediately. In multi-project setups the label is only
+  // Unscoped, the button mirrors chat.new: in multi-project setups both
+  // route through the command palette's "New thread in..." picker, and in
+  // single-project setups both create immediately. In multi-project setups the label is only
   // the picker's shortcut: falling back to chat.newLocal would advertise the
   // same shortcut for both the picker and direct create. In single-project
   // setups both commands create directly, so chat.newLocal is a valid
@@ -3388,6 +3416,12 @@ export default function Sidebar() {
     shortcutLabelForCommand(keybindings, "chat.new") ??
     (projectGroups.length <= 1 ? shortcutLabelForCommand(keybindings, "chat.newLocal") : undefined);
   const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
+  // Scoped, the button targets one project, so the label names it. No
+  // shortcut on that label on purpose: chat.new is not scope-aware, so
+  // advertising it next to a scoped button would promise the wrong target.
+  const newThreadLabel = scopedProjectGroup
+    ? `New thread in ${scopedProjectGroup.displayName}`
+    : "New thread";
   return (
     <>
       <SidebarChromeHeader isElectron={isElectron} />
@@ -3444,28 +3478,125 @@ export default function Sidebar() {
                   </Button>
                 ) : null}
               </div>
-              <div className="shrink-0">
+            </div>
+            {projectGroups.length > 0 ? (
+              <>
+                <div className="flex items-center gap-1">
+                  <Menu open={projectScopeMenuOpen} onOpenChange={setProjectScopeMenuOpen}>
+                    <MenuTrigger
+                      render={
+                        <SidebarMenuButton
+                          aria-label="Filter threads by project"
+                          className="min-w-0 flex-1 ps-[calc(var(--sidebar-row-content-inset)-1px)] focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
+                        />
+                      }
+                    >
+                      {scopedProjectGroup ? (
+                        <ProjectFavicon
+                          environmentId={scopedProjectGroup.environmentId}
+                          cwd={scopedProjectGroup.workspaceRoot}
+                          faviconPath={scopedProjectGroup.faviconPath}
+                          className="size-4 shrink-0"
+                        />
+                      ) : (
+                        <FolderIcon className="size-4 shrink-0" />
+                      )}
+                      <span className="min-w-0 flex-1 truncate">
+                        {scopedProjectGroup?.displayName ?? "All projects"}
+                      </span>
+                      <ChevronDownIcon className="-mr-px size-4 shrink-0" />
+                    </MenuTrigger>
+                    <MenuPopup align="start" className="w-(--anchor-width)">
+                      <MenuRadioGroup
+                        value={projectScopeKey ?? "all"}
+                        onValueChange={(value) =>
+                          setProjectScopeKey(value === "all" ? null : (value as string))
+                        }
+                      >
+                        <MenuRadioItem
+                          value="all"
+                          closeOnClick
+                          className="h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2"
+                        >
+                          <FolderIcon className="size-4 shrink-0" />
+                          <span className="min-w-0 truncate text-sm">All projects</span>
+                        </MenuRadioItem>
+                        {projectGroups.map((project) => {
+                          const scopeKey = project.projectKey;
+                          return (
+                            <MenuRadioItem
+                              key={scopeKey}
+                              value={scopeKey}
+                              closeOnClick
+                              className="h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2"
+                            >
+                              <ProjectFavicon
+                                environmentId={project.environmentId}
+                                cwd={project.workspaceRoot}
+                                faviconPath={project.faviconPath}
+                                className="size-4 shrink-0"
+                              />
+                              <span className="min-w-0 truncate text-sm">
+                                {project.displayName}
+                              </span>
+                              <Button
+                                size="icon-xs"
+                                variant="ghost-muted"
+                                aria-label={`Project settings for ${project.displayName}`}
+                                title={`Project settings for ${project.displayName}`}
+                                className="ml-auto size-6 [--control-icon-color:currentColor] text-icon-muted focus-visible:bg-accent focus-visible:text-foreground"
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={(event) => {
+                                  void handleProjectSettings(event, project);
+                                }}
+                              >
+                                <SettingsIcon className="size-3.5" />
+                              </Button>
+                            </MenuRadioItem>
+                          );
+                        })}
+                      </MenuRadioGroup>
+                    </MenuPopup>
+                  </Menu>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <SidebarMenuButton
+                          size="icon"
+                          className="relative shrink-0 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
+                          onClick={openAddProjectCommandPalette}
+                          type="button"
+                          aria-label="New project"
+                        />
+                      }
+                    >
+                      <FolderPlusIcon />
+                      <span
+                        className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
+                        aria-hidden="true"
+                      />
+                    </TooltipTrigger>
+                    <TooltipPopup side="right">New project</TooltipPopup>
+                  </Tooltip>
+                </div>
                 <Tooltip>
                   <TooltipTrigger
                     render={
                       <SidebarMenuButton
-                        size="icon"
                         type="button"
-                        className="relative focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
+                        className="justify-center focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
                         onClick={handleNewThreadClick}
-                        disabled={projects.length === 0}
-                        aria-label="New thread"
+                        aria-label={newThreadLabel}
                       />
                     }
                   >
                     <SquarePenIcon />
-                    <span
-                      className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
-                      aria-hidden="true"
-                    />
+                    <span>New thread</span>
                   </TooltipTrigger>
                   <TooltipPopup side="right">
-                    {projectGroups.length > 1 ? (
+                    {scopedProjectGroup ? (
+                      newThreadLabel
+                    ) : projectGroups.length > 1 ? (
                       <span className="flex flex-col gap-0.5">
                         <span>
                           {newThreadShortcutLabel
@@ -3486,105 +3617,7 @@ export default function Sidebar() {
                     )}
                   </TooltipPopup>
                 </Tooltip>
-              </div>
-            </div>
-            {projectGroups.length > 0 ? (
-              <div className="flex items-center gap-1">
-                <Menu open={projectScopeMenuOpen} onOpenChange={setProjectScopeMenuOpen}>
-                  <MenuTrigger
-                    render={
-                      <SidebarMenuButton
-                        aria-label="Filter threads by project"
-                        className="min-w-0 flex-1 ps-[calc(var(--sidebar-row-content-inset)-1px)] focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
-                      />
-                    }
-                  >
-                    {scopedProjectGroup ? (
-                      <ProjectFavicon
-                        environmentId={scopedProjectGroup.environmentId}
-                        cwd={scopedProjectGroup.workspaceRoot}
-                        faviconPath={scopedProjectGroup.faviconPath}
-                        className="size-4 shrink-0"
-                      />
-                    ) : (
-                      <FolderIcon className="size-4 shrink-0" />
-                    )}
-                    <span className="min-w-0 flex-1 truncate">
-                      {scopedProjectGroup?.displayName ?? "All projects"}
-                    </span>
-                    <ChevronDownIcon className="-mr-px size-4 shrink-0" />
-                  </MenuTrigger>
-                  <MenuPopup align="start" className="w-(--anchor-width)">
-                    <MenuRadioGroup
-                      value={projectScopeKey ?? "all"}
-                      onValueChange={(value) =>
-                        setProjectScopeKey(value === "all" ? null : (value as string))
-                      }
-                    >
-                      <MenuRadioItem
-                        value="all"
-                        closeOnClick
-                        className="h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2"
-                      >
-                        <FolderIcon className="size-4 shrink-0" />
-                        <span className="min-w-0 truncate text-sm">All projects</span>
-                      </MenuRadioItem>
-                      {projectGroups.map((project) => {
-                        const scopeKey = project.projectKey;
-                        return (
-                          <MenuRadioItem
-                            key={scopeKey}
-                            value={scopeKey}
-                            closeOnClick
-                            className="h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2"
-                          >
-                            <ProjectFavicon
-                              environmentId={project.environmentId}
-                              cwd={project.workspaceRoot}
-                              faviconPath={project.faviconPath}
-                              className="size-4 shrink-0"
-                            />
-                            <span className="min-w-0 truncate text-sm">{project.displayName}</span>
-                            <Button
-                              size="icon-xs"
-                              variant="ghost-muted"
-                              aria-label={`Project settings for ${project.displayName}`}
-                              title={`Project settings for ${project.displayName}`}
-                              className="ml-auto size-6 [--control-icon-color:currentColor] text-icon-muted focus-visible:bg-accent focus-visible:text-foreground"
-                              onPointerDown={(event) => event.stopPropagation()}
-                              onClick={(event) => {
-                                void handleProjectSettings(event, project);
-                              }}
-                            >
-                              <SettingsIcon className="size-3.5" />
-                            </Button>
-                          </MenuRadioItem>
-                        );
-                      })}
-                    </MenuRadioGroup>
-                  </MenuPopup>
-                </Menu>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <SidebarMenuButton
-                        size="icon"
-                        className="relative shrink-0 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
-                        onClick={openAddProjectCommandPalette}
-                        type="button"
-                        aria-label="New project"
-                      />
-                    }
-                  >
-                    <FolderPlusIcon />
-                    <span
-                      className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
-                      aria-hidden="true"
-                    />
-                  </TooltipTrigger>
-                  <TooltipPopup side="right">New project</TooltipPopup>
-                </Tooltip>
-              </div>
+              </>
             ) : null}
           </SidebarGroup>
         }

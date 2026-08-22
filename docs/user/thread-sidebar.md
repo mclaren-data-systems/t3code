@@ -22,6 +22,13 @@ If reordering is unavailable for one environment, update the T3 Code server runn
 environment. Older servers can still pin and unpin threads, but do not understand synced ordering;
 their pinned threads keep the default newest-first order below the ones you have arranged.
 
+## Starting a thread
+
+**New thread** sits directly under the project selector and follows it. With a project selected,
+it starts a thread in that project straight away. With **All projects** selected it behaves as it
+always has: it starts a thread in the project you are already in when there is nothing to choose
+between, and otherwise asks which project to use.
+
 ## Environment artwork
 
 Dev and Nightly environments can identify themselves with artwork at the top of the sidebar and in
