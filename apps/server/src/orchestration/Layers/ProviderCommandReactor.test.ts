@@ -1586,9 +1586,8 @@ describe("ProviderCommandReactor", () => {
         type: "thread.meta.update",
         commandId: CommandId.make("cmd-thread-branch-prefix"),
         threadId: ThreadId.make("thread-1"),
-        // Minted by the client under the default prefix, so it stays eligible
-        // for rename after the prefix changed.
-        branch: "t3code/1234abcd",
+        // The marked placeholder the server writes when it creates the worktree.
+        branch: "theo/t3-1234abcd",
         worktreePath: "/tmp/provider-project-worktree",
       }),
     );
@@ -1616,7 +1615,7 @@ describe("ProviderCommandReactor", () => {
 
     await waitFor(() => harness.renameBranch.mock.calls.length === 1);
     expect(harness.renameBranch.mock.calls[0]?.[0]).toMatchObject({
-      oldBranch: "t3code/1234abcd",
+      oldBranch: "theo/t3-1234abcd",
       newBranch: "theo/safer-reconnect-backoff",
     });
 
@@ -1627,6 +1626,50 @@ describe("ProviderCommandReactor", () => {
         "theo/safer-reconnect-backoff"
       );
     });
+  });
+
+  it("leaves a branch the user named under the configured prefix alone", async () => {
+    const harness = await createHarness({ worktreeBranchPrefix: "theo" });
+    const now = "2026-01-01T00:00:00.000Z";
+
+    await harness.runEffect(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-thread-user-branch"),
+        threadId: ThreadId.make("thread-1"),
+        // Eight hex characters and a name a person plausibly picks. Without the
+        // `t3-` marker separating placeholders from hand-written branches, this
+        // would be renamed out from under the user.
+        branch: "theo/deadbeef",
+        worktreePath: "/tmp/provider-project-worktree",
+      }),
+    );
+
+    harness.generateBranchName.mockImplementation((_: unknown) =>
+      Effect.succeed({ branch: "Safer reconnect backoff" }),
+    );
+
+    await harness.runEffect(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-turn-start-user-branch"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-user-branch"),
+          role: "user",
+          text: "Add a safer reconnect backoff.",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.runtimeSessions.length > 0);
+    await harness.drain();
+    expect(harness.renameBranch.mock.calls.length).toBe(0);
+    expect(harness.generateBranchName.mock.calls.length).toBe(0);
   });
 
   it("forwards codex model options through session start and turn send", async () => {
