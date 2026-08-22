@@ -6,6 +6,9 @@
  * Codex account is a second place tokens get spent, and a scan that ignores it
  * under-reports without saying so.
  *
+ * Each source carries the instance it came from, so the scan can key buckets by
+ * instance and the dashboard can report two accounts of one provider apart.
+ *
  * Two rules the scan depends on:
  *
  *   - Disabled instances still count. Usage records tokens already spent;
@@ -22,6 +25,7 @@ import {
   CodexSettings,
   defaultInstanceIdForDriver,
   ProviderDriverKind,
+  type ProviderInstanceId,
   type ServerSettings,
   type UsageProviderKind,
 } from "@t3tools/contracts";
@@ -38,6 +42,10 @@ export interface UsageTranscriptSource {
   readonly provider: UsageProviderKind;
   /** Absolute transcript directory, exactly as the scan will walk it. */
   readonly dir: string;
+  readonly instanceId: ProviderInstanceId;
+  /** Configured name and accent color, passed through for the dashboard. */
+  readonly displayName: string | null;
+  readonly accentColor: string | null;
 }
 
 const CLAUDE_DRIVER = ProviderDriverKind.make("claudeAgent");
@@ -63,7 +71,9 @@ const resolveClaudeTranscriptDir = Effect.fn("resolveClaudeTranscriptDir")(funct
 });
 
 interface DriverInstanceConfig {
-  readonly instanceId: string;
+  readonly instanceId: ProviderInstanceId;
+  readonly displayName: string | null;
+  readonly accentColor: string | null;
   readonly config: unknown;
 }
 
@@ -86,18 +96,36 @@ function instanceConfigsForDriver(
 
   if (claimed === undefined) {
     // Access is dynamic (the driver kind is a branded string) but constrained
-    // to the built-in kinds this module names.
+    // to the built-in kinds this module names. The legacy blob carries no
+    // presentation, so the default slot falls back to the driver's own.
     const legacy = (settings.providers as Record<string, unknown>)[driver];
-    if (legacy !== undefined) configs.push({ instanceId: defaultInstanceId, config: legacy });
+    if (legacy !== undefined) {
+      configs.push({
+        instanceId: defaultInstanceId,
+        displayName: null,
+        accentColor: null,
+        config: legacy,
+      });
+    }
   } else if (claimed.driver === driver) {
-    configs.push({ instanceId: defaultInstanceId, config: claimed.config ?? {} });
+    configs.push({
+      instanceId: defaultInstanceId,
+      displayName: claimed.displayName ?? null,
+      accentColor: claimed.accentColor ?? null,
+      config: claimed.config ?? {},
+    });
   }
 
   for (const [instanceId, entry] of Object.entries(instances).sort(([left], [right]) =>
     left.localeCompare(right),
   )) {
     if (instanceId === defaultInstanceId || entry.driver !== driver) continue;
-    configs.push({ instanceId, config: entry.config ?? {} });
+    configs.push({
+      instanceId: instanceId as ProviderInstanceId,
+      displayName: entry.displayName ?? null,
+      accentColor: entry.accentColor ?? null,
+      config: entry.config ?? {},
+    });
   }
 
   return configs;
@@ -122,37 +150,45 @@ export const resolveUsageTranscriptSources = Effect.fn("resolveUsageTranscriptSo
   const sources: Array<UsageTranscriptSource> = [];
   const seen = new Set<string>();
 
-  const add = (provider: UsageProviderKind, dir: string) => {
+  const add = (provider: UsageProviderKind, dir: string, instance: DriverInstanceConfig) => {
     // Windows paths are case-insensitive, so two instances configured with
     // different casing name one directory and would otherwise double count.
+    // The instance that got there first owns the directory's usage; the
+    // transcripts underneath carry nothing that could tell them apart.
     const key = hostIsWindows ? dir.toLowerCase() : dir;
     if (seen.has(key)) return;
     seen.add(key);
-    sources.push({ provider, dir });
+    sources.push({
+      provider,
+      dir,
+      instanceId: instance.instanceId,
+      displayName: instance.displayName,
+      accentColor: instance.accentColor,
+    });
   };
 
-  for (const { instanceId, config } of instanceConfigsForDriver(settings, CLAUDE_DRIVER)) {
-    const decoded = yield* decodeClaudeSettings(config).pipe(Effect.result);
+  for (const instance of instanceConfigsForDriver(settings, CLAUDE_DRIVER)) {
+    const decoded = yield* decodeClaudeSettings(instance.config).pipe(Effect.result);
     if (decoded._tag === "Failure") {
       yield* Effect.logWarning("Skipping Claude instance with undecodable config in usage scan", {
-        instanceId,
+        instanceId: instance.instanceId,
       });
       continue;
     }
     const homePath = yield* resolveClaudeHomePath(decoded.success);
-    add("claude", yield* resolveClaudeTranscriptDir(homePath));
+    add("claude", yield* resolveClaudeTranscriptDir(homePath), instance);
   }
 
-  for (const { instanceId, config } of instanceConfigsForDriver(settings, CODEX_DRIVER)) {
-    const decoded = yield* decodeCodexSettings(config).pipe(Effect.result);
+  for (const instance of instanceConfigsForDriver(settings, CODEX_DRIVER)) {
+    const decoded = yield* decodeCodexSettings(instance.config).pipe(Effect.result);
     if (decoded._tag === "Failure") {
       yield* Effect.logWarning("Skipping Codex instance with undecodable config in usage scan", {
-        instanceId,
+        instanceId: instance.instanceId,
       });
       continue;
     }
     const layout = yield* resolveCodexHomeLayout(decoded.success);
-    add("codex", path.join(layout.sharedHomePath, "sessions"));
+    add("codex", path.join(layout.sharedHomePath, "sessions"), instance);
   }
 
   return sources;

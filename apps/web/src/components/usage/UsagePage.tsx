@@ -32,7 +32,7 @@ import {
 import { WorkspacePageContainer } from "../WorkspacePageContainer";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { UsageProviderChart, type UsageChartMetric } from "./UsageProviderChart";
-import { PROVIDER_ORDER, PROVIDER_PRESENTATION } from "./usageProviders";
+import { buildUsageSeries, PROVIDER_ORDER, PROVIDER_PRESENTATION } from "./usageProviders";
 
 const WINDOW_OPTIONS = [
   { days: 1, label: "Past 24h" },
@@ -68,6 +68,22 @@ export function UsagePage() {
         : enumerateHourStarts(window.sinceTime, window.untilTime),
     [window.sinceTime, window.untilTime],
   );
+  // One series per configured provider instance, so two Claude accounts read
+  // as two rows rather than one merged line.
+  const series = useMemo(() => buildUsageSeries(merged.instances), [merged.instances]);
+  // A model row names its instance only when the provider it belongs to has
+  // more than one; otherwise the brand mark beside it already says everything.
+  const ambiguousInstanceLabels = useMemo(() => {
+    const counts = new Map<UsageProviderKind, number>();
+    for (const instance of merged.instances) {
+      counts.set(instance.provider, (counts.get(instance.provider) ?? 0) + 1);
+    }
+    const labels = new Map<string, string>();
+    for (const entry of series) {
+      if ((counts.get(entry.provider) ?? 0) > 1) labels.set(entry.instanceId, entry.label);
+    }
+    return labels;
+  }, [merged.instances, series]);
   // Newest first: the window can run 90 periods, so the interesting end
   // belongs at the top of the table.
   const breakdownPeriods = useMemo<readonly (DailyTotals | HourlyTotals)[]>(
@@ -225,30 +241,26 @@ export function UsagePage() {
                       </span>
                     </div>
 
-                    {PROVIDER_ORDER.map((provider) => {
-                      const totals = merged.providers.find((entry) => entry.provider === provider);
+                    {series.map((entry) => {
+                      const totals = entry.totals;
                       const share =
                         metric === "cost" ? (totals?.costShare ?? 0) : (totals?.tokenShare ?? 0);
-                      const providerSessions = totals?.sessions ?? 0;
-                      const sessionLabel = `${formatCount(providerSessions)} ${
-                        providerSessions === 1 ? "session" : "sessions"
+                      const instanceSessions = totals?.sessions ?? 0;
+                      const sessionLabel = `${formatCount(instanceSessions)} ${
+                        instanceSessions === 1 ? "session" : "sessions"
                       }`;
                       return (
-                        <div key={provider} className="flex flex-col gap-1">
+                        <div key={entry.instanceId} className="flex flex-col gap-1">
                           <div className="flex items-baseline justify-between gap-4">
                             <span className="flex min-w-0 items-center gap-2 text-sm text-foreground">
                               <span
                                 aria-hidden
                                 className="size-2 shrink-0 rounded-full"
-                                style={{
-                                  backgroundColor: PROVIDER_PRESENTATION[provider].color,
-                                }}
+                                style={{ backgroundColor: entry.color }}
                               />
-                              <ProviderMark provider={provider} className="size-4" />
+                              <ProviderMark provider={entry.provider} className="size-4" />
                               <span className="flex min-w-0 items-baseline gap-1.5">
-                                <span className="truncate">
-                                  {PROVIDER_PRESENTATION[provider].label}
-                                </span>
+                                <span className="truncate">{entry.label}</span>
                                 <span className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground tabular-nums">
                                   {sessionLabel}
                                 </span>
@@ -283,6 +295,7 @@ export function UsagePage() {
                       metric={metric}
                       referenceTime={window.untilTime}
                       resolution={isPast24Hours ? "hour" : "day"}
+                      series={series}
                       timeZone={window.timeZone}
                     />
                   </div>
@@ -350,13 +363,18 @@ export function UsagePage() {
                         ) : (
                           merged.models.map((model) => (
                             <tr
-                              key={`${model.provider}:${model.model}`}
+                              key={`${model.instanceId}:${model.model}`}
                               className="border-b border-border/50 transition-colors hover:bg-muted/50"
                             >
                               <td className="py-2 text-foreground">
                                 <span className="flex items-center gap-2">
                                   <ProviderMark provider={model.provider} className="size-3.5" />
                                   {model.model}
+                                  {ambiguousInstanceLabels.has(model.instanceId) ? (
+                                    <span className="text-xs text-muted-foreground">
+                                      {ambiguousInstanceLabels.get(model.instanceId)}
+                                    </span>
+                                  ) : null}
                                 </span>
                               </td>
                               <td className="py-2 text-right text-foreground tabular-nums">
@@ -378,9 +396,9 @@ export function UsagePage() {
                       <thead>
                         <tr className="border-b border-border text-left text-xs text-muted-foreground">
                           <th className="py-2 font-normal">{isPast24Hours ? "Hour" : "Day"}</th>
-                          {PROVIDER_ORDER.map((provider) => (
-                            <th key={provider} className="py-2 text-right font-normal">
-                              {PROVIDER_PRESENTATION[provider].label}
+                          {series.map((entry) => (
+                            <th key={entry.instanceId} className="py-2 text-right font-normal">
+                              {entry.label}
                             </th>
                           ))}
                           <th className="py-2 text-right font-normal">Total</th>
@@ -390,7 +408,10 @@ export function UsagePage() {
                       <tbody>
                         {breakdownPeriods.length === 0 ? (
                           <tr>
-                            <td colSpan={5} className="py-6 text-center text-muted-foreground">
+                            <td
+                              colSpan={series.length + 3}
+                              className="py-6 text-center text-muted-foreground"
+                            >
                               No activity in this window.
                             </td>
                           </tr>
@@ -405,12 +426,12 @@ export function UsagePage() {
                                   ? formatHourShort(period.hourStart, window.timeZone)
                                   : formatDayShort(period.day)}
                               </td>
-                              {PROVIDER_ORDER.map((provider) => (
+                              {series.map((entry) => (
                                 <td
-                                  key={provider}
+                                  key={entry.instanceId}
                                   className="py-2 text-right text-muted-foreground tabular-nums"
                                 >
-                                  {formatUsd(period.byProvider.get(provider)?.costUsd ?? 0)}
+                                  {formatUsd(period.byInstance.get(entry.instanceId)?.costUsd ?? 0)}
                                 </td>
                               ))}
                               <td className="py-2 text-right text-foreground tabular-nums">
@@ -575,7 +596,7 @@ function UsageSkeleton() {
                   <span
                     aria-hidden
                     className="size-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: PROVIDER_PRESENTATION[provider].color }}
+                    style={{ backgroundColor: PROVIDER_PRESENTATION[provider].colors[0] }}
                   />
                   <ProviderMark provider={provider} className="size-4" />
                   <div className="h-3.5 w-20 rounded-sm bg-muted" />

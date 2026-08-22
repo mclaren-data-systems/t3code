@@ -230,3 +230,40 @@ export function makeWindow(
     resolution,
   };
 }
+
+/**
+ * Name for one provider instance on the report.
+ *
+ * The configured name wins when the user set one. A default instance otherwise
+ * shows the plain brand label, which is what a single-instance environment has
+ * always shown; an added instance falls back to its own id, humanized
+ * (`claudeAgent_work` to "Claude Agent Work"), because the alternative is two
+ * rows both reading "Claude Code".
+ *
+ * `brandLabel` comes from the caller: only the client knows how it spells a
+ * provider's name.
+ */
+export function formatInstanceLabel(instance: {
+  readonly instanceId: string;
+  readonly displayName: string | null;
+  readonly isDefaultInstance: boolean;
+  readonly brandLabel: string;
+}): string {
+  const configured = instance.displayName?.trim();
+  if (configured) return configured;
+  if (instance.isDefaultInstance) return instance.brandLabel;
+  return humanizeInstanceId(instance.instanceId) || instance.brandLabel;
+}
+
+/** `codex_personal` to "Codex Personal", `myInstance` to "My Instance". */
+function humanizeInstanceId(instanceId: string): string {
+  const words: string[] = [];
+  for (const token of instanceId
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .split(" ")) {
+    if (token.length === 0) continue;
+    words.push(token.charAt(0).toUpperCase() + token.slice(1));
+  }
+  return words.join(" ");
+}

@@ -1,6 +1,15 @@
+import { ProviderInstanceId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { buildDayColumns, niceScale } from "./UsageProviderChart";
+
+const CODEX = ProviderInstanceId.make("codex");
+const CLAUDE = ProviderInstanceId.make("claudeAgent");
+const CLAUDE_WORK = ProviderInstanceId.make("claudeAgent_work");
+
+/** Series carry more than the columns need; only the key is read here. */
+const series = (...instanceIds: readonly ProviderInstanceId[]) =>
+  instanceIds.map((instanceId) => ({ instanceId }));
 
 describe("niceScale", () => {
   it("never puts the peak above the top of the scale", () => {
@@ -49,9 +58,9 @@ describe("buildDayColumns", () => {
         day: "2026-08-01",
         costUsd: 30,
         totalTokens: 300,
-        byProvider: new Map([
-          ["codex" as const, { costUsd: 10, totalTokens: 100 }],
-          ["claude" as const, { costUsd: 20, totalTokens: 200 }],
+        byInstance: new Map([
+          [CODEX, { costUsd: 10, totalTokens: 100 }],
+          [CLAUDE, { costUsd: 20, totalTokens: 200 }],
         ]),
       },
     ],
@@ -62,17 +71,20 @@ describe("buildDayColumns", () => {
         day: "2026-08-03",
         costUsd: 5,
         totalTokens: 50,
-        byProvider: new Map([["claude" as const, { costUsd: 5, totalTokens: 50 }]]),
+        byInstance: new Map([[CLAUDE, { costUsd: 5, totalTokens: 50 }]]),
       },
     ],
   ]);
+  const both = series(CODEX, CLAUDE);
 
   it("plots each day on its own", () => {
-    expect(buildDayColumns(days, byDay, "cost").map((column) => column.total)).toEqual([30, 0, 5]);
+    expect(buildDayColumns(days, byDay, "cost", both).map((column) => column.total)).toEqual([
+      30, 0, 5,
+    ]);
   });
 
   it("reads the requested metric", () => {
-    expect(buildDayColumns(days, byDay, "tokens").map((column) => column.total)).toEqual([
+    expect(buildDayColumns(days, byDay, "tokens", both).map((column) => column.total)).toEqual([
       300, 0, 50,
     ]);
   });
@@ -80,24 +92,52 @@ describe("buildDayColumns", () => {
   it("keeps band values absolute rather than cumulative", () => {
     // Regression: the bands were once stack offsets, which drew Claude Code
     // permanently above Codex regardless of which provider spent more.
-    const [first] = buildDayColumns(days, byDay, "cost");
+    const [first] = buildDayColumns(days, byDay, "cost", both);
 
     expect(first?.bands).toEqual([
-      { provider: "codex", value: 10 },
-      { provider: "claude", value: 20 },
+      { instanceId: "codex", value: 10 },
+      { instanceId: "claudeAgent", value: 20 },
     ]);
   });
 
   it("reports the total as the sum of its bands", () => {
-    for (const column of buildDayColumns(days, byDay, "cost")) {
+    for (const column of buildDayColumns(days, byDay, "cost", both)) {
       const sum = column.bands.reduce((running, band) => running + band.value, 0);
       expect(column.total).toBeCloseTo(sum, 9);
     }
   });
+
+  it("gives each instance of one provider its own band", () => {
+    const twoClaudes = new Map([
+      [
+        "2026-08-01",
+        {
+          day: "2026-08-01",
+          costUsd: 30,
+          totalTokens: 300,
+          byInstance: new Map([
+            [CLAUDE, { costUsd: 20, totalTokens: 200 }],
+            [CLAUDE_WORK, { costUsd: 10, totalTokens: 100 }],
+          ]),
+        },
+      ],
+    ]);
+    const [first] = buildDayColumns(
+      ["2026-08-01"],
+      twoClaudes,
+      "cost",
+      series(CLAUDE, CLAUDE_WORK),
+    );
+
+    expect(first?.bands).toEqual([
+      { instanceId: "claudeAgent", value: 20 },
+      { instanceId: "claudeAgent_work", value: 10 },
+    ]);
+  });
 });
 
 describe("hourly chart columns", () => {
-  it("zero-fills inactive hours and preserves hourly provider values", () => {
+  it("zero-fills inactive hours and preserves hourly instance values", () => {
     const byHour = new Map([
       [
         "2026-08-11T09:37:00.000Z",
@@ -106,7 +146,7 @@ describe("hourly chart columns", () => {
           hourStart: "2026-08-11T09:37:00.000Z",
           costUsd: 4,
           totalTokens: 40,
-          byProvider: new Map([["codex" as const, { costUsd: 4, totalTokens: 40 }]]),
+          byInstance: new Map([[CODEX, { costUsd: 4, totalTokens: 40 }]]),
         },
       ],
     ]);
@@ -116,6 +156,7 @@ describe("hourly chart columns", () => {
         ["2026-08-11T08:37:00.000Z", "2026-08-11T09:37:00.000Z", "2026-08-11T10:37:00.000Z"],
         byHour,
         "cost",
+        series(CODEX, CLAUDE),
       ).map((column) => column.total),
     ).toEqual([0, 4, 0]);
   });
