@@ -11,6 +11,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   deriveActiveWorkStartedAt,
   deriveActivePlanState,
+  deriveCommitExcludedFilePaths,
   deriveTurnPlans,
   derivePendingApprovals,
   derivePendingUserInputs,
@@ -2297,5 +2298,26 @@ describe("session activity performance", () => {
     const startedAt = performance.now();
     expect(deriveWorkLogEntries(updatedActivities)).toHaveLength(20_001);
     expect(performance.now() - startedAt).toBeLessThan(100);
+  });
+});
+
+describe("deriveCommitExcludedFilePaths", () => {
+  it("excludes only the working-tree files outside the preselected set", () => {
+    expect(
+      deriveCommitExcludedFilePaths(["src/a.ts", "src/b.ts", "docs/readme.md"], ["src/b.ts"]),
+    ).toEqual(["src/a.ts", "docs/readme.md"]);
+  });
+
+  it("matches across separators, ./ prefixes, and case", () => {
+    expect(
+      deriveCommitExcludedFilePaths(
+        ["src\\Nested\\File.ts", "src/other.ts"],
+        ["./src/nested/file.ts"],
+      ),
+    ).toEqual(["src/other.ts"]);
+  });
+
+  it("excludes everything when nothing is preselected", () => {
+    expect(deriveCommitExcludedFilePaths(["src/a.ts"], [])).toEqual(["src/a.ts"]);
   });
 });
