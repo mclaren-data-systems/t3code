@@ -10,7 +10,8 @@
 > On top of upstream this fork carries a deliberately thin layer: a **workflow set a fork can
 > actually run** — standard GitHub-hosted runners instead of upstream's Blacksmith ones, no
 > workflow needing credentials a fork lacks, and unsigned desktop artifacts built on every
-> push to `main` — plus three server changes for **running more than one provider instance**
+> push to `main` and published as pruned development-build prereleases — plus three server
+> changes for **running more than one provider instance**
 > (a logged-out Claude instance reports as unauthenticated instead of ready, usage scans every
 > configured instance, and the usage report breaks totals down per instance), a **configurable
 > worktree branch prefix**, and four web UX changes (the sidebar new-thread button under the
