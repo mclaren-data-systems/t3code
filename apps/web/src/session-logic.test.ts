@@ -11,6 +11,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   deriveActiveWorkStartedAt,
   deriveActivePlanState,
+  deriveCommitExcludedFilePaths,
   deriveTurnPlans,
   derivePendingApprovals,
   derivePendingUserInputs,
@@ -2203,5 +2204,26 @@ describe("rerun workflows", () => {
     const spawnRows = entries.filter((entry) => entry.agentSpawn !== undefined);
     expect(spawnRows.map((row) => row.agentSpawn!.workflowId)).toEqual(["wf-run1", "wf-run2"]);
     expect(spawnRows.map((row) => row.turnId)).toEqual(["turn-1", "turn-2"]);
+  });
+});
+
+describe("deriveCommitExcludedFilePaths", () => {
+  it("excludes only the working-tree files outside the preselected set", () => {
+    expect(
+      deriveCommitExcludedFilePaths(["src/a.ts", "src/b.ts", "docs/readme.md"], ["src/b.ts"]),
+    ).toEqual(["src/a.ts", "docs/readme.md"]);
+  });
+
+  it("matches across separators, ./ prefixes, and case", () => {
+    expect(
+      deriveCommitExcludedFilePaths(
+        ["src\\Nested\\File.ts", "src/other.ts"],
+        ["./src/nested/file.ts"],
+      ),
+    ).toEqual(["src/other.ts"]);
+  });
+
+  it("excludes everything when nothing is preselected", () => {
+    expect(deriveCommitExcludedFilePaths(["src/a.ts"], [])).toEqual(["src/a.ts"]);
   });
 });
