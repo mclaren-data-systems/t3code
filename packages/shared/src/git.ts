@@ -14,12 +14,19 @@ import { detectSourceControlProviderFromRemoteUrl } from "./sourceControl.ts";
 // Re-exported so every worktree branch naming rule can be imported from here.
 export { DEFAULT_WORKTREE_BRANCH_PREFIX };
 
-// Temporary branch token: 8 lowercase hex chars. Older mobile builds generated
-// a `Crypto.randomUUID()` (always RFC 4122 v4) instead, so the matcher also
-// accepts exactly that shape — version nibble `4`, variant nibble `[89ab]` — to
-// keep those threads eligible for branch regeneration without loosening beyond
-// what was ever generated.
-const TEMP_WORKTREE_BRANCH_TOKEN_PATTERN =
+// Placeholder branches carry this marker so they cannot be mistaken for a
+// branch someone named themselves. Provenance is inferred from the refName
+// rather than recorded, so the shape has to be one nobody writes by hand:
+// `theo/deadbeef` is eight hex characters and a plausible hand-written name,
+// while `theo/t3-deadbeef` is not.
+const TEMP_WORKTREE_BRANCH_MARKER = "t3-";
+const TEMP_WORKTREE_BRANCH_TOKEN_PATTERN = "[0-9a-f]{8}";
+// Unmarked tokens predate the marker, and older mobile builds minted a
+// `Crypto.randomUUID()` (always RFC 4122 v4) — version nibble `4`, variant
+// nibble `[89ab]`. Both were only ever minted under the default prefix, so they
+// stay matchable there and nowhere else: honouring them under a configured
+// prefix is what would make `theo/deadbeef` look like a placeholder.
+const LEGACY_TEMP_WORKTREE_BRANCH_TOKEN_PATTERN =
   "(?:[0-9a-f]{8}|[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})";
 
 /**
@@ -123,13 +130,13 @@ export function buildTemporaryWorktreeBranchName(
     .toLowerCase()
     .replace(/[^0-9a-f]/g, "")
     .slice(0, 8);
-  return `${DEFAULT_WORKTREE_BRANCH_PREFIX}/${token}`;
+  return `${DEFAULT_WORKTREE_BRANCH_PREFIX}/${TEMP_WORKTREE_BRANCH_MARKER}${token}`;
 }
 
 /**
- * The prefixes a placeholder worktree branch may legitimately carry: the
- * configured one, plus the default, so threads created before the prefix
- * changed stay eligible for rename.
+ * The prefixes a marked placeholder may legitimately carry: the configured one,
+ * plus the default, so a thread whose placeholder was minted before the prefix
+ * changed stays eligible for rename.
  */
 function temporaryWorktreeBranchPrefixes(prefix: string | null | undefined): ReadonlyArray<string> {
   const normalized = normalizeWorktreeBranchPrefix(prefix);
@@ -139,19 +146,28 @@ function temporaryWorktreeBranchPrefixes(prefix: string | null | undefined): Rea
 }
 
 /**
- * The prefix a refName carries if it is a placeholder worktree branch, or
- * undefined if the refName is something the user named.
+ * The random token a refName carries if it is a placeholder worktree branch, or
+ * undefined if the refName is something the user named. Prefixes are sanitized
+ * to `[a-z0-9/_-]`, none of which is a regex metacharacter, so interpolating
+ * one needs no escaping.
  */
-function matchTemporaryWorktreeBranchPrefix(
+function temporaryWorktreeBranchToken(
   refName: string,
   prefix: string | null | undefined,
 ): string | undefined {
   const candidate = refName.trim().toLowerCase();
-  return temporaryWorktreeBranchPrefixes(prefix).find((namespace) =>
-    // Prefixes are sanitized to `[a-z0-9/_-]`, none of which is a regex
-    // metacharacter, so interpolating one needs no escaping.
-    new RegExp(`^${namespace}\\/${TEMP_WORKTREE_BRANCH_TOKEN_PATTERN}$`).test(candidate),
-  );
+
+  for (const namespace of temporaryWorktreeBranchPrefixes(prefix)) {
+    const marked = new RegExp(
+      `^${namespace}\\/${TEMP_WORKTREE_BRANCH_MARKER}(${TEMP_WORKTREE_BRANCH_TOKEN_PATTERN})$`,
+    ).exec(candidate);
+    if (marked) return marked[1];
+  }
+
+  const legacy = new RegExp(
+    `^${DEFAULT_WORKTREE_BRANCH_PREFIX}\\/(${LEGACY_TEMP_WORKTREE_BRANCH_TOKEN_PATTERN})$`,
+  ).exec(candidate);
+  return legacy ? legacy[1] : undefined;
 }
 
 /**
@@ -160,20 +176,20 @@ function matchTemporaryWorktreeBranchPrefix(
  * produces a real name.
  */
 export function isTemporaryWorktreeBranch(refName: string, prefix?: string | null): boolean {
-  return matchTemporaryWorktreeBranchPrefix(refName, prefix) !== undefined;
+  return temporaryWorktreeBranchToken(refName, prefix) !== undefined;
 }
 
 /**
  * Re-namespace a placeholder worktree branch a client minted under a different
- * prefix. Anything the user actually named is returned untouched.
+ * prefix, normalizing it to the marked form on the way through. Anything the
+ * user actually named is returned untouched.
  */
 export function applyWorktreeBranchPrefix(refName: string, prefix?: string | null): string {
-  const matched = matchTemporaryWorktreeBranchPrefix(refName, prefix);
-  if (matched === undefined) {
+  const token = temporaryWorktreeBranchToken(refName, prefix);
+  if (token === undefined) {
     return refName;
   }
-  const token = refName.trim().toLowerCase().slice(`${matched}/`.length);
-  return `${normalizeWorktreeBranchPrefix(prefix)}/${token}`;
+  return `${normalizeWorktreeBranchPrefix(prefix)}/${TEMP_WORKTREE_BRANCH_MARKER}${token}`;
 }
 
 /**
