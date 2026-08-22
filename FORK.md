@@ -13,7 +13,8 @@ existing implementation. In practice that thin layer has converged on one substa
 upstream's Blacksmith ones, nothing needing credentials a fork lacks, and unsigned desktop
 artifacts built on every push to `main`) — plus this file and the `README.md` fork banner that
 points at it. Alongside it the fork carries the two multi-instance Claude provider fixes
-(entries 15 and 16), so `apps/` and `packages/` differ from upstream. `native/`, `scripts/`,
+(entries 15 and 16) and a configurable worktree branch prefix (entry 17), so `apps/` and
+`packages/` differ from upstream. `native/`, `scripts/`,
 `pnpm-lock.yaml`, and `pnpm-workspace.yaml` are byte-identical to upstream; the only thing
 under `packaging/` and `infra/` that differs is a fork note in a README (plus the dropped
 release-workflow guard in `infra/relay/scripts/deploy.test.ts` — see entry 14).
@@ -134,8 +135,9 @@ apps/web/src/components/settings apps/web/src/components/chat/ProviderStatusBann
 > or "Dropped changes"; look for it there.
 >
 > **Carried on `main` today:** 11, 12 (its `AGENTS.md` sections only — the symlink half is now
-> upstream's), 13, 14, 15, 16 — workflows, fork documentation, and two source changes (15, 16,
-> both from the same multi-instance provider investigation).
+> upstream's), 13, 14, 15, 16, 17 — workflows, fork documentation, and three source changes: 15
+> and 16 (both from the same multi-instance provider investigation) and 17 (configurable worktree
+> branch prefix).
 > **Fork-intentional but not on `main` anywhere:** 5 (commit-preselect remainder), 6, 7.
 > Their PR branches were deleted from `origin`; the only surviving copies are
 > `refs/pull/6/head` (`47f1f30b`) and `refs/pull/7/head` (`8c295d66`), which sit on the
@@ -597,6 +599,75 @@ typecheck` clean, `vp lint` and `vp fmt --check` clean on the touched files. The
   default-only output, the nested-vs-flat Claude layout probe, multiple instances per driver with
   ordering, disabled instances, shared-directory de-duplication, an explicit entry claiming the
   default slot, and the undecodable-config skip.
+
+### 17. The worktree branch prefix is configurable, not hardcoded to `t3code`
+
+- **Files:** `packages/contracts/src/settings.ts` (`DEFAULT_WORKTREE_BRANCH_PREFIX`,
+  `ServerSettings.worktreeBranchPrefix`, `ServerSettingsPatch.worktreeBranchPrefix`),
+  `packages/shared/src/git.ts` (+ test), `apps/server/src/ws.ts`,
+  `apps/server/src/orchestration/Layers/ProviderCommandReactor.ts` (+ test),
+  `apps/server/src/server.test.ts`,
+  `apps/web/src/components/settings/WorktreeBranchSettings.tsx` (new),
+  `apps/web/src/components/settings/SourceControlSettings.tsx`,
+  `apps/web/src/components/settings/settingsSearch.ts`, `docs/user/source-control.md`
+- **Commits:** branch `claude/t3code-pr-prefix-i2orpy`
+- **Problem.** `WORKTREE_BRANCH_PREFIX = "t3code"` was a `const` in `packages/shared/src/git.ts`
+  with no setting, no project config, and no env override behind it. Every worktree thread got a
+  `t3code/<8 hex>` placeholder, and on the first turn the server renamed it to
+  `t3code/<generated-slug>` — which is the head branch a pull request opens from. So the vendor
+  name lands in every teammate's branch list and in every PR, and repositories with branch-naming
+  rules (`<handle>/*`, `feature/*`, protected-prefix policies) cannot be satisfied at all. The only
+  escape was to hand-create a branch before the first message, opting the thread out of automatic
+  naming entirely.
+- **What changed.** One new server setting, `worktreeBranchPrefix`, applied at the two places the
+  server names a worktree branch. `packages/shared/src/git.ts` grows the naming policy —
+  `normalizeWorktreeBranchPrefix` (sanitize into a refName fragment, fall back to the default when
+  nothing usable survives), `applyWorktreeBranchPrefix` (re-namespace a placeholder),
+  `buildWorktreeBranchName` (namespace a generated description) — and
+  `isTemporaryWorktreeBranch` takes an optional prefix. `ws.ts` re-namespaces at worktree creation;
+  `ProviderCommandReactor` uses the configured prefix for the first-turn rename. Settings →
+  Source Control gains a **Branches** section.
+- **Four decisions worth keeping if this is re-derived:**
+  1. **The server owns the naming, the clients stay dumb.** Web and mobile mint the placeholder
+     (`buildTemporaryWorktreeBranchName`) before they could know the setting, so its signature is
+     unchanged and the three client call sites are untouched. `ws.ts` rewrites the placeholder at
+     `prepareWorktree` time and the existing `thread.meta.update` already reports the real branch
+     back, so no client ever displays the pre-rewrite name. Pushing the setting out to three
+     clients instead would buy nothing and add a stale-settings failure mode on mobile's outbox
+     drain.
+  2. **The matcher accepts the configured prefix _and_ the default.** `isTemporaryWorktreeBranch`
+     gates the first-turn rename. Without the default in the accepted set, changing the prefix
+     would strand every thread whose placeholder was already minted, and would break the rewrite
+     in (1) — the client's `t3code/<hex>` has to still read as temporary.
+  3. **A blank or unusable prefix falls back to `t3code`, it does not mean "no prefix".** An empty
+     namespace would make the placeholder a bare 8-hex branch name, which `isTemporaryWorktreeBranch`
+     could then match against a branch a user created themselves. The fallback keeps that
+     unambiguous and keeps a bad setting from ever producing an invalid refName.
+  4. **A branch the user named is never rewritten.** Both `applyWorktreeBranchPrefix` and the
+     rename gate pass through anything that is not a placeholder, so picking a branch before the
+     first message still opts a thread out entirely — the pre-existing escape hatch keeps working.
+- **Not fixed here:** no mobile settings UI. Mobile surfaces no server settings today (it has no
+  equivalent of the source-control writing-style rows either), so this follows that precedent
+  rather than opening a new surface. The setting still applies to threads started from mobile —
+  the server does the naming.
+- **Drop it when:** upstream makes the prefix configurable. Check with `grep -rn
+"WORKTREE_BRANCH_PREFIX\|worktreeBranchPrefix" packages/shared/src/git.ts` against clean upstream
+  — a lone `export const WORKTREE_BRANCH_PREFIX = "t3code"` means this entry is still needed.
+- **Re-apply notes:** The rename site is
+  `maybeGenerateAndRenameWorktreeBranchForFirstTurn` in `ProviderCommandReactor.ts`; the settings
+  read has to sit **inside** the guarded `Effect.gen` whose `catchCause` logs failures, otherwise a
+  `ServerSettingsError` escapes a path that previously could not fail. The `ws.ts` site is the
+  `bootstrap.prepareWorktree` block, where `branch` is optional — rewrite only when it is defined,
+  since an absent `newRefName` means "check out the base ref, do not create a branch".
+- **Verified:** `vp test run packages/shared/src/git.test.ts` (24 passed),
+  `apps/server/src/orchestration/Layers/ProviderCommandReactor.test.ts` (46 passed, 1 new),
+  `apps/server/src/server.test.ts` (125 passed, 1 new; the one failure,
+  _reports workspace root stat failures without relabeling them as missing_, fails identically on
+  a clean tree in this container — it needs a non-root user for the stat to be denied),
+  `packages/contracts/src/settings.test.ts` + `packages/shared/src/serverSettings.test.ts` +
+  web settings tests (94 passed). `vp run --filter @t3tools/contracts --filter @t3tools/shared
+--filter t3 --filter @t3tools/web typecheck` clean; `vp lint` and `vp fmt` clean on the touched
+  files.
 
 ---
 
