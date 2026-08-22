@@ -301,6 +301,7 @@ import type { AssistantCitationRequest } from "./chat/AssistantCitationSource";
 import { resolveTimelineIsAtEnd } from "./chat/MessagesTimeline.logic";
 import { resolveComposerTimelineInset } from "./composerFooterLayout";
 import { ChatHeader } from "./chat/ChatHeader";
+import { type GitCommitPreselection } from "./GitActionsControl";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { expandedImageKey, type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { NoActiveThreadState } from "./NoActiveThreadState";
@@ -7478,6 +7479,17 @@ export default function ChatView(props: ChatViewProps) {
     },
     [activeThreadRef, isServerThread, onDiffPanelOpen],
   );
+  // A turn's "Changed files" commit button routes to the header's git actions
+  // control, which opens the commit dialog with only these files checked.
+  const [commitPreselection, setCommitPreselection] = useState<GitCommitPreselection | null>(null);
+  const commitPreselectionRequestIdRef = useRef(0);
+  const onCommitTurnFiles = useCallback((_turnId: TurnId, filePaths: string[]) => {
+    commitPreselectionRequestIdRef.current += 1;
+    setCommitPreselection({
+      filePaths,
+      requestId: commitPreselectionRequestIdRef.current,
+    });
+  }, []);
   // Both the Map and the revert handler are read from refs at call-time so
   // the callback reference is fully stable and never busts context identity.
   const revertTurnCountRef = useRef(revertTurnCountByUserMessageId);
@@ -7734,6 +7746,7 @@ export default function ChatView(props: ChatViewProps) {
             availableEditors={availableEditors}
             rightPanelOpen={rightPanelOpen}
             gitCwd={gitCwd}
+            commitPreselection={commitPreselection}
             onNewThreadInProject={handleNewThreadInActiveProject}
             onRunProjectScript={runProjectScript}
             onAddProjectScript={saveProjectScript}
@@ -7805,6 +7818,7 @@ export default function ChatView(props: ChatViewProps) {
                 activeThreadEnvironmentId={activeThread.environmentId}
                 routeThreadKey={routeThreadKey}
                 onOpenTurnDiff={onOpenTurnDiff}
+                onCommitTurnFiles={isServerThread ? onCommitTurnFiles : undefined}
                 revertTurnCountByUserMessageId={revertTurnCountByUserMessageId}
                 onRevertUserMessage={onRevertUserMessage}
                 onUseArtifactTemplate={useArtifactTemplate}
