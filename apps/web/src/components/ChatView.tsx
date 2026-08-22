@@ -1442,6 +1442,9 @@ function ChatViewContent(props: ChatViewProps) {
     };
   }, [routeKind, routeThreadRef, routeThreadState]);
   const markThreadVisited = useUiStateStore((store) => store.markThreadVisited);
+  const markThreadCompletionAcknowledged = useUiStateStore(
+    (store) => store.markThreadCompletionAcknowledged,
+  );
   const settings = useEnvironmentSettings(environmentId);
   // New-thread defaults live in the primary environment's settings.json (the
   // settings UI never writes to remote environments), so read them from the
@@ -1909,12 +1912,15 @@ function ChatViewContent(props: ChatViewProps) {
   useEffect(() => {
     const completedAt = serverThread?.latestTurn?.completedAt;
     if (!serverThread?.id || !completedAt) return;
-    markThreadVisited(
-      scopedThreadKey(scopeThreadRef(serverThread.environmentId, serverThread.id)),
-      completedAt,
+    const visitedThreadKey = scopedThreadKey(
+      scopeThreadRef(serverThread.environmentId, serverThread.id),
     );
+    markThreadVisited(visitedThreadKey, completedAt);
+    // Acknowledge the completion on visit as well (backs the green dot).
+    markThreadCompletionAcknowledged(visitedThreadKey, completedAt);
   }, [
     markThreadVisited,
+    markThreadCompletionAcknowledged,
     serverThread?.environmentId,
     serverThread?.id,
     serverThread?.latestTurn?.completedAt,
