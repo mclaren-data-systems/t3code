@@ -29,8 +29,10 @@ macOS runner is unavailable to it.
 
 [`.github/workflows/desktop-artifacts.yml`](../../.github/workflows/desktop-artifacts.yml) builds
 macOS (`arm64` and `x64`), Linux (`x64`), and Windows (`x64`) desktop artifacts on every push to
-`main`, plus on manual dispatch. Artifacts are **unsigned** and uploaded as workflow artifacts
-(14-day retention); nothing is published to a GitHub Release.
+`main`, plus on manual dispatch. Artifacts are **unsigned**, uploaded as workflow artifacts
+(14-day retention), and published as a GitHub **prerelease** tagged `desktop-dev-<run number>` —
+a development build, never marked latest. The workflow prunes older `desktop-dev-*` releases,
+keeping only the current one plus two.
 
 [`.github/workflows/issue-labels.yml`](../../.github/workflows/issue-labels.yml) keeps the labels the
 issue forms apply (`bug`, `enhancement`, `needs-triage`) in sync.
