@@ -78,18 +78,19 @@ describe("isTemporaryWorktreeBranch", () => {
   });
 
   it("matches generated temporary worktree refs", () => {
-    expect(isTemporaryWorktreeBranch(`${DEFAULT_WORKTREE_BRANCH_PREFIX}/deadbeef`)).toBe(true);
-    expect(isTemporaryWorktreeBranch(` ${DEFAULT_WORKTREE_BRANCH_PREFIX}/deadbeef `)).toBe(true);
-    expect(isTemporaryWorktreeBranch(`${DEFAULT_WORKTREE_BRANCH_PREFIX}/DEADBEEF`)).toBe(true);
+    expect(isTemporaryWorktreeBranch(`${DEFAULT_WORKTREE_BRANCH_PREFIX}/t3-deadbeef`)).toBe(true);
+    expect(isTemporaryWorktreeBranch(` ${DEFAULT_WORKTREE_BRANCH_PREFIX}/t3-deadbeef `)).toBe(true);
+    expect(isTemporaryWorktreeBranch(`${DEFAULT_WORKTREE_BRANCH_PREFIX}/T3-DEADBEEF`)).toBe(true);
   });
 
   it("normalizes a UUID-shaped random callback to the canonical 8-hex form", () => {
     expect(buildTemporaryWorktreeBranchName(() => "f4ae4e0e-f971-4d48-b4f2-9cf0aa54ab12")).toBe(
-      `${DEFAULT_WORKTREE_BRANCH_PREFIX}/f4ae4e0e`,
+      `${DEFAULT_WORKTREE_BRANCH_PREFIX}/t3-f4ae4e0e`,
     );
   });
 
-  it("matches legacy UUID-shaped temporary worktree refs from older mobile builds", () => {
+  it("matches unmarked and UUID-shaped refs from builds that predate the marker", () => {
+    expect(isTemporaryWorktreeBranch(`${DEFAULT_WORKTREE_BRANCH_PREFIX}/deadbeef`)).toBe(true);
     expect(
       isTemporaryWorktreeBranch(
         `${DEFAULT_WORKTREE_BRANCH_PREFIX}/f4ae4e0e-f971-4d48-b4f2-9cf0aa54ab12`,
@@ -115,23 +116,33 @@ describe("isTemporaryWorktreeBranch", () => {
   it("rejects non-temporary refName names", () => {
     expect(isTemporaryWorktreeBranch(`${DEFAULT_WORKTREE_BRANCH_PREFIX}/feature/demo`)).toBe(false);
     expect(isTemporaryWorktreeBranch("main")).toBe(false);
-    expect(isTemporaryWorktreeBranch(`${DEFAULT_WORKTREE_BRANCH_PREFIX}/deadbeef-extra`)).toBe(
+    expect(isTemporaryWorktreeBranch(`${DEFAULT_WORKTREE_BRANCH_PREFIX}/t3-deadbeef-extra`)).toBe(
       false,
     );
   });
 
-  it("matches temporary refs under a configured prefix, and the default alongside it", () => {
-    expect(isTemporaryWorktreeBranch("theo/deadbeef", "theo")).toBe(true);
-    // Threads created before the prefix changed stay eligible for rename.
-    expect(isTemporaryWorktreeBranch(`${DEFAULT_WORKTREE_BRANCH_PREFIX}/deadbeef`, "theo")).toBe(
+  it("matches marked refs under a configured prefix, and the default alongside it", () => {
+    expect(isTemporaryWorktreeBranch("theo/t3-deadbeef", "theo")).toBe(true);
+    // A placeholder minted before the prefix changed stays eligible for rename.
+    expect(isTemporaryWorktreeBranch(`${DEFAULT_WORKTREE_BRANCH_PREFIX}/t3-deadbeef`, "theo")).toBe(
       true,
     );
-    expect(isTemporaryWorktreeBranch("julius/deadbeef", "theo")).toBe(false);
+    expect(isTemporaryWorktreeBranch("julius/t3-deadbeef", "theo")).toBe(false);
   });
 
-  it("matches temporary refs under a multi-segment prefix", () => {
-    expect(isTemporaryWorktreeBranch("theo/wip/deadbeef", "theo/wip")).toBe(true);
-    expect(isTemporaryWorktreeBranch("theo/deadbeef", "theo/wip")).toBe(false);
+  it("matches marked refs under a multi-segment prefix", () => {
+    expect(isTemporaryWorktreeBranch("theo/wip/t3-deadbeef", "theo/wip")).toBe(true);
+    expect(isTemporaryWorktreeBranch("theo/t3-deadbeef", "theo/wip")).toBe(false);
+  });
+
+  it("leaves a hand-written branch under the configured prefix alone", () => {
+    // The marker is what separates a placeholder from a branch someone named:
+    // `deadbeef` is eight hex characters and a name a person plausibly picks.
+    expect(isTemporaryWorktreeBranch("theo/deadbeef", "theo")).toBe(false);
+    expect(isTemporaryWorktreeBranch("theo/cafebabe", "theo")).toBe(false);
+    expect(isTemporaryWorktreeBranch("theo/f4ae4e0e-f971-4d48-b4f2-9cf0aa54ab12", "theo")).toBe(
+      false,
+    );
   });
 });
 
@@ -150,25 +161,35 @@ describe("normalizeWorktreeBranchPrefix", () => {
 });
 
 describe("applyWorktreeBranchPrefix", () => {
-  it("re-namespaces a placeholder branch minted under the default prefix", () => {
+  it("re-namespaces a placeholder minted under the default prefix", () => {
+    expect(applyWorktreeBranchPrefix(`${DEFAULT_WORKTREE_BRANCH_PREFIX}/t3-deadbeef`, "theo")).toBe(
+      "theo/t3-deadbeef",
+    );
+    expect(
+      applyWorktreeBranchPrefix(`${DEFAULT_WORKTREE_BRANCH_PREFIX}/t3-deadbeef`, "theo/wip"),
+    ).toBe("theo/wip/t3-deadbeef");
+  });
+
+  it("normalizes a pre-marker placeholder to the marked form", () => {
     expect(applyWorktreeBranchPrefix(`${DEFAULT_WORKTREE_BRANCH_PREFIX}/deadbeef`, "theo")).toBe(
-      "theo/deadbeef",
+      "theo/t3-deadbeef",
     );
     expect(
       applyWorktreeBranchPrefix(
         `${DEFAULT_WORKTREE_BRANCH_PREFIX}/f4ae4e0e-f971-4d48-b4f2-9cf0aa54ab12`,
-        "theo/wip",
+        "theo",
       ),
-    ).toBe("theo/wip/f4ae4e0e-f971-4d48-b4f2-9cf0aa54ab12");
+    ).toBe("theo/t3-f4ae4e0e-f971-4d48-b4f2-9cf0aa54ab12");
   });
 
   it("leaves a branch the user named untouched", () => {
     expect(applyWorktreeBranchPrefix("feature/demo", "theo")).toBe("feature/demo");
     expect(applyWorktreeBranchPrefix("main", "theo")).toBe("main");
+    expect(applyWorktreeBranchPrefix("theo/deadbeef", "theo")).toBe("theo/deadbeef");
   });
 
-  it("is a no-op when the prefix resolves to the default", () => {
-    const branch = `${DEFAULT_WORKTREE_BRANCH_PREFIX}/deadbeef`;
+  it("is a no-op on an already-marked placeholder under the default prefix", () => {
+    const branch = `${DEFAULT_WORKTREE_BRANCH_PREFIX}/t3-deadbeef`;
     expect(applyWorktreeBranchPrefix(branch, "")).toBe(branch);
     expect(applyWorktreeBranchPrefix(branch)).toBe(branch);
   });

@@ -10106,7 +10106,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         (input: Parameters<GitVcsDriver.GitVcsDriver["Service"]["createWorktree"]>[0]) =>
           Effect.succeed({
             worktree: {
-              refName: input.newRefName ?? "theo/1234abcd",
+              refName: input.newRefName ?? "theo/t3-1234abcd",
               path: "/tmp/bootstrap-worktree",
             },
           }),
@@ -10163,7 +10163,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                 baseBranch: "main",
                 // Clients mint the placeholder under the default prefix; the
                 // server re-namespaces it.
-                branch: "t3code/1234abcd",
+                branch: "t3code/t3-1234abcd",
               },
             },
             createdAt,
@@ -10171,7 +10171,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         ),
       );
 
-      assert.equal(createWorktree.mock.calls[0]?.[0]?.newRefName, "theo/1234abcd");
+      assert.equal(createWorktree.mock.calls[0]?.[0]?.newRefName, "theo/t3-1234abcd");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
