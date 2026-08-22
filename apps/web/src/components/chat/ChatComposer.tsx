@@ -20,6 +20,7 @@ import {
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
 } from "@t3tools/contracts";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model";
 import {
@@ -325,6 +326,16 @@ import {
 import { searchProviderSkills } from "../../providerSkillSearch";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
+import {
+  isThreadMessageHistoryBoundary,
+  resolveThreadMessageHistoryNavigation,
+  type ThreadMessageHistoryDirection,
+  type ThreadMessageHistoryNavigationState,
+} from "../../threadMessageHistory";
+import { useThreadMessageHistoryStore } from "../../threadMessageHistoryStore";
+
+/** Stable empty history reference so the zustand selector doesn't churn renders. */
+const EMPTY_THREAD_MESSAGE_HISTORY: readonly string[] = [];
 
 const runtimeModeConfig: Record<
   RuntimeMode,
@@ -1225,6 +1236,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerSurfaceRef = useRef<HTMLDivElement>(null);
   const providerInputRejectedRef = useRef(false);
   const composerSelectLockRef = useRef(false);
+
+  // Per-thread composer message history (shell-style arrow-key recall, #7).
+  const threadMessageHistoryKey = useMemo(() => scopedThreadKey(routeThreadRef), [routeThreadRef]);
+  const threadMessageHistory = useThreadMessageHistoryStore(
+    (store) => store.historyByThreadKey[threadMessageHistoryKey] ?? EMPTY_THREAD_MESSAGE_HISTORY,
+  );
+  const appendThreadMessageHistory = useThreadMessageHistoryStore((store) => store.appendMessage);
+  const threadMessageHistoryNavigationRef = useRef<ThreadMessageHistoryNavigationState>({
+    index: null,
+    draft: "",
+  });
+  const threadMessageHistoryAppliedPromptRef = useRef<string | null>(null);
   const composerMenuOpenRef = useRef(false);
   const composerMenuItemsRef = useRef<ComposerCommandItem[]>([]);
   const activeComposerMenuItemRef = useRef<ComposerCommandItem | null>(null);
@@ -2135,6 +2158,58 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     showPlanFollowUpPrompt,
   ]);
 
+  const applyThreadMessageHistoryPrompt = useCallback(
+    (nextPrompt: string) => {
+      promptRef.current = nextPrompt;
+      setPrompt(nextPrompt);
+      const nextCursor = collapseExpandedComposerCursor(nextPrompt, nextPrompt.length);
+      setComposerCursor(nextCursor);
+      setComposerTrigger(detectComposerTrigger(nextPrompt, nextPrompt.length));
+      setComposerHighlightedItemId(null);
+      setComposerHighlightedSearchKey(null);
+      threadMessageHistoryAppliedPromptRef.current = nextPrompt;
+      window.requestAnimationFrame(() => {
+        composerEditorRef.current?.focusAt(nextCursor);
+      });
+    },
+    [promptRef, setPrompt],
+  );
+
+  const navigateThreadMessageHistory = useCallback(
+    (direction: ThreadMessageHistoryDirection): boolean => {
+      const snapshot = readComposerSnapshot();
+      // Restart navigation when the prompt was edited since we last applied one,
+      // so ArrowUp begins from the newest message again.
+      if (threadMessageHistoryAppliedPromptRef.current !== snapshot.value) {
+        threadMessageHistoryNavigationRef.current = { index: null, draft: "" };
+      }
+      const navigationState = threadMessageHistoryNavigationRef.current;
+      if (
+        navigationState.index === null &&
+        !isThreadMessageHistoryBoundary({
+          direction,
+          text: snapshot.value,
+          expandedCursor: snapshot.expandedCursor,
+        })
+      ) {
+        return false;
+      }
+      const result = resolveThreadMessageHistoryNavigation({
+        direction,
+        history: threadMessageHistory,
+        navigation: navigationState,
+        currentDraft: snapshot.value,
+      });
+      if (!result.handled) {
+        return false;
+      }
+      threadMessageHistoryNavigationRef.current = result.navigation;
+      applyThreadMessageHistoryPrompt(result.nextPrompt);
+      return true;
+    },
+    [applyThreadMessageHistoryPrompt, readComposerSnapshot, threadMessageHistory],
+  );
+
   const submitComposer = useCallback(
     (event?: { preventDefault: () => void }, intent: ComposerSubmissionIntent = "foreground") => {
       if (noProviderAvailable || isSendDisabled) {
@@ -2154,6 +2229,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         });
         return;
       }
+      const promptBeforeSubmit = promptRef.current;
       const submission = submitComposerDraft({
         prompt: promptRef.current,
         submissionTarget: activePendingProgress ? "pending-user-input" : "provider-turn",
@@ -2168,6 +2244,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       });
       setComposerSubmissionError(submission.validationMessage);
       if (!submission.didDispatch) return;
+      if (promptBeforeSubmit.trim().length > 0) {
+        appendThreadMessageHistory(threadMessageHistoryKey, promptBeforeSubmit);
+      }
+      threadMessageHistoryNavigationRef.current = { index: null, draft: "" };
+      threadMessageHistoryAppliedPromptRef.current = null;
       if (shouldBlurMobileComposerOnSubmit()) {
         blurMobileComposerAfterSend();
       }
@@ -2175,12 +2256,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     [
       activeThreadId,
       activePendingProgress,
+      appendThreadMessageHistory,
       blurMobileComposerAfterSend,
       isSendDisabled,
       noProviderAvailable,
       onSend,
       promptRef,
       shouldBlurMobileComposerOnSubmit,
+      threadMessageHistoryKey,
     ],
   );
   const compactThreadContext = useCallback(() => {
@@ -2300,6 +2383,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     if (submissionIntent) {
       submitComposer(undefined, submissionIntent);
       return true;
+    }
+    if (key === "ArrowUp" || key === "ArrowDown") {
+      const direction: ThreadMessageHistoryDirection = key === "ArrowUp" ? "backward" : "forward";
+      if (navigateThreadMessageHistory(direction)) {
+        return true;
+      }
     }
     return false;
   };
