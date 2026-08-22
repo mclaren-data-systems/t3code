@@ -24,10 +24,13 @@ their pinned threads keep the default newest-first order below the ones you have
 
 ## Starting a thread
 
-**New thread** sits directly under the project selector and follows it. With a project selected,
-it starts a thread in that project straight away. With **All projects** selected it behaves as it
-always has: it starts a thread in the project you are already in when there is nothing to choose
-between, and otherwise asks which project to use.
+On web and desktop, **New thread** sits directly under the project selector and follows it. With
+a project selected, it starts a thread in that project straight away. With **All projects**
+selected it behaves as it always has: it starts a thread in the project you are already in when
+there is nothing to choose between, and otherwise asks which project to use.
+
+Mobile and the original sidebar (Settings → Legacy features) keep their own layouts, and start
+threads the way they always have.
 
 ## Environment artwork
 
