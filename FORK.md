@@ -613,7 +613,7 @@ typecheck` clean, `vp lint` and `vp fmt --check` clean on the touched files. The
 - **Commits:** branch `claude/t3code-pr-prefix-i2orpy`
 - **Problem.** `WORKTREE_BRANCH_PREFIX = "t3code"` was a `const` in `packages/shared/src/git.ts`
   with no setting, no project config, and no env override behind it. Every worktree thread got a
-  `t3code/<8 hex>` placeholder, and on the first turn the server renamed it to
+  `t3code/<hex>` placeholder, and on the first turn the server renamed it to
   `t3code/<generated-slug>` — which is the head branch a pull request opens from. So the vendor
   name lands in every teammate's branch list and in every PR, and repositories with branch-naming
   rules (`<handle>/*`, `feature/*`, protected-prefix policies) cannot be satisfied at all. The only
@@ -624,10 +624,11 @@ typecheck` clean, `vp lint` and `vp fmt --check` clean on the touched files. The
   `normalizeWorktreeBranchPrefix` (sanitize into a refName fragment, fall back to the default when
   nothing usable survives), `applyWorktreeBranchPrefix` (re-namespace a placeholder),
   `buildWorktreeBranchName` (namespace a generated description) — and
-  `isTemporaryWorktreeBranch` takes an optional prefix. `ws.ts` re-namespaces at worktree creation;
+  `isTemporaryWorktreeBranch` takes an optional prefix and matches only the marked `t3-` form
+  outside the default namespace. `ws.ts` re-namespaces at worktree creation;
   `ProviderCommandReactor` uses the configured prefix for the first-turn rename. Settings →
   Source Control gains a **Branches** section.
-- **Four decisions worth keeping if this is re-derived:**
+- **Five decisions worth keeping if this is re-derived:**
   1. **The server owns the naming, the clients stay dumb.** Web and mobile mint the placeholder
      (`buildTemporaryWorktreeBranchName`) before they could know the setting, so its signature is
      unchanged and the three client call sites are untouched. `ws.ts` rewrites the placeholder at
@@ -635,17 +636,26 @@ typecheck` clean, `vp lint` and `vp fmt --check` clean on the touched files. The
      back, so no client ever displays the pre-rewrite name. Pushing the setting out to three
      clients instead would buy nothing and add a stale-settings failure mode on mobile's outbox
      drain.
-  2. **The matcher accepts the configured prefix _and_ the default.** `isTemporaryWorktreeBranch`
+  2. **Placeholders carry a `t3-` marker, and the marker is the whole point.** Provenance is
+     inferred from the refName, not recorded, so the placeholder shape has to be one nobody writes
+     by hand. Under the default prefix a bare `t3code/deadbeef` was safe because nobody names a
+     branch that. Under a configured prefix it is not: `deadbeef`, `cafebabe` and `deadc0de` are
+     eight hex characters and plausible hand-written names, so matching `<prefix>/<8 hex>` would
+     rename a user's own branch out from under them and defeat the escape hatch in (4). Minting
+     `<prefix>/t3-<8 hex>` and matching only that removes the ambiguity. Unmarked and UUID-shaped
+     tokens stay matchable **under the default prefix only** — they were only ever minted there,
+     and honouring them under a configured prefix is exactly what reintroduces the collision.
+  3. **The matcher accepts the configured prefix _and_ the default.** `isTemporaryWorktreeBranch`
      gates the first-turn rename. Without the default in the accepted set, changing the prefix
      would strand every thread whose placeholder was already minted, and would break the rewrite
-     in (1) — the client's `t3code/<hex>` has to still read as temporary.
-  3. **A blank or unusable prefix falls back to `t3code`, it does not mean "no prefix".** An empty
-     namespace would make the placeholder a bare 8-hex branch name, which `isTemporaryWorktreeBranch`
-     could then match against a branch a user created themselves. The fallback keeps that
-     unambiguous and keeps a bad setting from ever producing an invalid refName.
-  4. **A branch the user named is never rewritten.** Both `applyWorktreeBranchPrefix` and the
-     rename gate pass through anything that is not a placeholder, so picking a branch before the
-     first message still opts a thread out entirely — the pre-existing escape hatch keeps working.
+     in (1) — the client's `t3code/t3-<hex>` has to still read as temporary.
+  4. **A blank or unusable prefix falls back to `t3code`, it does not mean "no prefix".** An empty
+     namespace would put placeholders at the repository root and leaves a bad setting free to
+     produce an invalid refName. The fallback keeps both from happening.
+  5. **A branch the user named is never rewritten.** Both `applyWorktreeBranchPrefix` and the
+     rename gate pass through anything that is not a marked placeholder, so picking a branch before
+     the first message still opts a thread out entirely — the pre-existing escape hatch keeps
+     working, including for a branch that happens to sit under the configured prefix.
 - **Not fixed here:** no mobile settings UI. Mobile surfaces no server settings today (it has no
   equivalent of the source-control writing-style rows either), so this follows that precedent
   rather than opening a new surface. The setting still applies to threads started from mobile —
