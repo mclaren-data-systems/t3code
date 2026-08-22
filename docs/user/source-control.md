@@ -57,6 +57,20 @@ T3 Code works with the platforms your team already uses:
 - Works on GitHub, GitLab, and Bitbucket. Azure DevOps takes a new title and description; its
   comments stay read-only here, as they already were
 
+### Name Branches the Way Your Team Does
+
+When you start a thread in a new worktree, T3 Code creates a branch for it and names it from your
+first message — `t3code/fix-login-redirect`. That branch is what a pull request opens from, so its
+prefix is what your teammates see in the branch list.
+
+Change the prefix in **Settings → Source Control → Branches**. Set it to your handle, your team, or
+anything your repository's branch rules expect, and new branches use it: `theo/fix-login-redirect`.
+Prefixes can be nested (`theo/wip`), and the setting is cleaned up into a valid branch name, so
+capitals and spaces are fine to type. Leave it empty to go back to `t3code`.
+
+Threads that already have a branch keep it. So does any branch you named yourself — picking a branch
+before you send your first message opts that thread out of automatic naming entirely.
+
 ### Know Your Setup at a Glance
 
 The **Source Control settings** page shows you exactly what's connected:
