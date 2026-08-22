@@ -181,6 +181,15 @@ jobs:
 
       - name: Build desktop artifact
         shell: bash
+        env:
+          # Fork: ship with no update feed so the app never checks for updates.
+          # resolveGitHubPublishConfig requires an owner/repo value, so this
+          # single-segment value makes it resolve no publish config (instead of
+          # falling back to GITHUB_REPOSITORY), which means electron-builder
+          # writes no app-update.yml and the desktop updater disables itself
+          # ("no update feed is configured") — no startup check, no 4-minute
+          # poll, no manual check.
+          T3CODE_DESKTOP_UPDATE_REPOSITORY: fork-updates-disabled
         run: |
           set -euo pipefail
 

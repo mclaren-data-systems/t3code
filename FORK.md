@@ -16,7 +16,9 @@ points at it. Alongside it the fork carries the three multi-instance provider ch
 (entries 15, 16 and 19), a configurable worktree branch prefix (entry 17), one sidebar layout
 change (entry 18), and three web UX changes re-derived at the 2026-08-22 rebase (entries 5, 6
 and 7 — commit-preselect from a turn's changed files, the completed dot persisting until read,
-and shell-style composer message recall), so `apps/` and `packages/` differ from upstream.
+and shell-style composer message recall), and the fork build's update-check disable plus the
+sidebar GitHub link with build provenance (entry 20), so `apps/` and `packages/` differ from
+upstream.
 `native/`, `scripts/`,
 `pnpm-lock.yaml`, and `pnpm-workspace.yaml` are byte-identical to upstream; the only thing
 under `packaging/` and `infra/` that differs is a fork note in a README (plus the dropped
@@ -156,7 +158,9 @@ apps/server/src/orchestration/Layers/ProviderCommandReactor.test.ts`) is **287 p
 > fork-intent-only since their PR branches were deleted; they were re-derived against current
 > upstream at this rebase (entries 6 and 7 with `refs/pull/7/head` `8c295d66` and its parent
 > `85082673` as references, entry 5 from this file's notes alone — its original commit
-> `e6990e3` survives nowhere).
+> `e6990e3` survives nowhere). **On the `claude/sidebar-github-icon-build-4avaks` branch, not
+> yet on `main`:** entry 20 (update checking disabled in fork desktop builds; sidebar GitHub
+> link with build provenance).
 >
 > Entry 11 (TODO list moved into this file) was **removed from this list by the maintainer**
 > in `f194c2d6` — the TODO section at the bottom of this file remains, only the entry
@@ -829,6 +833,65 @@ packages/shared/src/usageMerge.test.ts packages/shared/src/usageFormat.test.ts` 
   between two accounts counted once; instance metadata reaching the source list; separate instance
   rows, model rows and per-day cells in the merge; the shade order; the partial-duplicate ownership
   regression; per-instance chart bands; and the label resolution rules.
+
+---
+
+### 20. No update checking, and the sidebar links to the fork's GitHub with build provenance
+
+- **Files:** `.github/workflows/desktop-artifacts.yml` (build-step env),
+  `apps/web/vite.config.ts`, `apps/web/src/vite-env.d.ts`, `apps/web/src/branding.ts`,
+  `apps/web/src/components/sidebar/SidebarChrome.tsx`
+- **Commits:** branch `claude/sidebar-github-icon-build-4avaks`
+- **What (two halves, one intent — the fork identifies as the fork and never offers updates):**
+  1. **Update checking is disabled in fork desktop builds.** `desktop-artifacts.yml` sets
+     `T3CODE_DESKTOP_UPDATE_REPOSITORY: fork-updates-disabled` on the build step. The value is
+     deliberately single-segment: `resolveGitHubPublishConfig` in
+     `scripts/build-desktop-artifact.ts` requires `owner/repo`, so it resolves **no** publish
+     config — and, being set, it also stops the `GITHUB_REPOSITORY` fallback (which in Actions
+     is this fork repo) from applying. With no publish config electron-builder writes no
+     `app-update.yml` (the staged project is a temp dir with no `.git`, so nothing can be
+     inferred either), and the app's own `getAutoUpdateDisabledReason` lands in its designed
+     "no update feed is configured" state: no startup check, no 4-minute poll, and a manual
+     check answers "Automatic updates are not available in this build."
+  2. **Sidebar GitHub link.** A new utility item in the sidebar footer, immediately right of
+     the Usage icon, same `SidebarMenuButton size="icon"` shape as its neighbours but wearing
+     the existing `GitHubIcon` (from `components/Icons`) in bright red. It is a real
+     `<a href="https://github.com/mclaren-data-systems/t3code" target="_blank">`, and its
+     tooltip shows the running build's provenance — short commit hash and build time — under
+     the "GitHub" label. The stamp travels as two new Vite defines next to the existing
+     `APP_VERSION` one: `BUILD_COMMIT` (from `T3CODE_COMMIT_HASH` env when set, else
+     `git rev-parse --short=12 HEAD`, empty when neither resolves) and `BUILD_TIMESTAMP` (the
+     ISO time the config loaded, i.e. when the bundle was produced), exported through
+     `branding.ts`. Empty values degrade the tooltip to a plain "GitHub".
+- **Why:** The fork's CI uploads workflow artifacts and cuts no GitHub releases, so the
+  inherited update feed could only ever error against the fork repo — or, pointed elsewhere,
+  offer upstream's signed builds over this fork's. And with update checking gone, the GitHub
+  link's tooltip is the way to see at a glance which build is running.
+- **Decisions worth keeping if this is re-derived:**
+  1. **The disable lives at the feed, not in `DesktopUpdates.ts`.** Hardcoding a disable in the
+     updater breaks its ~25 update-machine tests and diverges a file upstream actively
+     maintains; removing the feed exercises the updater's own disabled path, which dev builds
+     already use. The whole change is in the fork-owned workflow file.
+  2. **`text-red-500!` needs the important marker** — `SidebarMenuButton` forces
+     `[&>svg]:text-[var(--sidebar-icon-color)]` plus hover overrides, so an unmarked class
+     loses.
+  3. **A plain anchor covers every surface.** The desktop window's `setWindowOpenHandler`
+     routes `target="_blank"` to the OS browser, and web/local-hosted get a normal new tab; no
+     per-surface code. Mobile is untouched (no sidebar, and this fork does not target mobile).
+  4. The item sits inside the same conditional block as Settings/Usage, so it hides with them
+     when the footer shows "Back" on the settings/usage/pull-requests pages.
+- **Drop it when:** never on upstream's account — this is fork identity, upstream will not ship
+  it. But both halves need re-deriving on rebases: the workflow half moves with entry 14's
+  re-derive rule (and silently stops working if upstream renames
+  `T3CODE_DESKTOP_UPDATE_REPOSITORY` or reworks `resolveGitHubPublishConfig` — re-check that
+  the env still suppresses the publish config on every sync), and the `SidebarChrome.tsx` item
+  must be re-applied whenever upstream reworks the utility menu.
+- **Verified:** `vp run --filter @t3tools/web typecheck` clean, `vp lint` / `vp fmt --check`
+  clean on the touched files, `vp test run apps/web/src/versionSkew.test.ts` (7 passed —
+  exercises `branding.ts` under the new defines), and the workflow YAML parses. The icon,
+  tooltip, and link are browser-only and should be confirmed in-app; the no-feed disable is
+  confirmed by code-reading `resolveGitHubPublishConfig` and `getAutoUpdateDisabledReason`,
+  and shows up in a packaged build as the greyed "Check for updates" pill.
 
 ---
 
