@@ -1,5 +1,7 @@
 # Fork workflow: build the desktop binaries for every platform this repo already
-# supports, on every push to `main`.
+# supports, on every push to `main`, and publish them as a development-build
+# prerelease (`desktop-dev-<run number>`), pruning older dev releases so only
+# the current one plus two remain.
 #
 # Upstream produces these from `release.yml`, which also reads the production
 # T3 Connect relay config, signs, publishes to npm, and cuts a GitHub Release —
@@ -8,7 +10,8 @@
 # fork can actually run.
 #
 # Constraints this file deliberately respects:
-#   - no secrets beyond the automatic GITHUB_TOKEN (which it never uses)
+#   - no secrets beyond the automatic GITHUB_TOKEN (only the release job uses
+#     it, with job-scoped contents: write, to publish and prune dev releases)
 #   - standard GitHub-hosted runners only (upstream's `blacksmith-*` labels do
 #     not resolve here, so those jobs sat queued for 24h and were cancelled)
 #   - builds are unsigned: passing `--signed` is what pulls in signing
@@ -226,3 +229,94 @@ jobs:
           path: release/*
           if-no-files-found: error
           retention-days: 14
+
+  release:
+    name: Publish dev release
+    # Publish whatever platforms built — a development build with one platform
+    # missing is still useful, and the build job is what turns the run red.
+    # The publish step fails only when no platform produced anything at all.
+    needs: [build]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG_PREFIX: desktop-dev-
+      KEEP_RELEASES: "3"
+    steps:
+      - name: Download desktop artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: desktop-*
+          path: assets
+
+      # Each artifact lands in its own directory; flatten them for upload. The
+      # installer names carry the arch (T3-Code-<version>-<arch>.<ext>), but
+      # electron-builder's update metadata does not — both macOS legs emit a
+      # latest-mac.yml — so a colliding name gets its artifact name prefixed.
+      - name: Collect release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          mkdir -p dist
+          for dir in assets/*/; do
+            artifact="$(basename "$dir")"
+            for file in "$dir"*; do
+              base="$(basename "$file")"
+              if [[ -e "dist/$base" ]]; then
+                base="${artifact}-${base}"
+              fi
+              mv "$file" "dist/$base"
+            done
+          done
+          ls -lh dist
+
+      - name: Create development release
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(dist/*)
+          if (( ${#files[@]} == 0 )); then
+            echo "::error::No desktop artifacts were produced; nothing to release."
+            exit 1
+          fi
+
+          tag="${TAG_PREFIX}${GITHUB_RUN_NUMBER}"
+          # A re-run reuses the run number, so drop any release this same run
+          # already published before recreating it.
+          gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+
+          {
+            echo "Unsigned development build from \`${GITHUB_SHA}\`."
+            echo
+            echo "Published automatically by the Desktop Artifacts workflow"
+            echo "([run ${GITHUB_RUN_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}))."
+            echo "Older development releases are pruned; only the newest ${KEEP_RELEASES} are kept."
+          } > notes.md
+
+          gh release create "$tag" "${files[@]}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Desktop dev build ${GITHUB_SHA::7}" \
+            --prerelease \
+            --notes-file notes.md
+
+      - name: Prune older development releases
+        shell: bash
+        run: |
+          set -euo pipefail
+          current="${TAG_PREFIX}${GITHUB_RUN_NUMBER}"
+          gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate \
+            --jq ".[] | select(.tag_name | startswith(\"${TAG_PREFIX}\")) | [.created_at, .tag_name] | @tsv" |
+            sort -r | tail -n +"$((KEEP_RELEASES + 1))" | cut -f2 |
+            while IFS= read -r tag; do
+              if [[ "$tag" == "$current" ]]; then
+                continue
+              fi
+              echo "Pruning $tag"
+              gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+            done

@@ -11,7 +11,8 @@ possible and changes are reapplied based on intent, not directly based on the sp
 existing implementation. In practice that thin layer has converged on one substantive thing —
 **a CI/workflow set a fork can actually run** (standard GitHub-hosted runners instead of
 upstream's Blacksmith ones, nothing needing credentials a fork lacks, and unsigned desktop
-artifacts built on every push to `main`) — plus this file and the `README.md` fork banner that
+artifacts built on every push to `main` and published as pruned development-build
+prereleases) — plus this file and the `README.md` fork banner that
 points at it. Alongside it the fork carries the three multi-instance provider changes
 (entries 15, 16 and 19), a configurable worktree branch prefix (entry 17), one sidebar layout
 change (entry 18), and three web UX changes re-derived at the 2026-08-22 rebase (entries 5, 6
@@ -355,8 +356,15 @@ apps/web/src/components/Sidebar.logic.test.ts` (128 passed, 4 new: acknowledgeme
 .github/scripts/thread-transfer-report.test.cjs` passes 6/6 here.
 - **Added:** `desktop-artifacts.yml` — builds the four platforms upstream's
   `release.yml` matrix covers (macOS `arm64`/`x64` DMG, Linux `x64` AppImage,
-  Windows `x64` NSIS) on every push to `main` and on dispatch, **unsigned**, and
-  uploads them as workflow artifacts. Carries over the three secret-free steps that
+  Windows `x64` NSIS) on every push to `main` and on dispatch, **unsigned**,
+  uploads them as workflow artifacts, and then **publishes every run as a GitHub
+  prerelease** tagged `desktop-dev-<run number>` — always a prerelease, never
+  "latest", i.e. a development build — **pruning older `desktop-dev-*` releases so
+  only the current one plus two remain**. The release job is the one place the
+  automatic `GITHUB_TOKEN` is used (job-scoped `contents: write`), which stays
+  inside the standing rule; it publishes whatever platforms built, fails only when
+  none did, and prefixes an asset with its artifact name on a filename collision
+  (both macOS legs emit a `latest-mac.yml`). Carries over the three secret-free steps that
   matter from upstream's build job: the `dtolnay/rust-toolchain` setup with a per-matrix
   `rust_target` (upstream's desktop build cargo-builds `native/resource-monitor`, #2679),
   the Linux `node-pty` prebuild bundled into the Windows artifact (non-fatal when missing),
@@ -407,7 +415,11 @@ apps/web/src/components/Sidebar.logic.test.ts` (128 passed, 4 new: acknowledgeme
   upstream workflow arriving in a rebase is opt-**in**: it ships only if it passes the
   standing rule. Separately, `desktop-artifacts.yml` is fork-owned and can drift against
   upstream's desktop build requirements **without ever showing up as a merge conflict** —
-  diff it against upstream's `release.yml` build job on every sync.
+  diff it against upstream's `release.yml` build job on every sync. Whatever that re-derive
+  produces, **keep the dev-release tail**: every run publishes a `desktop-dev-<run number>`
+  prerelease (a development build) and prunes older `desktop-dev-*` releases down to the
+  current one plus two. That publish-and-prune goal is fork intent, not an implementation
+  detail — re-apply it even if the build job around it is rebuilt from scratch.
 - **Redundancy check (as of `c3e37094`; re-checked at `2c4158f8` — upstream added no workflow and touched nothing under `.github/` in that range, so the set replayed untouched): keep, and at the 2026-08-21 rebase this entry is where the rebase
   spent its effort.** Upstream added **no** new workflow in the `db0659fe..c3e37094` range, so
   there was nothing new to accept or decline — the first rebase in a while with no opt-in
