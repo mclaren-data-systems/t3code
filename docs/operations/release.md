@@ -7,7 +7,9 @@
 > Cloudflare, PlanetScale, Axiom, Clerk, Apple, Azure, npm, and GitHub App credentials a
 > fork does not have. Kept as upstream reference for rebases. This fork builds unsigned
 > desktop binaries from `.github/workflows/desktop-artifacts.yml` on every push to `main`
-> and does not cut releases; see [CI quality gates](../internals/ci.md).
+> and publishes them as pruned `desktop-dev-*` prereleases (development builds, keeping the
+> current one plus two); it cuts no stable releases. See
+> [CI quality gates](../internals/ci.md).
 
 This document covers the unified release workflow for stable and nightly desktop releases.
 
