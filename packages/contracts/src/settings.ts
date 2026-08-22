@@ -578,6 +578,14 @@ export const ObservabilitySettings = Schema.Struct({
 });
 export type ObservabilitySettings = typeof ObservabilitySettings.Type;
 
+/**
+ * Namespace applied to the branches T3 Code creates for worktree threads, and
+ * therefore to the head branch of every change request opened from one.
+ * Configurable through `ServerSettings.worktreeBranchPrefix`; this is the value
+ * used when that setting is blank.
+ */
+export const DEFAULT_WORKTREE_BRANCH_PREFIX = "t3code";
+
 export const SourceControlWritingStyleMode = Schema.Literals([
   "repo_conventions",
   "conventional_commits",
@@ -711,6 +719,16 @@ export const ServerSettings = Schema.Struct({
   ),
   sourceControlWriterModelSelection: Schema.NullOr(ModelSelection).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  /**
+   * Namespace for branches created for worktree threads, e.g. `t3code` yields
+   * `t3code/fix-login-redirect`. Stored raw and sanitized into a git refName
+   * fragment on read (`normalizeWorktreeBranchPrefix`), so a blank or
+   * unusable value falls back to `DEFAULT_WORKTREE_BRANCH_PREFIX` rather than
+   * producing an invalid refName.
+   */
+  worktreeBranchPrefix: TrimmedString.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_WORKTREE_BRANCH_PREFIX)),
   ),
 
   // Legacy single-instance-per-driver settings. Continues to be the source
@@ -906,6 +924,7 @@ export const ServerSettingsPatch = Schema.Struct({
     }),
   ),
   sourceControlWriterModelSelection: Schema.optionalKey(Schema.NullOr(ModelSelection)),
+  worktreeBranchPrefix: Schema.optionalKey(TrimmedString),
   observability: Schema.optionalKey(
     Schema.Struct({
       otlpTracesUrl: Schema.optionalKey(TrimmedString),
