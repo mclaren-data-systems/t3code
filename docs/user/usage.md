@@ -8,6 +8,11 @@ separate from the raw token cost shown here.
 Grok Build totals come from persisted session updates. Interactive turns that never wrote a
 completed-turn record will not appear.
 
+Each configured provider gets its own line, row, and column. If you run more than one account of
+the same provider — a personal and a work Claude Code, say — they are reported separately, under the
+names and accent colors you gave them in Settings. Turning a provider off does not remove what it
+already spent.
+
 The **Limits** view shows how much of each subscription window you have used on Codex and Claude
 Code, per connected environment: the session and weekly windows, plus a per-model weekly window
 such as Fable when your plan has one. Each window is a bar from the moment it opened to its reset,

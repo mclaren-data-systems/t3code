@@ -23,7 +23,7 @@ import { SettingsSection } from "../settings/components/SettingsSection";
 import { UsageDailyChart } from "./UsageDailyChart";
 import { UsageLimitsSection } from "./UsageLimitsSection";
 import type { UsageChartMetric } from "./usageChartData";
-import { PROVIDER_LABEL, useProviderColors } from "./usageProviders";
+import { useUsageSeries, type UsageSeries } from "./usageProviders";
 
 const WINDOW_OPTIONS = [
   { days: 1, label: "Past 24h" },
@@ -64,11 +64,14 @@ export function UsageRouteScreen() {
             day: hour.hourStart,
             costUsd: hour.costUsd,
             totalTokens: hour.totalTokens,
-            byProvider: hour.byProvider,
+            byInstance: hour.byInstance,
           }))
         : merged.daily,
     [isPast24Hours, merged.daily, merged.hourly],
   );
+  // One band per configured provider instance, so two Claude accounts read as
+  // two bands rather than one merged one.
+  const series = useUsageSeries(merged.instances);
 
   // The pull spinner tracks re-scans of environments that have answered
   // before. The initial scan renders its own placeholder, and an unreachable
@@ -137,12 +140,13 @@ export function UsageRouteScreen() {
               sinceDay={window.sinceDay}
               untilDay={window.untilDay}
               isPast24Hours={isPast24Hours}
+              series={series}
               timeZone={window.timeZone}
             />
-            <ProviderSection merged={merged} metric={metric} />
+            <ProviderSection series={series} metric={metric} />
             <UsageLimitsSection />
             <TotalsSection merged={merged} isPast24Hours={isPast24Hours} />
-            <ModelsSection merged={merged} />
+            <ModelsSection merged={merged} series={series} />
           </>
         )}
       </ScrollView>
@@ -195,10 +199,10 @@ function ChartCard(props: {
   readonly sinceDay: string;
   readonly untilDay: string;
   readonly isPast24Hours: boolean;
+  readonly series: readonly UsageSeries[];
   readonly timeZone: string;
 }) {
   const { merged, metric } = props;
-  const colors = useProviderColors();
   const hasActivity = props.daily.some((period) => period.totalTokens > 0);
 
   return (
@@ -226,6 +230,7 @@ function ChartCard(props: {
           daily={props.daily}
           metric={metric}
           height={CHART_HEIGHT}
+          series={props.series}
         />
       ) : (
         <View style={{ height: CHART_HEIGHT }} className="items-center justify-center">
@@ -240,14 +245,11 @@ function ChartCard(props: {
             : formatDayShort(props.sinceDay)}
         </Text>
         <View className="flex-row items-center gap-4">
-          {merged.providers.map((provider) => (
-            <View key={provider.provider} className="flex-row items-center gap-1.5">
-              <View
-                className="size-2 rounded-full"
-                style={{ backgroundColor: colors[provider.provider] }}
-              />
-              <Text className="text-xs text-foreground-muted">
-                {PROVIDER_LABEL[provider.provider]}
+          {props.series.map((entry) => (
+            <View key={entry.instanceId} className="flex-row items-center gap-1.5">
+              <View className="size-2 rounded-full" style={{ backgroundColor: entry.color }} />
+              <Text className="text-xs text-foreground-muted" numberOfLines={1}>
+                {entry.label}
               </Text>
             </View>
           ))}
@@ -294,54 +296,60 @@ function MetricToggle(props: {
   );
 }
 
+/** One row per configured provider instance, not per provider kind. */
 function ProviderSection(props: {
-  readonly merged: MergedUsage;
+  readonly series: readonly UsageSeries[];
   readonly metric: UsageChartMetric;
 }) {
-  const { merged, metric } = props;
-  const colors = useProviderColors();
-  if (merged.providers.length === 0) return null;
+  const { metric } = props;
+  const reported = props.series.filter((entry) => entry.totals !== null);
+  if (reported.length === 0) return null;
 
   // Ranked by whatever the toggle is showing, so the rows always descend.
   // .sort() on a copy, not .toSorted(): Hermes doesn't ship the ES2023 method.
-  const ordered = [...merged.providers].sort((a, b) =>
-    metric === "cost" ? b.costUsd - a.costUsd : b.totalTokens - a.totalTokens,
+  const ordered = [...reported].sort((a, b) =>
+    metric === "cost"
+      ? (b.totals?.costUsd ?? 0) - (a.totals?.costUsd ?? 0)
+      : (b.totals?.totalTokens ?? 0) - (a.totals?.totalTokens ?? 0),
   );
 
   return (
     <SettingsSection title="Providers" card>
-      {ordered.map((provider, index) => {
-        const share = metric === "cost" ? provider.costShare : provider.tokenShare;
+      {ordered.map((entry, index) => {
+        const totals = entry.totals;
+        const share = (metric === "cost" ? totals?.costShare : totals?.tokenShare) ?? 0;
         return (
           <View
-            key={provider.provider}
+            key={entry.instanceId}
             className={index === 0 ? "gap-2 p-4" : "gap-2 border-t border-border-subtle p-4"}
           >
             <View className="flex-row items-baseline justify-between gap-3">
-              <View className="flex-row items-center gap-2">
+              <View className="min-w-0 flex-1 flex-row items-center gap-2">
                 <View
-                  className="size-2.5 rounded-full"
-                  style={{ backgroundColor: colors[provider.provider] }}
+                  className="size-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: entry.color }}
                 />
-                <Text className="text-lg text-foreground">{PROVIDER_LABEL[provider.provider]}</Text>
+                <Text className="text-lg text-foreground" numberOfLines={1}>
+                  {entry.label}
+                </Text>
               </View>
               <Text className="text-lg tabular-nums text-foreground">
                 {metric === "cost"
-                  ? formatUsd(provider.costUsd)
-                  : formatTokens(provider.totalTokens)}
+                  ? formatUsd(totals?.costUsd ?? 0)
+                  : formatTokens(totals?.totalTokens ?? 0)}
               </Text>
             </View>
             <View className="h-1 flex-row overflow-hidden rounded-full bg-subtle">
               <View
                 className="h-full rounded-full"
-                style={{ flex: share, backgroundColor: colors[provider.provider] }}
+                style={{ flex: share, backgroundColor: entry.color }}
               />
               <View style={{ flex: 1 - share }} />
             </View>
             <Text className="text-sm text-foreground-muted">
               {metric === "cost"
-                ? `${formatPercent(share)} of cost · ${formatTokens(provider.totalTokens)} tokens`
-                : `${formatPercent(share)} of tokens · ${formatUsd(provider.costUsd)}`}
+                ? `${formatPercent(share)} of cost · ${formatTokens(totals?.totalTokens ?? 0)} tokens`
+                : `${formatPercent(share)} of tokens · ${formatUsd(totals?.costUsd ?? 0)}`}
             </Text>
           </View>
         );
@@ -415,37 +423,58 @@ function MetricCell(props: {
   );
 }
 
-function ModelsSection(props: { readonly merged: MergedUsage }) {
+function ModelsSection(props: {
+  readonly merged: MergedUsage;
+  readonly series: readonly UsageSeries[];
+}) {
   const { merged } = props;
-  const colors = useProviderColors();
   if (merged.models.length === 0) return null;
+
+  const byInstance = new Map(props.series.map((entry) => [entry.instanceId as string, entry]));
+  // A model row names its instance only when the provider it belongs to has
+  // more than one; otherwise the row would repeat what the section already says.
+  const providerCounts = new Map<string, number>();
+  for (const entry of props.series) {
+    if (entry.totals === null) continue;
+    providerCounts.set(entry.provider, (providerCounts.get(entry.provider) ?? 0) + 1);
+  }
 
   return (
     <SettingsSection title="By model" card>
-      {merged.models.map((model, index) => (
-        <View
-          key={`${model.provider}:${model.model}`}
-          className={
-            index === 0
-              ? "flex-row items-center gap-3 p-4"
-              : "flex-row items-center gap-3 border-t border-border-subtle p-4"
-          }
-        >
+      {merged.models.map((model, index) => {
+        const instance = byInstance.get(model.instanceId);
+        const label =
+          instance !== undefined && (providerCounts.get(model.provider) ?? 0) > 1
+            ? instance.label
+            : null;
+        return (
           <View
-            className="size-2.5 shrink-0 rounded-full"
-            style={{ backgroundColor: colors[model.provider] }}
-          />
-          <View className="min-w-0 flex-1 gap-0.5">
-            <Text className="text-base text-foreground" numberOfLines={1}>
-              {model.model}
-            </Text>
-            <Text className="text-sm text-foreground-muted">
-              {formatPercent(model.costShare)} of cost · {formatTokens(model.totalTokens)} tokens
+            key={`${model.instanceId}:${model.model}`}
+            className={
+              index === 0
+                ? "flex-row items-center gap-3 p-4"
+                : "flex-row items-center gap-3 border-t border-border-subtle p-4"
+            }
+          >
+            <View
+              className="size-2.5 shrink-0 rounded-full"
+              style={{ backgroundColor: instance?.color ?? "transparent" }}
+            />
+            <View className="min-w-0 flex-1 gap-0.5">
+              <Text className="text-base text-foreground" numberOfLines={1}>
+                {model.model}
+              </Text>
+              <Text className="text-sm text-foreground-muted">
+                {label === null ? "" : `${label} · `}
+                {formatPercent(model.costShare)} of cost · {formatTokens(model.totalTokens)} tokens
+              </Text>
+            </View>
+            <Text className="text-base tabular-nums text-foreground">
+              {formatUsd(model.costUsd)}
             </Text>
           </View>
-          <Text className="text-base tabular-nums text-foreground">{formatUsd(model.costUsd)}</Text>
-        </View>
-      ))}
+        );
+      })}
     </SettingsSection>
   );
 }

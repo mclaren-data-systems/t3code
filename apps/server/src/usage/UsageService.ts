@@ -336,6 +336,9 @@ export const make = Effect.gen(function* () {
   interface ScannedDir {
     readonly provider: UsageProviderKind;
     readonly dir: string;
+    readonly instanceId: string;
+    readonly displayName: string | null;
+    readonly accentColor: string | null;
     readonly volumeId: string;
     /** Parsed records per file, or `null` when the directory does not exist. */
     readonly files:
@@ -351,13 +354,14 @@ export const make = Effect.gen(function* () {
       Effect.provideService(FileSystem.FileSystem, fileSystem),
     );
     const scanned: ScannedDir[] = [];
-    for (const { provider, dir, fileName } of dirs) {
+    for (const { provider, dir, fileName, instanceId, displayName, accentColor } of dirs) {
+      const instance = { instanceId, displayName, accentColor };
       const volumeId = yield* Effect.promise(() => readDirectoryVolumeId(dir));
       const exists = yield* fileSystem
         .exists(dir)
         .pipe(Effect.catchCause(() => Effect.succeed(false)));
       if (!exists) {
-        scanned.push({ provider, dir, volumeId, files: null });
+        scanned.push({ provider, dir, ...instance, volumeId, files: null });
         continue;
       }
       const files = yield* Effect.promise(() =>
@@ -368,7 +372,7 @@ export const make = Effect.gen(function* () {
         const records = yield* readFileRecords(file.path, file.size, file.mtimeMs, provider);
         parsedFiles.push({ path: file.path, records });
       }
-      scanned.push({ provider, dir, volumeId, files: parsedFiles });
+      scanned.push({ provider, dir, ...instance, volumeId, files: parsedFiles });
     }
     return scanned;
   });
@@ -439,10 +443,20 @@ export const make = Effect.gen(function* () {
     const livePaths = new Set<string>();
     const walkedRoots: string[] = [];
 
-    for (const { provider, dir, volumeId, files } of scannedDirs) {
+    for (const {
+      provider,
+      dir,
+      instanceId,
+      displayName,
+      accentColor,
+      volumeId,
+      files,
+    } of scannedDirs) {
+      const instance = { instanceId, displayName, accentColor };
       if (files === null) {
         sources.push({
           fingerprint: { hostId, provider, resolvedHomePath: dir, volumeId },
+          ...instance,
           status: "missing",
           scannedFiles: 0,
           skippedFiles: 0,
@@ -470,7 +484,7 @@ export const make = Effect.gen(function* () {
         for (const record of file.records) {
           // Only sessions that contributed in-window count: the mtime slack
           // admits boundary files whose records fall outside the range.
-          if (aggregator.add(record) && record.sessionId.length > 0) {
+          if (aggregator.add(record, instanceId) && record.sessionId.length > 0) {
             sessionIds.add(record.sessionId);
           }
         }
@@ -478,6 +492,7 @@ export const make = Effect.gen(function* () {
 
       sources.push({
         fingerprint: { hostId, provider, resolvedHomePath: dir, volumeId },
+        ...instance,
         status: "ok",
         scannedFiles,
         skippedFiles,

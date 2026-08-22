@@ -1,4 +1,4 @@
-import type { UsageProviderKind } from "@t3tools/contracts";
+import type { ProviderInstanceId } from "@t3tools/contracts";
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { DailyTotals, HourlyTotals } from "@t3tools/shared/usageMerge";
@@ -9,7 +9,7 @@ import {
   formatTokens,
   formatUsd,
 } from "@t3tools/shared/usageFormat";
-import { PROVIDER_ORDER, PROVIDER_PRESENTATION } from "./usageProviders";
+import { PROVIDER_PRESENTATION, type UsageSeries } from "./usageProviders";
 
 const VIEW_WIDTH = 960;
 const VIEW_HEIGHT = 260;
@@ -19,7 +19,6 @@ const PLOT_TOP = 8;
 export type UsageChartMetric = "tokens" | "cost";
 
 interface UsageProviderChartProps {
-  readonly providers: readonly UsageProviderKind[];
   readonly days: readonly string[];
   readonly daily: readonly DailyTotals[];
   readonly hours: readonly string[];
@@ -27,13 +26,15 @@ interface UsageProviderChartProps {
   readonly metric: UsageChartMetric;
   readonly referenceTime: string | undefined;
   readonly resolution: "day" | "hour";
+  /** One line per provider instance, in the order the legend reads. */
+  readonly series: readonly UsageSeries[];
   readonly timeZone: string;
 }
 
-/** One day's per-provider values, shared by the paths and the hover readout. */
+/** One period's per-instance values, shared by the paths and the hover readout. */
 export interface DayColumn {
   readonly bands: readonly {
-    readonly provider: UsageProviderKind;
+    readonly instanceId: ProviderInstanceId;
     readonly value: number;
   }[];
   readonly total: number;
@@ -46,10 +47,10 @@ interface Point {
 
 function valueFor(
   totals: DailyTotals | HourlyTotals | undefined,
-  provider: UsageProviderKind,
+  instanceId: ProviderInstanceId,
   metric: UsageChartMetric,
 ): number {
-  const entry = totals?.byProvider.get(provider);
+  const entry = totals?.byInstance.get(instanceId);
   if (entry === undefined) return 0;
   return metric === "tokens" ? entry.totalTokens : entry.costUsd;
 }
@@ -58,12 +59,13 @@ function buildPeriodColumns(
   periods: readonly string[],
   byPeriod: ReadonlyMap<string, DailyTotals | HourlyTotals>,
   metric: UsageChartMetric,
+  series: readonly Pick<UsageSeries, "instanceId">[],
 ): readonly DayColumn[] {
   return periods.map((period) => {
     const entry = byPeriod.get(period);
-    const bands = PROVIDER_ORDER.map((provider) => ({
-      provider,
-      value: valueFor(entry, provider, metric),
+    const bands = series.map(({ instanceId }) => ({
+      instanceId,
+      value: valueFor(entry, instanceId, metric),
     }));
     return { bands, total: bands.reduce((sum, band) => sum + band.value, 0) };
   });
@@ -172,8 +174,8 @@ export function niceScale(peak: number, count: number): { max: number; ticks: re
 /**
  * Turns the merged daily totals into one column per day.
  *
- * Values are absolute, not cumulative: each provider is drawn from the same
- * zero baseline so the chart never implies that one provider is always larger.
+ * Values are absolute, not cumulative: each series is drawn from the same zero
+ * baseline so the chart never implies that one instance is always larger.
  *
  * The chart paths and the hover readout both consume this, so the number under
  * the cursor is by construction the number that was plotted rather than a
@@ -183,12 +185,12 @@ export function buildDayColumns(
   days: readonly string[],
   byDay: ReadonlyMap<string, DailyTotals>,
   metric: UsageChartMetric,
+  series: readonly Pick<UsageSeries, "instanceId">[],
 ): readonly DayColumn[] {
-  return buildPeriodColumns(days, byDay, metric);
+  return buildPeriodColumns(days, byDay, metric, series);
 }
 
 export function UsageProviderChart({
-  providers,
   days,
   daily,
   hours,
@@ -196,6 +198,7 @@ export function UsageProviderChart({
   metric,
   referenceTime,
   resolution,
+  series,
   timeZone,
 }: UsageProviderChartProps) {
   const periods = resolution === "hour" ? hours : days;
@@ -211,22 +214,22 @@ export function UsageProviderChart({
   const tooltipRef = useRef<HTMLDivElement | null>(null);
   const hoverPositionRef = useRef<{ x: number; y: number } | null>(null);
 
-  const { paths, ticks, stepX, toY, series } = useMemo(() => {
+  const { paths, columns, stepX, ticks, toY } = useMemo(() => {
     if (periods.length === 0) {
       return {
         paths: [],
-        series: [] as readonly DayColumn[],
+        columns: [] as readonly DayColumn[],
         stepX: 0,
         ticks: [0] as readonly number[],
         toY: () => VIEW_HEIGHT,
       };
     }
 
-    const columns = buildPeriodColumns(periods, byPeriod, metric);
-    // The scale tops out at the largest single provider-period, not the sum:
+    const built = buildPeriodColumns(periods, byPeriod, metric, series);
+    // The scale tops out at the largest single series-period, not the sum:
     // layered series each measure from zero, so a combined peak would leave
     // the plot permanently half empty.
-    const peak = columns.reduce(
+    const peak = built.reduce(
       (max, column) => column.bands.reduce((inner, band) => Math.max(inner, band.value), max),
       0,
     );
@@ -237,19 +240,19 @@ export function UsageProviderChart({
     const toY = (value: number) =>
       max === 0 ? VIEW_HEIGHT : VIEW_HEIGHT - (value / max) * (VIEW_HEIGHT - PLOT_TOP);
 
-    const built = providers.map((provider) => {
-      const providerIndex = PROVIDER_ORDER.indexOf(provider);
+    const lines = series.map((entry, seriesIndex) => {
       const line = curvePath(
         smoothCurve(
-          columns.map((column, periodIndex) => ({
+          built.map((column, periodIndex) => ({
             x: periodIndex * step,
-            y: toY(column.bands[providerIndex]?.value ?? 0),
+            y: toY(column.bands[seriesIndex]?.value ?? 0),
           })),
         ),
       );
       return {
-        provider,
-        total: columns.reduce((sum, column) => sum + (column.bands[providerIndex]?.value ?? 0), 0),
+        instanceId: entry.instanceId,
+        color: entry.color,
+        total: built.reduce((sum, column) => sum + (column.bands[seriesIndex]?.value ?? 0), 0),
         area: line === "" ? "" : `${line} L${VIEW_WIDTH},${VIEW_HEIGHT} L0,${VIEW_HEIGHT} Z`,
         line,
       };
@@ -257,13 +260,13 @@ export function UsageProviderChart({
 
     // Paint the heavier series first so the lighter one is not buried.
     return {
-      paths: built.toSorted((a, b) => b.total - a.total),
-      series: columns,
+      paths: lines.toSorted((a, b) => b.total - a.total),
+      columns: built,
       stepX: step,
       ticks: tickValues,
       toY,
     };
-  }, [byPeriod, metric, periods, providers]);
+  }, [byPeriod, metric, periods, series]);
 
   const format = metric === "tokens" ? formatTokens : formatUsd;
 
@@ -324,7 +327,7 @@ export function UsageProviderChart({
   );
 
   const hoveredPeriod = hoverIndex === null ? undefined : periods[hoverIndex];
-  const hoveredColumn = hoverIndex === null ? undefined : series[hoverIndex];
+  const hoveredColumn = hoverIndex === null ? undefined : columns[hoverIndex];
   const formatPeriod = (period: string) =>
     resolution === "hour" ? formatHourShort(period, timeZone) : formatDayShort(period);
   const formatTooltipPeriod = (period: string) =>
@@ -382,20 +385,15 @@ export function UsageProviderChart({
             })}
 
             {/* Fills first, then every stroke, so no series covers another's line. */}
-            {paths.map(({ provider, area }) => (
-              <path
-                key={provider}
-                d={area}
-                fill={PROVIDER_PRESENTATION[provider].color}
-                fillOpacity={0.12}
-              />
+            {paths.map(({ instanceId, area, color }) => (
+              <path key={instanceId} d={area} fill={color} fillOpacity={0.12} />
             ))}
-            {paths.map(({ provider, line }) => (
+            {paths.map(({ instanceId, line, color }) => (
               <path
-                key={provider}
+                key={instanceId}
                 d={line}
                 fill="none"
-                stroke={PROVIDER_PRESENTATION[provider].color}
+                stroke={color}
                 strokeWidth={2}
                 vectorEffect="non-scaling-stroke"
               />
@@ -425,17 +423,18 @@ export function UsageProviderChart({
               }}
             >
               <div className="mb-1 text-muted-foreground">{formatTooltipPeriod(hoveredPeriod)}</div>
-              {providers.map((provider) => {
-                const { label, mark: Mark } = PROVIDER_PRESENTATION[provider];
+              {series.map((entry) => {
+                const Mark = PROVIDER_PRESENTATION[entry.provider].mark;
                 return (
-                  <div key={provider} className="flex items-center justify-between gap-3">
-                    <span className="flex items-center gap-1.5 text-muted-foreground">
+                  <div key={entry.instanceId} className="flex items-center justify-between gap-3">
+                    <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
                       <Mark className="size-3 shrink-0" aria-hidden />
-                      {label}
+                      <span className="truncate">{entry.label}</span>
                     </span>
                     <span className="text-foreground tabular-nums">
                       {format(
-                        hoveredColumn?.bands.find((band) => band.provider === provider)?.value ?? 0,
+                        hoveredColumn?.bands.find((band) => band.instanceId === entry.instanceId)
+                          ?.value ?? 0,
                       )}
                     </span>
                   </div>
