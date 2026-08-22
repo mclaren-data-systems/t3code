@@ -303,6 +303,24 @@ export function shouldCreateNewThreadInCurrentProject(
   return shiftKey || projectGroupCount <= 1;
 }
 
+export type NewThreadClickTarget = "scoped-project" | "current-project" | "picker";
+
+// The new thread button sits under the project scope menu and follows it: a
+// scoped project is the sidebar's visible context, so the button creates
+// there instead of asking again. "All projects" keeps the old behavior —
+// create in the current project when there is nothing to pick (or shift is
+// held), otherwise open the command palette's picker.
+export function resolveNewThreadClickTarget(input: {
+  hasScopedProject: boolean;
+  shiftKey: boolean;
+  projectGroupCount: number;
+}): NewThreadClickTarget {
+  if (input.hasScopedProject) return "scoped-project";
+  return shouldCreateNewThreadInCurrentProject(input.shiftKey, input.projectGroupCount)
+    ? "current-project"
+    : "picker";
+}
+
 export function orderItemsByPreferredIds<TItem, TId>(input: {
   items: readonly TItem[];
   preferredIds: readonly TId[];
