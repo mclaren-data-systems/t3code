@@ -13,8 +13,8 @@ existing implementation. In practice that thin layer has converged on one substa
 upstream's Blacksmith ones, nothing needing credentials a fork lacks, and unsigned desktop
 artifacts built on every push to `main`) — plus this file and the `README.md` fork banner that
 points at it. Alongside it the fork carries the three multi-instance provider changes
-(entries 15, 16 and 18) and a configurable worktree branch prefix (entry 17), so `apps/` and
-`packages/` differ from upstream. `native/`, `scripts/`,
+(entries 15, 16 and 19), a configurable worktree branch prefix (entry 17), and one sidebar layout
+change (entry 18), so `apps/` and `packages/` differ from upstream. `native/`, `scripts/`,
 `pnpm-lock.yaml`, and `pnpm-workspace.yaml` are byte-identical to upstream; the only thing
 under `packaging/` and `infra/` that differs is a fork note in a README (plus the dropped
 release-workflow guard in `infra/relay/scripts/deploy.test.ts` — see entry 14).
@@ -135,9 +135,10 @@ apps/web/src/components/settings apps/web/src/components/chat/ProviderStatusBann
 > or "Dropped changes"; look for it there.
 >
 > **Carried on `main` today:** 11, 12 (its `AGENTS.md` sections only — the symlink half is now
-> upstream's), 13, 14, 15, 16, 17, 18 — workflows, fork documentation, and four source changes: 15,
-> 16 and 18 (all from the same multi-instance provider investigation) and 17 (configurable worktree
-> branch prefix).
+> upstream's), 13, 14, 15, 16, 17, 18 — workflows, fork documentation, and four source changes: 15
+> and 16 (both from the same multi-instance provider investigation), 17 (configurable worktree
+> branch prefix), and 18 (sidebar new thread button). **On this branch, not yet on `main`:** 19
+> (per-instance usage reporting — the third change from the multi-instance provider investigation).
 > **Fork-intentional but not on `main` anywhere:** 5 (commit-preselect remainder), 6, 7.
 > Their PR branches were deleted from `origin`; the only surviving copies are
 > `refs/pull/6/head` (`47f1f30b`) and `refs/pull/7/head` (`8c295d66`), which sit on the
@@ -566,7 +567,7 @@ apps/web/src/components/settings apps/web/src/components/chat/ProviderStatusBann
 - **Not fixed here:** per-instance _breakdown_ in the dashboard (separate rows for "Claude Work"
   and "Claude Personal"). That needs `instanceId` on `UsageBucket`, a `USAGE_CONTRACT_VERSION`
   bump, and dynamic presentation/colors in both web and mobile. Deliberately out of scope: this
-  entry fixes wrong numbers, it does not add a feature. **Entry 18 is that follow-up** — it lands
+  entry fixes wrong numbers, it does not add a feature. **Entry 19 is that follow-up** — it lands
   the breakdown and, with it, fixes a double count this entry left in the client-side merge.
 - **Drop it when:** upstream's `resolveTranscriptDirs` reads `settings.providerInstances`. Check
   with `grep -n providerInstances apps/server/src/usage/UsageService.ts` against clean upstream —
@@ -667,6 +668,82 @@ typecheck` clean, `vp lint` and `vp fmt --check` clean on the touched files. The
 ---
 
 ### 18. Usage reports each provider instance separately
+
+- **Files:** `packages/contracts/src/usage.ts`, `packages/shared/src/usageMerge.ts`,
+  `packages/shared/src/usageFormat.ts`, `apps/server/src/usage/usageTranscriptSources.ts`,
+  `apps/server/src/usage/usageAggregation.ts`, `apps/server/src/usage/UsageService.ts`,
+  `apps/web/src/components/usage/*`, `apps/mobile/src/features/usage/*`, `docs/user/usage.md`,
+  plus the five test files for those modules
+- **Commits:** branch `claude/usage-report-multi-provider-2dsrkq`
+- **Problem.** Entry 16 made the _scan_ read every configured instance, but everything downstream
+  still grouped by `UsageProviderKind`. Two consequences:
+  1. **The dashboard could not tell two accounts apart.** A work and a personal Claude Code
+     collapsed into one "Claude Code" row, one chart line, one column — the exact question a
+     second account is configured to answer ("which one is costing me this?") was unanswerable.
+  2. **A real double count in the client-side merge.** `ownedContribution` resolved ownership per
+     provider _kind_: if environment A owned a shared Claude directory and environment B reported
+     that same directory _plus_ a second one, B still owned "claude" through the second directory,
+     so **every** Claude bucket B reported survived — including the shared directory's, which A had
+     already counted. Kind-level ownership cannot express "this directory yes, that one no", and
+     that only becomes reachable once an environment has two directories of one kind.
+- **What changed.** The report's unit of grouping is now the **provider instance**:
+  - `UsageBucket` gains `instanceId`; `UsageSource` gains `instanceId`, `displayName` and
+    `accentColor`. `USAGE_CONTRACT_VERSION` 4 → 5.
+  - The aggregator keys buckets by `(day, hourStart?, provider, instanceId, model)`, and
+    `UsageAggregator.add` takes the instance the record's transcripts came from.
+  - `mergeUsage` resolves ownership per instance, exposes `instances` in place of `providers`,
+    keys the per-period maps `byInstance`, and keys models by instance too.
+  - Web and mobile draw one series, row and column per instance, labelled and colored from what
+    the user configured.
+- **Decisions worth keeping if this is re-derived:**
+  1. **Series are keyed by instance id alone, not by `(environment, instance)`.** Every
+     environment's default Claude instance is `claudeAgent`, so keying by the pair would split one
+     person's laptop and desktop into two rows — a change to today's behavior for the _common_
+     case in service of the rare one. Keying by instance id leaves multi-device setups merged
+     exactly as they were and splits only where the user explicitly created a second instance.
+  2. **`UsageSourceFingerprint` stays physical** — host, provider, path, volume, no instance id.
+     It answers "is this the same directory", and two environments can reach one directory under
+     instance ids they named differently; folding the id in would break cross-environment
+     de-duplication.
+  3. **Presentation travels on the wire** (`displayName`, `accentColor` on `UsageSource`) rather
+     than the client joining usage against the provider snapshot stream. Mobile has no equivalent
+     of web's `providerInstances` projection, and the join would be a second source of truth for a
+     label. The client still owns the _rule_: `formatInstanceLabel` in `usageFormat` resolves
+     configured name → brand label for a default instance → humanized instance id.
+  4. **De-duplication stays global across instances.** A record copied forward when a session is
+     resumed under a second account is still one response; it counts once, for whichever instance
+     the scan reached first. Per-instance dedupe would double it.
+  5. **Instances sharing one directory report as one**, under the first instance id in scan order.
+     Their transcripts are physically indistinguishable, so any split would be invented.
+  6. **Colors:** a configured `accentColor` wins; otherwise a per-provider ramp indexed by
+     `shadeIndex`, which the merge assigns in an order (default instance first, then by id) that
+     does not move when spending does. Index 0 is always the brand color, so a single-instance
+     environment looks untouched.
+  7. **The empty state still renders one row per provider.** With nothing reported the clients
+     fall back to stand-in series for each provider's default instance, so the page does not
+     collapse to a bare headline the way it would if it only drew what was reported.
+- **The contract bump is the cost.** A fleet running mixed server versions will exclude the older
+  environments from totals until they update. That path already existed and already says so in the
+  UI ("runs an older server version and is excluded from totals"); no new failure mode, but it is
+  the reason this was not folded into entry 16.
+- **Drop it when:** upstream's `UsageBucket` carries an instance id. Check with
+  `grep -n instanceId packages/contracts/src/usage.ts` against clean upstream — no hit means this
+  entry is still needed. If upstream ships its own per-instance breakdown, drop **both** this entry
+  and entry 16 and re-verify the merge's ownership rule against theirs; the double count in
+  decision-point 2 above is the thing to test, since a kind-level `ownedContribution` is the
+  natural shape to write and is wrong.
+- **Verified:** `vp test run apps/server/src/usage apps/web/src/components/usage
+packages/shared/src/usageMerge.test.ts packages/shared/src/usageFormat.test.ts` (82 passed, 10 of
+  them new), `vp run --filter t3 --filter @t3tools/web --filter @t3tools/mobile --filter
+@t3tools/shared --filter @t3tools/contracts typecheck` clean, `vp lint` and `vp fmt --check` clean.
+  New tests cover: two instances of one provider staying in separate buckets; a record copied
+  between two accounts counted once; instance metadata reaching the source list; separate instance
+  rows, model rows and per-day cells in the merge; the shade order; the partial-duplicate ownership
+  regression; per-instance chart bands; and the label resolution rules.
+
+---
+
+### 19. Usage reports each provider instance separately
 
 - **Files:** `packages/contracts/src/usage.ts`, `packages/shared/src/usageMerge.ts`,
   `packages/shared/src/usageFormat.ts`, `apps/server/src/usage/usageTranscriptSources.ts`,
