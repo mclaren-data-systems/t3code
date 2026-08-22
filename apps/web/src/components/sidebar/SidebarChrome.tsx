@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 import { memo, useCallback } from "react";
 import { Link, useCanGoBack, useLocation, useNavigate } from "@tanstack/react-router";
 
+import { BUILD_COMMIT, BUILD_TIMESTAMP } from "../../branding";
 import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { useEnvironments } from "../../state/environments";
@@ -31,6 +32,7 @@ import {
 } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
+import { GitHubIcon } from "../Icons";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
 
@@ -103,6 +105,54 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
         </span>
       </span>
     </Link>
+  );
+}
+
+// Fork (mclaren-data-systems/t3code): the sidebar links to the fork's repo, and
+// the tooltip carries the running build's provenance.
+const FORK_REPOSITORY_URL = "https://github.com/mclaren-data-systems/t3code";
+
+function formatBuildTimestamp(isoTimestamp: string): string | null {
+  const parsed = new Date(isoTimestamp);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+function SidebarGitHubItem() {
+  const buildDetail = [
+    BUILD_COMMIT || null,
+    BUILD_TIMESTAMP ? formatBuildTimestamp(BUILD_TIMESTAMP) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <SidebarMenuItem className="shrink-0">
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <SidebarMenuButton
+              aria-label="GitHub"
+              render={<a href={FORK_REPOSITORY_URL} rel="noopener noreferrer" target="_blank" />}
+              size="icon"
+            >
+              <GitHubIcon className="text-red-500!" />
+            </SidebarMenuButton>
+          }
+        />
+        <TooltipPopup side="top">
+          {buildDetail ? (
+            <div className="text-center">
+              <div>GitHub</div>
+              <div className="text-popover-foreground/70">Build {buildDetail}</div>
+            </div>
+          ) : (
+            "GitHub"
+          )}
+        </TooltipPopup>
+      </Tooltip>
+    </SidebarMenuItem>
   );
 }
 
@@ -214,6 +264,7 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             label="Usage"
             onClick={handleUsageClick}
           />
+          <SidebarGitHubItem />
         </>
       )}
       <SidebarUpdatePill />
