@@ -335,7 +335,8 @@ export const make = Effect.gen(function* () {
     const livePaths = new Set<string>();
     const walkedRoots: string[] = [];
 
-    for (const { provider, dir } of dirs) {
+    for (const { provider, dir, instanceId, displayName, accentColor } of dirs) {
+      const instance = { instanceId, displayName, accentColor };
       const volumeId = yield* Effect.promise(() => readDirectoryVolumeId(dir));
       const exists = yield* fileSystem
         .exists(dir)
@@ -344,6 +345,7 @@ export const make = Effect.gen(function* () {
       if (!exists) {
         sources.push({
           fingerprint: { hostId, provider, resolvedHomePath: dir, volumeId },
+          ...instance,
           status: "missing",
           scannedFiles: 0,
           skippedFiles: 0,
@@ -373,7 +375,7 @@ export const make = Effect.gen(function* () {
         for (const record of records) {
           // Only sessions that contributed in-window count: the mtime slack
           // admits boundary files whose records fall outside the range.
-          if (aggregator.add(record) && record.sessionId.length > 0) {
+          if (aggregator.add(record, instanceId) && record.sessionId.length > 0) {
             sessionIds.add(record.sessionId);
           }
         }
@@ -381,6 +383,7 @@ export const make = Effect.gen(function* () {
 
       sources.push({
         fingerprint: { hostId, provider, resolvedHomePath: dir, volumeId },
+        ...instance,
         status: "ok",
         scannedFiles,
         skippedFiles,
