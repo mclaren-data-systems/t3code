@@ -3593,9 +3593,10 @@ export default function Sidebar() {
   // submenu for multi-project setups.
   const handleNewThreadClick = useCallback(
     (event?: ReactMouseEvent) => {
-      // One project: nothing to pick, create immediately. Shift+click creates
-      // directly in the current project even with several projects, skipping
-      // the palette picker.
+      // A selected scope wins — shift or not, it creates there. Unscoped, one
+      // project means nothing to pick so it creates immediately, and
+      // shift+click creates directly in the current project even with several
+      // projects, skipping the palette picker.
       const target = resolveNewThreadClickTarget({
         hasScopedProject: scopedNewThreadProjectRef !== null,
         shiftKey: event?.shiftKey ?? false,
