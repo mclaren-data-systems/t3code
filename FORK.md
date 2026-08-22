@@ -253,22 +253,6 @@ apps/web/src/components/settings apps/web/src/components/chat/ProviderStatusBann
   ArrowDown. Re-read the current key handlers, and expect the menu to decline the key less often
   than it used to.
 
-### 11. TODO list moved into this file; `TODO.md` deleted
-
-- **Files:** `TODO.md` (deleted), this file's "TODO" section (bottom)
-- **Commits:** `82cd7cf`, `3078f01` (and later edits)
-- **What:** John's TODO / TODID lists (formerly prepended to upstream's
-  `TODO.md`) now live in the "TODO" section at the bottom of this file, and
-  `TODO.md` is removed from the tree.
-- **Re-apply notes:** On sync this used to show up as a modify/delete conflict on
-  `TODO.md` — resolve by keeping the deletion. If upstream added TODO items
-  worth tracking, fold them into this file's TODO section instead of
-  resurrecting `TODO.md`.
-- **Redundancy check (as of `c3e37094`): moot — no conflict left to resolve.**
-  `TODO.md` is still absent from upstream's tree (`git ls-tree upstream/main TODO.md`
-  is empty), so the deletion no longer collides with anything. Nothing to
-  re-apply; keep the TODO section in this file.
-
 ### 12. `AGENTS.md`: fork Git/GitHub policy
 
 - **Files:** `AGENTS.md`, `CLAUDE.md`
@@ -866,13 +850,5 @@ instructions and do not work on them unless explicitly asked to. -->
 - When a thread is complete and changes were made it shows a message with what files changed. This message includes files that changed outside of this thread. Detect which files were changed related to this thread and make it so it only shows those. Provide a commit button within the "Changed files" box that will display the commit modal but only have our changed files for this thread selected/checked (display the checkboxes automatically in this scenario) (the regular commit button still selects all files).
 - Make the commit modal movable and resizable.
 - Feature: After starting a new thread, if you don't finish your message and click away, the message is saved but the thread is not created. I want the new thread to be created if the message has text when the user clicks away. It should be given an appropriate status like draft in the thread list.
-- Fix: Terminal does not capture ctrl+c or possibly other key commands when in focus, make it so it does.
-- Maintain a history of messages in each thread if it isn't already. When a users cursor is in the message input box and they use the up arrow key it should populate the input with the last message they sent in that thread, pressing it multiple times goes further back in their message history. If they use the down arrow key it should go forward in the message history. This is similar to how terminal input works. If the input box has multiple lines of text, this should only happen when the cursor is on the first line and the up arrow is pressed or the last line and the down arrow is pressed, otherwise it should just move the cursor up and down as normal.
+- Fix the Terminal not capturing ctrl+c or possibly other key commands when in focus, make it so it does.
 - Make the effect of threads moving to the top of the list when they are updated, optional based on a settings menu toggle. This should be on by default but if a user prefers the old way they can change it in settings.
-
-### John's TODID
-
-- Fix: Building on windows failed because of spaces in file paths
-- Fix: Copilot CLI provider not working or fully implemented
-- Fix: Gemini CLI provider not looking in the right path on Windows and not fully implemented
-- Feature: Make it so time stamps in chat messages show the full date when hovering over them
