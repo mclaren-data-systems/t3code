@@ -393,6 +393,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
+    id: "worktree-branch-prefix",
+    title: "Branch prefix",
+    to: "/settings/source-control",
+    searchTerms: ["worktree temporary branch namespace naming prefix t3code refname"],
+    primaryOnly: true,
+  },
+  {
     id: "git-fetch-interval",
     title: "Git fetch interval",
     to: "/settings/source-control",
