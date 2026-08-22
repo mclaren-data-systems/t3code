@@ -1,6 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
-import { ServerSettings } from "@t3tools/contracts";
+import { ProviderInstanceId, ServerSettings } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -45,8 +45,20 @@ it.layer(NodeServices.layer)("usageTranscriptSources", (it) => {
         );
 
         assert.deepStrictEqual(sources, [
-          { provider: "claude", dir: path.join(home, "claude", "projects") },
-          { provider: "codex", dir: path.join(home, "codex", "sessions") },
+          {
+            provider: "claude",
+            dir: path.join(home, "claude", "projects"),
+            instanceId: ProviderInstanceId.make("claudeAgent"),
+            displayName: null,
+            accentColor: null,
+          },
+          {
+            provider: "codex",
+            dir: path.join(home, "codex", "sessions"),
+            instanceId: ProviderInstanceId.make("codex"),
+            displayName: null,
+            accentColor: null,
+          },
         ]);
       }).pipe(Effect.scoped),
     );
@@ -80,6 +92,8 @@ it.layer(NodeServices.layer)("usageTranscriptSources", (it) => {
             providerInstances: {
               claudeAgent_work: {
                 driver: "claudeAgent",
+                displayName: "Claude Work",
+                accentColor: "#112233",
                 config: { homePath: path.join(home, "claude-work") },
               },
               codex_personal: {
@@ -91,10 +105,36 @@ it.layer(NodeServices.layer)("usageTranscriptSources", (it) => {
         );
 
         assert.deepStrictEqual(sources, [
-          { provider: "claude", dir: path.join(home, "claude", "projects") },
-          { provider: "claude", dir: path.join(home, "claude-work", "projects") },
-          { provider: "codex", dir: path.join(home, "codex", "sessions") },
-          { provider: "codex", dir: path.join(home, "codex-personal", "sessions") },
+          {
+            provider: "claude",
+            dir: path.join(home, "claude", "projects"),
+            instanceId: ProviderInstanceId.make("claudeAgent"),
+            displayName: null,
+            accentColor: null,
+          },
+          {
+            provider: "claude",
+            dir: path.join(home, "claude-work", "projects"),
+            instanceId: ProviderInstanceId.make("claudeAgent_work"),
+            // The instance's own name and color travel with it, so the
+            // dashboard can label two Claude accounts apart.
+            displayName: "Claude Work",
+            accentColor: "#112233",
+          },
+          {
+            provider: "codex",
+            dir: path.join(home, "codex", "sessions"),
+            instanceId: ProviderInstanceId.make("codex"),
+            displayName: null,
+            accentColor: null,
+          },
+          {
+            provider: "codex",
+            dir: path.join(home, "codex-personal", "sessions"),
+            instanceId: ProviderInstanceId.make("codex_personal"),
+            displayName: null,
+            accentColor: null,
+          },
         ]);
       }).pipe(Effect.scoped),
     );
@@ -153,8 +193,13 @@ it.layer(NodeServices.layer)("usageTranscriptSources", (it) => {
         );
 
         assert.deepStrictEqual(
-          sources.map((source) => source.dir),
-          [path.join(shared, "projects"), path.join(home, "codex", "sessions")],
+          sources.map((source) => [source.dir, source.instanceId]),
+          [
+            // The first instance to reach the directory owns its usage: the
+            // transcripts underneath carry nothing that tells the two apart.
+            [path.join(shared, "projects"), "claudeAgent"],
+            [path.join(home, "codex", "sessions"), "codex"],
+          ],
         );
       }).pipe(Effect.scoped),
     );

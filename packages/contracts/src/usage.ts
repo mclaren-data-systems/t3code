@@ -7,24 +7,40 @@
  * even for turns that were never driven through T3 Code. This mirrors the
  * approach `ccusage` takes.
  *
- * Environments return pre-aggregated `(day, hourStart?, provider, model)`
- * buckets. Raw transcript records never cross the wire.
+ * Environments return pre-aggregated `(day, hourStart?, instance, model)`
+ * buckets, one instance per configured provider instance rather than one per
+ * provider kind, so two Claude accounts report separately. Raw transcript
+ * records never cross the wire.
  *
  * @module usage
  */
 import * as Schema from "effect/Schema";
 
 import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
 
 /**
  * Bumped whenever the shape of {@link UsageSummary} changes incompatibly. The
  * client renders partial coverage when an environment reports an older version
  * rather than failing the whole page.
  */
-export const USAGE_CONTRACT_VERSION = 4 as const;
+export const USAGE_CONTRACT_VERSION = 5 as const;
 
 export const UsageProviderKind = Schema.Literals(["claude", "codex"]);
 export type UsageProviderKind = typeof UsageProviderKind.Type;
+
+/**
+ * The driver kind behind each usage provider.
+ *
+ * Usage groups by the CLI whose transcripts it reads, which is coarser than a
+ * driver kind, but instance ids are minted from the driver
+ * (`defaultInstanceIdForDriver`). Consumers need this mapping to tell a
+ * driver's default instance from one the user added.
+ */
+export const USAGE_PROVIDER_DRIVERS = {
+  claude: ProviderDriverKind.make("claudeAgent"),
+  codex: ProviderDriverKind.make("codex"),
+} as const satisfies Record<UsageProviderKind, ProviderDriverKind>;
 
 /**
  * A calendar day in the reporting time zone, formatted `YYYY-MM-DD`.
@@ -71,7 +87,7 @@ export const UsageTokenTotals = Schema.Struct({
 export type UsageTokenTotals = typeof UsageTokenTotals.Type;
 
 /**
- * One `(day, hourStart?, provider, model)` cell. `hourStart` is the UTC start
+ * One `(day, hourStart?, instanceId, model)` cell. `hourStart` is the UTC start
  * instant of a rolling bucket and is present only for hourly requests.
  *
  * `costUsd` is the raw API-equivalent cost of these tokens. It is not money
@@ -83,6 +99,13 @@ export const UsageBucket = Schema.Struct({
   day: UsageDay,
   hourStart: Schema.optional(TrimmedNonEmptyString),
   provider: UsageProviderKind,
+  /**
+   * The configured provider instance whose transcripts these tokens came from,
+   * matching the `instanceId` of exactly one {@link UsageSource} in the same
+   * summary. Two accounts of one provider are separate instances and stay
+   * separate cells, so a client can report them apart or sum them at will.
+   */
+  instanceId: ProviderInstanceId,
   model: TrimmedNonEmptyString,
   totals: UsageTokenTotals,
   costUsd: Schema.Number,
@@ -130,6 +153,21 @@ export type UsageSourceStatus = typeof UsageSourceStatus.Type;
 
 export const UsageSource = Schema.Struct({
   fingerprint: UsageSourceFingerprint,
+  /**
+   * The provider instance this directory was resolved from. Deliberately not
+   * part of the fingerprint: the fingerprint answers "is this the same
+   * directory", which two environments must agree on even when they route to
+   * it under different instance ids.
+   *
+   * Several instances can share one directory, in which case they are walked
+   * once and report under the first instance id in scan order — their
+   * transcripts are physically indistinguishable.
+   */
+  instanceId: ProviderInstanceId,
+  /** The instance's configured name, or null when the user never set one. */
+  displayName: Schema.NullOr(TrimmedNonEmptyString),
+  /** The instance's configured accent color, or null. Presentation only. */
+  accentColor: Schema.NullOr(TrimmedNonEmptyString),
   status: UsageSourceStatus,
   scannedFiles: NonNegativeInt,
   skippedFiles: NonNegativeInt,
