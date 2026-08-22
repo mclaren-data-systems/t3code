@@ -42,11 +42,13 @@ When you reset/sync, work through every entry below. For each one:
 > **`2c4158f8`** — _fix(web): handle wide ordered-list marker edge cases (#7856)_. This rebase
 > takes in **12 upstream commits** (`c3e37094..2c4158f8`) and replayed the fork's 16 commits
 > **without a single conflict**. It was performed on the working branch
-> `claude/fork-alignment-reimplement-4pk37r`; until that branch lands on `main`, `origin/main`
-> still points at the pre-rebase tip `35664cdc` (based on `c3e37094`, 2026-08-21) and serves as
-> its own backup. The `35664cdc` history had replaced `1ffbbbbb` (based on `db0659fe`), which
-> had itself replaced `8d6b5a56` (based on `9821bca1`, 2026-08-10) and `baaa8682` (based on
-> `de592a00`, 2026-08-05).
+> `claude/fork-alignment-reimplement-4pk37r` (PR #15 — never mergeable as a PR, since a
+> history-rewriting rebase conflicts with `main` by construction, which also means GitHub runs
+> no `pull_request` CI on it) and landed by force-pushing `main` to the branch tip on
+> **2026-08-22**. The overwritten tip `35664cdc` (based on `c3e37094`, 2026-08-21) **was backed
+> up** to `origin/backup/main-pre-rebase-2026-08-22`. The `35664cdc` history had replaced
+> `1ffbbbbb` (based on `db0659fe`), which had itself replaced `8d6b5a56` (based on `9821bca1`,
+> 2026-08-10) and `baaa8682` (based on `de592a00`, 2026-08-05).
 >
 > **Nothing was superseded at this rebase.** All eight carried entries (12, 13, 14, 15, 16, 17,
 > 18, 19) were re-checked against `2c4158f8` and still apply — upstream touched no workflow, no
