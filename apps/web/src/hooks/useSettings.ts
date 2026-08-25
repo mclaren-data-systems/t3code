@@ -22,6 +22,8 @@ import {
   type ClientSettings,
   DEFAULT_CLIENT_SETTINGS,
   type EnvironmentIdentificationMode,
+  type NormalizedSidebarLayout,
+  normalizeSidebarLayout,
   type UnifiedSettings,
 } from "@t3tools/contracts/settings";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
@@ -287,6 +289,15 @@ export function useLegacySidebarEnabled(): boolean {
   const settingsHydrated = useClientSettingsHydrated();
   const legacySidebarEnabled = useClientSettingsValue().legacySidebarEnabled;
   return settingsHydrated && legacySidebarEnabled;
+}
+
+/**
+ * The sidebar chrome layout (Settings → General → Sidebar layout), normalized
+ * so every renderer sees each item exactly once in a section it understands.
+ */
+export function useSidebarLayout(): NormalizedSidebarLayout {
+  const layout = useClientSettingsValue().sidebarLayout;
+  return useMemo(() => normalizeSidebarLayout(layout), [layout]);
 }
 
 /** Read current settings for one environment, merged with client-local preferences. */

@@ -15,6 +15,23 @@ If reordering is unavailable for one environment, update the T3 Code server runn
 environment. Older servers can still pin and unpin threads, but do not understand synced ordering;
 their pinned threads keep the default newest-first order below the ones you have arranged.
 
+## Arranging the sidebar
+
+**Sidebar layout** in Settings under General controls where the sidebar's fixed entries live.
+Drag entries between three areas: **Top** is fixed above the thread list, **Thread list** scrolls
+with your threads, and **Bottom** is the row at the foot of the sidebar. Drop an entry on a
+section's heading to file it into an empty section. The reset arrow next to the setting restores
+the default arrangement.
+
+The movable entries are **Pinned items**, **Settings**, **Pull Requests**, **Usage**, **GitHub**,
+**Dashboard**, and **Profile**. Pinned items is the section your pinned threads render in: leave
+it in the thread list to keep pinned cards above your active work, or move it to Top so they stay
+visible while the list scrolls. Dashboard returns to the home screen, and Profile is your T3
+Connect account button — it appears once you are signed in.
+
+Mobile keeps its own layout. The original sidebar (Settings → Legacy features) follows the
+Bottom row only.
+
 ## Starting a thread
 
 On web and desktop, **New thread** sits directly under the project selector and follows it. With

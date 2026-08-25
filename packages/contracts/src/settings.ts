@@ -65,6 +65,95 @@ export const SidebarAutoSettleAfterDays = Schema.Number.check(
 );
 export type SidebarAutoSettleAfterDays = typeof SidebarAutoSettleAfterDays.Type;
 export const DEFAULT_SIDEBAR_AUTO_SETTLE_AFTER_DAYS: SidebarAutoSettleAfterDays = 3;
+
+/**
+ * Sidebar layout: which chrome entries render in which sidebar region, in
+ * order. `pinned-items` is the pinned-thread block; every other id is a
+ * button. Sections are `top` (fixed above the thread list), `list` (inside
+ * the scrolling thread list) and `bottom` (the utility row in the footer).
+ */
+export const SIDEBAR_LAYOUT_ITEM_IDS = [
+  "pinned-items",
+  "settings",
+  "pull-requests",
+  "usage",
+  "github",
+  "dashboard",
+  "profile",
+] as const;
+export type SidebarLayoutItemId = (typeof SIDEBAR_LAYOUT_ITEM_IDS)[number];
+
+export const SIDEBAR_LAYOUT_SECTION_IDS = ["top", "list", "bottom"] as const;
+export type SidebarLayoutSectionId = (typeof SIDEBAR_LAYOUT_SECTION_IDS)[number];
+
+// Sections hold plain strings, not an id literal union, so a layout saved by
+// a newer build (or another fork) still decodes here: renderers go through
+// `normalizeSidebarLayout`, which drops ids this build does not know instead
+// of the whole settings object failing to decode.
+export const SidebarLayout = Schema.Struct({
+  top: Schema.Array(TrimmedNonEmptyString).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  list: Schema.Array(TrimmedNonEmptyString).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  bottom: Schema.Array(TrimmedNonEmptyString).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+});
+export type SidebarLayout = typeof SidebarLayout.Type;
+
+export interface NormalizedSidebarLayout {
+  readonly top: ReadonlyArray<SidebarLayoutItemId>;
+  readonly list: ReadonlyArray<SidebarLayoutItemId>;
+  readonly bottom: ReadonlyArray<SidebarLayoutItemId>;
+}
+
+export const DEFAULT_SIDEBAR_LAYOUT: NormalizedSidebarLayout = {
+  top: [],
+  list: ["pinned-items"],
+  bottom: ["settings", "pull-requests", "usage", "github", "dashboard", "profile"],
+};
+
+const SIDEBAR_LAYOUT_ITEM_ID_SET: ReadonlySet<string> = new Set(SIDEBAR_LAYOUT_ITEM_IDS);
+
+/**
+ * Resolves a persisted layout into one renderers can trust: each known item
+ * appears exactly once (first placement wins, scanning top → list → bottom),
+ * unknown ids are dropped, and items the persisted value never placed land
+ * at the end of their default section.
+ */
+export function normalizeSidebarLayout(layout: SidebarLayout): NormalizedSidebarLayout {
+  const seen = new Set<SidebarLayoutItemId>();
+  const pick = (ids: ReadonlyArray<string>): SidebarLayoutItemId[] => {
+    const kept: SidebarLayoutItemId[] = [];
+    for (const id of ids) {
+      if (!SIDEBAR_LAYOUT_ITEM_ID_SET.has(id)) continue;
+      const itemId = id as SidebarLayoutItemId;
+      if (seen.has(itemId)) continue;
+      seen.add(itemId);
+      kept.push(itemId);
+    }
+    return kept;
+  };
+  const sections = {
+    top: pick(layout.top),
+    list: pick(layout.list),
+    bottom: pick(layout.bottom),
+  };
+  for (const sectionId of SIDEBAR_LAYOUT_SECTION_IDS) {
+    for (const itemId of DEFAULT_SIDEBAR_LAYOUT[sectionId]) {
+      if (seen.has(itemId)) continue;
+      seen.add(itemId);
+      sections[sectionId].push(itemId);
+    }
+  }
+  return sections;
+}
+
+/** The section a normalized layout places an item in. */
+export function sidebarLayoutSectionOf(
+  layout: NormalizedSidebarLayout,
+  itemId: SidebarLayoutItemId,
+): SidebarLayoutSectionId {
+  if (layout.top.includes(itemId)) return "top";
+  if (layout.bottom.includes(itemId)) return "bottom";
+  return "list";
+}
 export const MIN_GLASS_OPACITY = 40;
 export const MAX_GLASS_OPACITY = 100;
 export const GlassOpacity = Schema.Int.check(
@@ -231,6 +320,9 @@ export const ClientSettingsSchema = Schema.Struct({
   // old keys, so everyone, including prior beta opt-outs, resets to the new
   // default sidebar.
   legacySidebarEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  sidebarLayout: SidebarLayout.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_LAYOUT)),
+  ),
   sidebarAutoSettleAfterDays: Schema.NullOr(SidebarAutoSettleAfterDays).pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_AUTO_SETTLE_AFTER_DAYS)),
   ),
@@ -935,6 +1027,7 @@ export const ClientSettingsPatch = Schema.Struct({
   planModeEnabled: Schema.optionalKey(Schema.Boolean),
   showSkillsInSlashMenu: Schema.optionalKey(Schema.Boolean),
   legacySidebarEnabled: Schema.optionalKey(Schema.Boolean),
+  sidebarLayout: Schema.optionalKey(SidebarLayout),
   sidebarAutoSettleAfterDays: Schema.optionalKey(Schema.NullOr(SidebarAutoSettleAfterDays)),
   sidebarAutoSettleOnMerge: Schema.optionalKey(Schema.Boolean),
   sidebarProjectGroupingMode: Schema.optionalKey(SidebarProjectGroupingMode),

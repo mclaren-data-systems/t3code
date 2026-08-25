@@ -18,8 +18,10 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import {
   DEFAULT_ENVIRONMENT_IDENTIFICATION_MODE,
+  DEFAULT_SIDEBAR_LAYOUT,
   DEFAULT_UNIFIED_SETTINGS,
   type EnvironmentIdentificationMode,
+  normalizeSidebarLayout,
   MAX_APPEARANCE_CONTRAST,
   MAX_CODE_FONT_SIZE,
   MAX_GLASS_OPACITY,
@@ -145,6 +147,8 @@ import {
   useSettingsSearchTargetId,
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
+import { SidebarLayoutEditor } from "./SidebarLayoutEditor";
+import { isDefaultSidebarLayout } from "./sidebarLayoutEditor.logic";
 import { ProjectFavicon } from "../ProjectFavicon";
 
 const ENVIRONMENT_IDENTIFICATION_LABELS: Record<EnvironmentIdentificationMode, string> = {
@@ -1944,6 +1948,21 @@ export function GeneralSettingsPanel() {
             />
           }
         />
+
+        <SettingsRow
+          {...searchableSetting("sidebar-layout")}
+          description="Drag entries between the sidebar's fixed top area, the thread list and the bottom row. Pinned items is where your pinned threads render."
+          resetAction={
+            !isDefaultSidebarLayout(normalizeSidebarLayout(settings.sidebarLayout)) ? (
+              <SettingResetButton
+                label="sidebar layout"
+                onClick={() => updateSettings({ sidebarLayout: DEFAULT_SIDEBAR_LAYOUT })}
+              />
+            ) : null
+          }
+        >
+          <SidebarLayoutEditor />
+        </SettingsRow>
 
         <SettingsRow
           {...searchableSetting("auto-settle-merged-threads")}

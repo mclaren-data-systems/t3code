@@ -19,6 +19,29 @@ export function T3ConnectSidebarAvatar() {
   return <ConfiguredT3ConnectSidebarAvatar />;
 }
 
+/**
+ * The avatar as a sidebar menu row, for layout-driven button rows (see
+ * SidebarChrome). Renders nothing at all — no empty list item — when T3
+ * Connect is unconfigured or signed out.
+ */
+export function T3ConnectSidebarAvatarMenuItem() {
+  if (!hasCloudPublicConfig()) return null;
+
+  return <ConfiguredT3ConnectSidebarAvatarMenuItem />;
+}
+
+function ConfiguredT3ConnectSidebarAvatarMenuItem() {
+  const { isLoaded, isSignedIn } = useAuth();
+
+  if (!isLoaded || !isSignedIn) return null;
+
+  return (
+    <SidebarMenuItem className="flex shrink-0 items-center">
+      <ConfiguredT3ConnectSidebarAvatar />
+    </SidebarMenuItem>
+  );
+}
+
 function ConfiguredT3ConnectSidebarAvatar() {
   const { isLoaded, isSignedIn } = useAuth();
 

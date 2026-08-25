@@ -6,10 +6,13 @@ import {
   ClientSettingsSchema,
   ClientSettingsPatch,
   DEFAULT_SERVER_SETTINGS,
+  DEFAULT_SIDEBAR_LAYOUT,
   defaultEnabledForDriver,
+  normalizeSidebarLayout,
   resolveProviderInstanceEnabled,
   ServerSettings,
   ServerSettingsPatch,
+  sidebarLayoutSectionOf,
 } from "./settings.ts";
 
 const decodeClientSettings = Schema.decodeUnknownSync(ClientSettingsSchema);
@@ -128,6 +131,64 @@ describe("ClientSettings sidebar", () => {
   it.each([-1, 0, 91])("rejects an auto-settle threshold outside 1..90: %s", (value) => {
     expect(() => decodeClientSettings({ sidebarAutoSettleAfterDays: value })).toThrow();
     expect(() => decodeClientSettingsPatch({ sidebarAutoSettleAfterDays: value })).toThrow();
+  });
+});
+
+describe("ClientSettings sidebar layout", () => {
+  it("defaults pinned items to the thread list and every button to the bottom row", () => {
+    expect(decodeClientSettings({}).sidebarLayout).toEqual(DEFAULT_SIDEBAR_LAYOUT);
+  });
+
+  it("decodes a persisted partial layout and re-homes unplaced items on normalize", () => {
+    const decoded = decodeClientSettings({ sidebarLayout: { top: ["profile"] } });
+    expect(decoded.sidebarLayout).toEqual({ top: ["profile"], list: [], bottom: [] });
+
+    const normalized = normalizeSidebarLayout(decoded.sidebarLayout);
+    expect(normalized.top).toEqual(["profile"]);
+    expect(normalized.list).toEqual(["pinned-items"]);
+    expect(normalized.bottom).toEqual([
+      "settings",
+      "pull-requests",
+      "usage",
+      "github",
+      "dashboard",
+    ]);
+  });
+
+  it("keeps a fully arranged layout exactly as saved", () => {
+    const layout = {
+      top: ["pinned-items", "profile"],
+      list: [],
+      bottom: ["dashboard", "github", "usage", "pull-requests", "settings"],
+    };
+    expect(
+      normalizeSidebarLayout(decodeClientSettingsPatch({ sidebarLayout: layout }).sidebarLayout!),
+    ).toEqual(layout);
+  });
+
+  it("drops ids it does not know and keeps only the first placement of a duplicate", () => {
+    const normalized = normalizeSidebarLayout({
+      top: ["pinned-items", "someones-future-item"],
+      list: ["pinned-items"],
+      bottom: ["settings", "pull-requests", "usage", "github", "dashboard", "profile"],
+    });
+    expect(normalized.top).toEqual(["pinned-items"]);
+    expect(normalized.list).toEqual([]);
+    expect(normalized.bottom).toEqual([
+      "settings",
+      "pull-requests",
+      "usage",
+      "github",
+      "dashboard",
+      "profile",
+    ]);
+  });
+
+  it("reports which section an item landed in, defaulting to the thread list", () => {
+    const normalized = normalizeSidebarLayout({ top: ["profile"], list: [], bottom: [] });
+    expect(sidebarLayoutSectionOf(normalized, "profile")).toBe("top");
+    expect(sidebarLayoutSectionOf(normalized, "settings")).toBe("bottom");
+    expect(sidebarLayoutSectionOf(normalized, "pinned-items")).toBe("list");
   });
 });
 

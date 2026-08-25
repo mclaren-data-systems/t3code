@@ -2,14 +2,16 @@ import {
   ArrowLeftIcon,
   ChartNoAxesColumnIcon,
   GitPullRequestIcon,
+  LayoutDashboardIcon,
   SettingsIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { memo, useCallback } from "react";
 import { Link, useCanGoBack, useLocation, useNavigate } from "@tanstack/react-router";
+import type { SidebarLayoutItemId } from "@t3tools/contracts/settings";
 
 import { BUILD_COMMIT, BUILD_TIMESTAMP } from "../../branding";
-import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
+import { useEnvironmentIdentificationMode, useSidebarLayout } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { useEnvironments } from "../../state/environments";
 import {
@@ -31,6 +33,7 @@ import {
 } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { GitHubIcon } from "../Icons";
+import { T3ConnectSidebarAvatarMenuItem } from "../clerk/T3ConnectSidebarSignIn";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
 
@@ -193,20 +196,15 @@ function SidebarUtilityItem({
   );
 }
 
-export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
+/**
+ * The layout buttons (Settings → General → Sidebar layout) for one run of
+ * `items`, in order. `pinned-items` is not a button and must be filtered out
+ * by the caller; unsupported entries (Pull Requests without a capable server,
+ * Profile without T3 Connect) render nothing.
+ */
+function SidebarLayoutButtons({ items }: { items: ReadonlyArray<SidebarLayoutItemId> }) {
   const navigate = useNavigate();
-  const canGoBack = useCanGoBack();
   const { isMobile, setOpenMobile } = useSidebar();
-  const currentFooterPage = useLocation({
-    select: (location) =>
-      /^\/settings(?:\/|$)/.test(location.pathname)
-        ? "settings"
-        : location.pathname === "/usage"
-          ? "usage"
-          : location.pathname === "/pull-requests"
-            ? "pull-requests"
-            : null,
-  });
   const { environments } = useEnvironments();
   // The page reads every connected server, so one of them offering pull requests is enough for
   // the link to lead somewhere.
@@ -218,6 +216,10 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
       setOpenMobile(false);
     }
   }, [isMobile, setOpenMobile]);
+  const handleDashboardClick = useCallback(() => {
+    closeMobileSidebar();
+    void navigate({ to: "/" });
+  }, [closeMobileSidebar, navigate]);
   const handlePullRequestsClick = useCallback(() => {
     closeMobileSidebar();
     void navigate({ to: "/pull-requests", search: { involvement: "all", state: "open" } });
@@ -226,14 +228,126 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
     closeMobileSidebar();
     void navigate({ to: "/settings" });
   }, [closeMobileSidebar, navigate]);
-
   const handleUsageClick = useCallback(() => {
+    closeMobileSidebar();
+    void navigate({ to: "/usage" });
+  }, [closeMobileSidebar, navigate]);
+
+  return (
+    <>
+      {items.map((id) => {
+        switch (id) {
+          case "settings":
+            return (
+              <SidebarUtilityItem
+                key={id}
+                icon={<SettingsIcon />}
+                label="Settings"
+                onClick={handleSettingsClick}
+              />
+            );
+          case "pull-requests":
+            return pullRequestsSupported ? (
+              <SidebarUtilityItem
+                key={id}
+                icon={<GitPullRequestIcon />}
+                label="Pull Requests"
+                onClick={handlePullRequestsClick}
+              />
+            ) : null;
+          case "usage":
+            return (
+              <SidebarUtilityItem
+                key={id}
+                icon={<ChartNoAxesColumnIcon />}
+                label="Usage"
+                onClick={handleUsageClick}
+              />
+            );
+          case "dashboard":
+            return (
+              <SidebarUtilityItem
+                key={id}
+                icon={<LayoutDashboardIcon />}
+                label="Dashboard"
+                onClick={handleDashboardClick}
+              />
+            );
+          case "github":
+            return <SidebarGitHubItem key={id} />;
+          case "profile":
+            return <T3ConnectSidebarAvatarMenuItem key={id} />;
+          case "pinned-items":
+            return null;
+        }
+      })}
+    </>
+  );
+}
+
+/**
+ * The fixed area under the sidebar header, rendering whatever the layout
+ * places in its `top` section: buttons group into horizontal runs, and the
+ * pinned block (built by the sidebar, which owns the drag state) drops in
+ * where `pinned-items` sits.
+ */
+export function SidebarLayoutTopSlot({ pinnedBlock }: { pinnedBlock?: ReactNode }) {
+  const layout = useSidebarLayout();
+  if (layout.top.length === 0) return null;
+
+  const chunks: Array<{ kind: "buttons"; ids: SidebarLayoutItemId[] } | { kind: "pinned" }> = [];
+  for (const id of layout.top) {
+    if (id === "pinned-items") {
+      chunks.push({ kind: "pinned" });
+      continue;
+    }
+    const last = chunks[chunks.length - 1];
+    if (last?.kind === "buttons") {
+      last.ids.push(id);
+    } else {
+      chunks.push({ kind: "buttons", ids: [id] });
+    }
+  }
+
+  return (
+    <>
+      {chunks.map((chunk) =>
+        // Content-derived keys: a normalized layout holds each item at most
+        // once, so "pinned" and the joined button ids are unique per render.
+        chunk.kind === "pinned" ? (
+          pinnedBlock != null ? (
+            <div key="pinned">{pinnedBlock}</div>
+          ) : null
+        ) : (
+          <SidebarMenu key={`buttons:${chunk.ids.join("+")}`} className="flex-row items-center">
+            <SidebarLayoutButtons items={chunk.ids} />
+          </SidebarMenu>
+        ),
+      )}
+    </>
+  );
+}
+
+export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
+  const navigate = useNavigate();
+  const canGoBack = useCanGoBack();
+  const { isMobile, setOpenMobile } = useSidebar();
+  const layout = useSidebarLayout();
+  const currentFooterPage = useLocation({
+    select: (location) =>
+      /^\/settings(?:\/|$)/.test(location.pathname)
+        ? "settings"
+        : location.pathname === "/usage"
+          ? "usage"
+          : location.pathname === "/pull-requests"
+            ? "pull-requests"
+            : null,
+  });
+  const closeMobileSidebar = useCallback(() => {
     if (isMobile) {
       setOpenMobile(false);
     }
-    void navigate({ to: "/usage" });
-  }, [isMobile, navigate, setOpenMobile]);
-
+  }, [isMobile, setOpenMobile]);
   const handleBackClick = useCallback(() => {
     closeMobileSidebar();
     if (canGoBack) {
@@ -242,6 +356,7 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
     }
     void navigate({ to: "/" });
   }, [canGoBack, closeMobileSidebar, navigate]);
+  const bottomButtons = layout.bottom.filter((id) => id !== "pinned-items");
 
   return (
     <SidebarMenu className="flex-row items-center">
@@ -253,37 +368,24 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           </SidebarMenuButton>
         </SidebarMenuItem>
       ) : (
-        <>
-          <SidebarUtilityItem
-            icon={<SettingsIcon />}
-            label="Settings"
-            onClick={handleSettingsClick}
-          />
-          {pullRequestsSupported ? (
-            <SidebarUtilityItem
-              icon={<GitPullRequestIcon />}
-              label="Pull Requests"
-              onClick={handlePullRequestsClick}
-            />
-          ) : null}
-          <SidebarUtilityItem
-            icon={<ChartNoAxesColumnIcon />}
-            label="Usage"
-            onClick={handleUsageClick}
-          />
-          <SidebarGitHubItem />
-        </>
+        <SidebarLayoutButtons items={bottomButtons} />
       )}
       <SidebarUpdatePill />
     </SidebarMenu>
   );
 });
 
-export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
+export const SidebarChromeFooter = memo(function SidebarChromeFooter({
+  pinnedBlock,
+}: {
+  /** The pinned block when the layout places `pinned-items` in `bottom`; it renders above the button row. */
+  pinnedBlock?: ReactNode;
+}) {
   return (
     <SidebarFooter className="p-[var(--sidebar-content-inset)]">
       <SidebarProviderUpdatePill />
       <SidebarUpdateArchitectureWarning />
+      {pinnedBlock}
       <SidebarUtilityMenu />
     </SidebarFooter>
   );
