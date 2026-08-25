@@ -238,3 +238,21 @@ On desktop, press `Cmd+Enter` on macOS or `Ctrl+Enter` on Windows and Linux from
 start it in the background. T3 Code opens another new thread and shows an **Open** action for the
 thread that started. The new thread keeps the selected workspace mode and base branch. If **New
 worktree** is selected, each background thread creates its own worktree.
+
+## Subscription usage
+
+When a provider runs on a subscription rather than an API key, T3 Code shows how much of each
+plan window is still available. Claude reports a 5-hour window, a weekly window, and separate
+weekly windows for individual models; Codex reports its own two windows. Each row shows the
+share left and, where the provider reports one, how long until that window resets.
+
+The same rows appear in two places: at the bottom of the model picker, for whichever provider is
+selected in the rail, so you can see which account still has room before you pick one; and under
+**Subscription** in the popover of the round meter beside the send button, for the provider the
+current thread is running on.
+
+Providers that do not report plan limits show nothing. That includes sessions authenticated with
+an API key, Amazon Bedrock, and Google Vertex, none of which have subscription windows to
+report. Usage refreshes when T3 Code checks provider status and while a turn runs, and
+disappears rather than going stale if a figure gets too old to trust. The **Limits** view on the
+Usage page shows the same windows with their pace and exact reset times.

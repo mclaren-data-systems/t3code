@@ -9,6 +9,8 @@ import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { memo, useMemo, useState, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { ChevronRightIcon, SearchIcon } from "lucide-react";
 import { ModelListRow } from "./ModelListRow";
+import { SubscriptionUsageMeters } from "./SubscriptionUsageMeters";
+import { usableSubscriptionUsage } from "./SubscriptionUsage.logic";
 import { ModelPickerSidebar } from "./ModelPickerSidebar";
 import { getProviderStatusMessage, hasProviderSetup } from "./ProviderStatusBanner";
 import {
@@ -725,6 +727,18 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     };
   }, [filteredItemKeys, updateModelListScrollFades]);
 
+  // The picker's popup unmounts on close, so this is read once per open — fresh
+  // enough to age a snapshot out, and never a repainting timer.
+  const [openedAtMs] = useState(() => Date.now());
+  const selectedInstanceSubscriptionUsage = useMemo(() => {
+    const snapshot =
+      selectedInstanceId === "favorites"
+        ? undefined
+        : props.instanceEntries.find((entry) => entry.instanceId === selectedInstanceId)?.snapshot
+            .usageLimits;
+    return usableSubscriptionUsage(snapshot, openedAtMs);
+  }, [openedAtMs, props.instanceEntries, selectedInstanceId]);
+
   return (
     <TooltipProvider delay={0}>
       <div
@@ -948,6 +962,21 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                 No models found
               </ComboboxEmpty>
             )}
+            {/*
+              Subscription allowance for the instance the rail has selected, so
+              the answer to "which provider do I still have room on" is visible
+              at the moment of choosing. Absent for API-key sessions and for
+              providers that report no plan limits.
+            */}
+            {selectedInstanceSubscriptionUsage ? (
+              <div className="border-t border-border/70 px-3 py-2.5">
+                <div className="mb-2 font-medium text-muted-foreground text-xs">Subscription</div>
+                <SubscriptionUsageMeters
+                  usage={selectedInstanceSubscriptionUsage}
+                  nowMs={openedAtMs}
+                />
+              </div>
+            ) : null}
           </div>
         </Combobox>
       </div>

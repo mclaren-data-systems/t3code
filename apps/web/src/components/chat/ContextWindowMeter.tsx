@@ -1,9 +1,15 @@
+import { useState } from "react";
+
+import type { ServerProviderUsageLimits } from "@t3tools/contracts";
+
 import { Button } from "../ui/button";
 import { type ContextWindowSnapshot, formatContextWindowTokens } from "~/lib/contextWindow";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { formatContextWindowCompactionMessage } from "./ContextWindowMeter.logic";
 import { Minimize2Icon } from "lucide-react";
 import { composerFloatingLayerProps } from "./composerEventScope";
+import { SubscriptionUsageMeters } from "./SubscriptionUsageMeters";
+import { usableSubscriptionUsage } from "./SubscriptionUsage.logic";
 
 function formatPercentage(value: number | null): string | null {
   if (value === null || !Number.isFinite(value)) {
@@ -21,8 +27,20 @@ export function ContextWindowMeter(props: {
   onCompact?: (() => void) | undefined;
   compactDisabled?: boolean | undefined;
   compactDisabledReason?: string | null | undefined;
+  /**
+   * Raw subscription allowance for the instance this thread is running on.
+   * Absent for providers with no plan limits to report.
+   */
+  subscriptionUsage?: ServerProviderUsageLimits | undefined;
 }) {
   const { usage, modelDisplayName, onCompact, compactDisabled, compactDisabledReason } = props;
+  // The clock is read when the popover opens, never on a timer. Ageing the
+  // snapshot in the composer instead would freeze the decision: it would be
+  // memoised against a snapshot that stops changing exactly when provider
+  // refreshes stop, so an expired allowance would sit here indefinitely.
+  const [openedAtMs, setOpenedAtMs] = useState<number | null>(null);
+  const subscriptionUsage =
+    openedAtMs === null ? undefined : usableSubscriptionUsage(props.subscriptionUsage, openedAtMs);
   const usedPercentage = formatPercentage(usage.usedPercentage);
   const normalizedPercentage = Math.max(0, Math.min(100, usage.usedPercentage ?? 0));
   const radius = 9.75;
@@ -36,7 +54,7 @@ export function ContextWindowMeter(props: {
     : "color-mix(in oklab, var(--color-muted-foreground) 72%, transparent)";
 
   return (
-    <Popover>
+    <Popover onOpenChange={(open) => setOpenedAtMs(open ? Date.now() : null)}>
       <PopoverTrigger
         openOnHover
         delay={150}
@@ -155,6 +173,12 @@ export function ContextWindowMeter(props: {
                 </div>
               ) : null}
             </>
+          ) : null}
+          {subscriptionUsage ? (
+            <div className="mt-1 flex flex-col gap-2 border-t border-border/70 pt-2">
+              <div className="font-medium text-muted-foreground text-xs">Subscription</div>
+              <SubscriptionUsageMeters usage={subscriptionUsage} nowMs={openedAtMs ?? 0} />
+            </div>
           ) : null}
         </div>
       </PopoverPopup>
