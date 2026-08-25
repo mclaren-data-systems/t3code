@@ -5,6 +5,7 @@ import type {
   PreviewAnnotationPayload,
   ProviderApprovalDecision,
   ProviderInteractionMode,
+  ProviderSubscriptionUsage,
   ResolvedKeybindingsConfig,
   RuntimeMode,
   ScopedThreadRef,
@@ -127,6 +128,7 @@ import {
   renderProviderTraitsPicker,
 } from "./composerProviderState";
 import { ContextWindowMeter } from "./ContextWindowMeter";
+import { usableSubscriptionUsage } from "./SubscriptionUsage.logic";
 import { resolveContextWindowModelDisplayName } from "./ContextWindowMeter.logic";
 import { buildExpandedImagePreview, type ExpandedImagePreview } from "./ExpandedImagePreview";
 import { basenameOfPath } from "../../pierre-icons";
@@ -450,6 +452,8 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
 const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(props: {
   compact: boolean;
   activeContextWindow: ContextWindowSnapshot | null;
+  activeSubscriptionUsage: ProviderSubscriptionUsage | undefined;
+  activeSubscriptionUsageNowMs: number;
   activeThreadModelDisplayName: string | null;
   isPreparingWorktree: boolean;
   pendingAction: {
@@ -485,6 +489,8 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
           onCompact={props.onCompactContext}
           compactDisabled={props.compactDisabled}
           compactDisabledReason={props.compactDisabledReason}
+          subscriptionUsage={props.activeSubscriptionUsage}
+          subscriptionUsageNowMs={props.activeSubscriptionUsageNowMs}
         />
       ) : null}
       {props.isPreparingWorktree ? (
@@ -1032,6 +1038,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     () => resolveContextWindowModelDisplayName(activeThreadModelSelection, modelOptionsByInstance),
     [activeThreadModelSelection, modelOptionsByInstance],
   );
+  // Re-read the clock only when a new snapshot lands. The reset countdown is
+  // therefore accurate as of the last provider refresh and never repaints on
+  // its own — a self-ticking meter in the composer is a GPU cost for no gain.
+  const activeSubscriptionUsage = useMemo(() => {
+    const snapshot = selectedProviderEntry?.snapshot.subscriptionUsage;
+    return {
+      usage: usableSubscriptionUsage(snapshot, Date.now()),
+      nowMs: Date.now(),
+    };
+  }, [selectedProviderEntry?.snapshot.subscriptionUsage]);
 
   // ------------------------------------------------------------------
   // Composer-local state
@@ -3648,6 +3664,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     compact={isComposerPrimaryActionsCompact}
                     activeContextWindow={activeContextWindow}
                     activeThreadModelDisplayName={activeThreadModelDisplayName}
+                    activeSubscriptionUsage={activeSubscriptionUsage.usage}
+                    activeSubscriptionUsageNowMs={activeSubscriptionUsage.nowMs}
                     pendingAction={pendingPrimaryAction}
                     isRunning={phase === "running"}
                     showPlanFollowUpPrompt={

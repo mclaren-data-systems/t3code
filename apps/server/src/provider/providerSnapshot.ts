@@ -1,6 +1,7 @@
 import type {
   ProviderDriverKind,
   ModelCapabilities,
+  ProviderSubscriptionUsage,
   ServerProvider,
   ServerProviderAuth,
   ServerProviderConfigDirectory,
@@ -223,6 +224,7 @@ export function buildServerProvider(input: {
   slashCommands?: ReadonlyArray<ServerProviderSlashCommand>;
   skills?: ReadonlyArray<ServerProviderSkill>;
   configDirectory?: ServerProviderConfigDirectory | undefined;
+  subscriptionUsage?: ProviderSubscriptionUsage | undefined;
   probe: ProviderProbeResult;
 }): ServerProviderDraft {
   const versionAdvisory = input.driver
@@ -253,6 +255,7 @@ export function buildServerProvider(input: {
     slashCommands: [...(input.slashCommands ?? [])],
     skills: [...(input.skills ?? [])],
     ...(versionAdvisory ? { versionAdvisory } : {}),
+    ...(input.subscriptionUsage ? { subscriptionUsage: input.subscriptionUsage } : {}),
   };
 }
 
