@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import type { ProviderSubscriptionUsage } from "@t3tools/contracts";
 
 import { Button } from "../ui/button";
@@ -7,6 +9,7 @@ import { formatContextWindowCompactionMessage } from "./ContextWindowMeter.logic
 import { Minimize2Icon } from "lucide-react";
 import { composerFloatingLayerProps } from "./composerEventScope";
 import { SubscriptionUsageMeters } from "./SubscriptionUsageMeters";
+import { usableSubscriptionUsage } from "./SubscriptionUsage.logic";
 
 function formatPercentage(value: number | null): string | null {
   if (value === null || !Number.isFinite(value)) {
@@ -25,21 +28,19 @@ export function ContextWindowMeter(props: {
   compactDisabled?: boolean | undefined;
   compactDisabledReason?: string | null | undefined;
   /**
-   * Subscription allowance for the instance this thread is running on, already
-   * aged out by the caller. Absent for providers with no plan limits to report.
+   * Raw subscription allowance for the instance this thread is running on.
+   * Absent for providers with no plan limits to report.
    */
   subscriptionUsage?: ProviderSubscriptionUsage | undefined;
-  /** Clock for the reset countdowns, read once by the caller per popover open. */
-  subscriptionUsageNowMs?: number;
 }) {
-  const {
-    usage,
-    modelDisplayName,
-    onCompact,
-    compactDisabled,
-    compactDisabledReason,
-    subscriptionUsage,
-  } = props;
+  const { usage, modelDisplayName, onCompact, compactDisabled, compactDisabledReason } = props;
+  // The clock is read when the popover opens, never on a timer. Ageing the
+  // snapshot in the composer instead would freeze the decision: it would be
+  // memoised against a snapshot that stops changing exactly when provider
+  // refreshes stop, so an expired allowance would sit here indefinitely.
+  const [openedAtMs, setOpenedAtMs] = useState<number | null>(null);
+  const subscriptionUsage =
+    openedAtMs === null ? undefined : usableSubscriptionUsage(props.subscriptionUsage, openedAtMs);
   const usedPercentage = formatPercentage(usage.usedPercentage);
   const normalizedPercentage = Math.max(0, Math.min(100, usage.usedPercentage ?? 0));
   const radius = 9.75;
@@ -53,7 +54,7 @@ export function ContextWindowMeter(props: {
     : "color-mix(in oklab, var(--color-muted-foreground) 72%, transparent)";
 
   return (
-    <Popover>
+    <Popover onOpenChange={(open) => setOpenedAtMs(open ? Date.now() : null)}>
       <PopoverTrigger
         openOnHover
         delay={150}
@@ -183,10 +184,7 @@ export function ContextWindowMeter(props: {
                   </div>
                 ) : null}
               </div>
-              <SubscriptionUsageMeters
-                usage={subscriptionUsage}
-                nowMs={props.subscriptionUsageNowMs ?? 0}
-              />
+              <SubscriptionUsageMeters usage={subscriptionUsage} nowMs={openedAtMs ?? 0} />
             </div>
           ) : null}
         </div>

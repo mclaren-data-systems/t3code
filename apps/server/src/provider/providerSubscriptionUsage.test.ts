@@ -44,6 +44,28 @@ describe("normalizeCodexSubscriptionUsage", () => {
     ]);
   });
 
+  it("unwraps the `rateLimits` envelope the read response and notification both use", () => {
+    // `V2GetAccountRateLimitsResponse` nests the windows one level down. Handing
+    // the whole response over used to yield zero windows, so Codex usage never
+    // appeared at all.
+    const usage = normalizeCodexSubscriptionUsage({
+      snapshot: {
+        rateLimits: {
+          planType: "plus",
+          primary: { usedPercent: 12, windowDurationMins: 300 },
+          secondary: { usedPercent: 34, windowDurationMins: 10_080 },
+        },
+      },
+      collectedAt: COLLECTED_AT,
+    });
+
+    expect(usage?.planLabel).toBe("plus");
+    expect(usage?.windows).toEqual([
+      { id: "primary", label: "5 hour", usedPercent: 12 },
+      { id: "secondary", label: "Weekly", usedPercent: 34 },
+    ]);
+  });
+
   it("falls back to positional labels when the duration is missing", () => {
     const usage = normalizeCodexSubscriptionUsage({
       snapshot: { primary: { usedPercent: 10 } },

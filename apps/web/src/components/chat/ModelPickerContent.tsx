@@ -727,16 +727,17 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     };
   }, [filteredItemKeys, updateModelListScrollFades]);
 
-  // Keyed on the snapshot so the countdown re-reads the clock only when a fresh
-  // one arrives, never on every open or keystroke in the search box.
+  // The picker's popup unmounts on close, so this is read once per open — fresh
+  // enough to age a snapshot out, and never a repainting timer.
+  const [openedAtMs] = useState(() => Date.now());
   const selectedInstanceSubscriptionUsage = useMemo(() => {
     const snapshot =
       selectedInstanceId === "favorites"
         ? undefined
         : props.instanceEntries.find((entry) => entry.instanceId === selectedInstanceId)?.snapshot
             .subscriptionUsage;
-    return { usage: usableSubscriptionUsage(snapshot, Date.now()), nowMs: Date.now() };
-  }, [props.instanceEntries, selectedInstanceId]);
+    return usableSubscriptionUsage(snapshot, openedAtMs);
+  }, [openedAtMs, props.instanceEntries, selectedInstanceId]);
 
   return (
     <TooltipProvider delay={0}>
@@ -967,19 +968,19 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               at the moment of choosing. Absent for API-key sessions and for
               providers that report no plan limits.
             */}
-            {selectedInstanceSubscriptionUsage.usage ? (
+            {selectedInstanceSubscriptionUsage ? (
               <div className="border-t border-border/70 px-3 py-2.5">
                 <div className="mb-2 flex items-baseline justify-between gap-3">
                   <div className="font-medium text-muted-foreground text-xs">Subscription</div>
-                  {selectedInstanceSubscriptionUsage.usage.planLabel ? (
+                  {selectedInstanceSubscriptionUsage.planLabel ? (
                     <div className="text-secondary-label text-[11px] capitalize">
-                      {selectedInstanceSubscriptionUsage.usage.planLabel}
+                      {selectedInstanceSubscriptionUsage.planLabel}
                     </div>
                   ) : null}
                 </div>
                 <SubscriptionUsageMeters
-                  usage={selectedInstanceSubscriptionUsage.usage}
-                  nowMs={selectedInstanceSubscriptionUsage.nowMs}
+                  usage={selectedInstanceSubscriptionUsage}
+                  nowMs={openedAtMs}
                 />
               </div>
             ) : null}
