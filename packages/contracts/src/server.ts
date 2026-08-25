@@ -203,6 +203,54 @@ export const ServerProviderUpdateState = Schema.Struct({
 });
 export type ServerProviderUpdateState = typeof ServerProviderUpdateState.Type;
 
+/**
+ * One subscription rate-limit window reported by a provider.
+ *
+ * Normalized across providers so the UI never branches on driver kind: both
+ * Codex's `usedPercent` and Claude's `utilization` are "percent of the window
+ * consumed", so `usedPercent` is the single number every client renders. The
+ * window's identity is carried as a human label rather than an enum because
+ * the set is open — Claude adds per-model weekly buckets whose names come from
+ * the server (`model_scoped[].display_name`), and Codex only describes its
+ * windows by duration.
+ */
+export const ProviderSubscriptionUsageWindow = Schema.Struct({
+  /**
+   * Stable key for this window within a provider, used for React keys and to
+   * dedupe successive snapshots. Derived, not displayed.
+   */
+  id: TrimmedNonEmptyString,
+  /** Display label, e.g. "5 hour", "Weekly", "Weekly (Fable)". */
+  label: TrimmedNonEmptyString,
+  /** Percent of the window consumed, 0-100. */
+  usedPercent: Schema.Number,
+  /** When the window rolls over, when the provider reports it. */
+  resetsAt: Schema.optionalKey(IsoDateTime),
+});
+export type ProviderSubscriptionUsageWindow = typeof ProviderSubscriptionUsageWindow.Type;
+
+/**
+ * Subscription usage for one provider instance.
+ *
+ * Absent when the provider has no subscription limits to report (API-key,
+ * Bedrock and Vertex sessions), when the CLI is too old to answer, or when the
+ * probe that collects it timed out. Consumers must treat absence as "unknown"
+ * and render nothing rather than implying a full allowance.
+ *
+ * Deliberately excluded from the on-disk provider status cache: a percentage
+ * rehydrated from a previous run is worse than no percentage at all.
+ */
+export const ProviderSubscriptionUsage = Schema.Struct({
+  /** Plan name the provider reports, when it exposes one (e.g. "max", "pro"). */
+  planLabel: Schema.optionalKey(TrimmedNonEmptyString),
+  // Window kinds grow over time; an older client must not fail the whole
+  // config decode over a bucket it does not know how to render.
+  windows: ForwardCompatibleArray(ProviderSubscriptionUsageWindow),
+  /** When this snapshot was collected, so clients can age it out. */
+  collectedAt: IsoDateTime,
+});
+export type ProviderSubscriptionUsage = typeof ProviderSubscriptionUsage.Type;
+
 export const ServerProvider = Schema.Struct({
   // Routing key for the configured instance this snapshot represents. This
   // is the only stable identity consumers may use for provider routing.
@@ -251,6 +299,10 @@ export const ServerProvider = Schema.Struct({
   workspaceSnapshots: Schema.optionalKey(Schema.Array(ServerProviderWorkspaceSnapshot)),
   versionAdvisory: Schema.optionalKey(ServerProviderVersionAdvisory),
   updateState: Schema.optionalKey(ServerProviderUpdateState),
+  // Live subscription rate-limit snapshot. Optional and never cached to
+  // disk (see providerStatusCache) so a restart shows nothing rather than
+  // a stale allowance.
+  subscriptionUsage: Schema.optionalKey(ProviderSubscriptionUsage),
 });
 export type ServerProvider = typeof ServerProvider.Type;
 

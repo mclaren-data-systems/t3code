@@ -158,7 +158,14 @@ export const writeProviderStatusCache = (input: {
   readonly filePath: string;
   readonly provider: ServerProvider;
 }) => {
-  const { updateState: _updateState, ...cacheableProvider } = input.provider;
+  // `updateState` is in-flight machinery, and `subscriptionUsage` is a live
+  // percentage — rehydrating either from a previous run would show the user a
+  // number that was true minutes or days ago as if it were current.
+  const {
+    updateState: _updateState,
+    subscriptionUsage: _subscriptionUsage,
+    ...cacheableProvider
+  } = input.provider;
   return writeFileStringAtomically({
     filePath: input.filePath,
     contents: `${JSON.stringify(cacheableProvider, null, 2)}\n`,

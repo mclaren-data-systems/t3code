@@ -1,9 +1,12 @@
+import type { ProviderSubscriptionUsage } from "@t3tools/contracts";
+
 import { Button } from "../ui/button";
 import { type ContextWindowSnapshot, formatContextWindowTokens } from "~/lib/contextWindow";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { formatContextWindowCompactionMessage } from "./ContextWindowMeter.logic";
 import { Minimize2Icon } from "lucide-react";
 import { composerFloatingLayerProps } from "./composerEventScope";
+import { SubscriptionUsageMeters } from "./SubscriptionUsageMeters";
 
 function formatPercentage(value: number | null): string | null {
   if (value === null || !Number.isFinite(value)) {
@@ -21,8 +24,22 @@ export function ContextWindowMeter(props: {
   onCompact?: (() => void) | undefined;
   compactDisabled?: boolean | undefined;
   compactDisabledReason?: string | null | undefined;
+  /**
+   * Subscription allowance for the instance this thread is running on, already
+   * aged out by the caller. Absent for providers with no plan limits to report.
+   */
+  subscriptionUsage?: ProviderSubscriptionUsage | undefined;
+  /** Clock for the reset countdowns, read once by the caller per popover open. */
+  subscriptionUsageNowMs?: number;
 }) {
-  const { usage, modelDisplayName, onCompact, compactDisabled, compactDisabledReason } = props;
+  const {
+    usage,
+    modelDisplayName,
+    onCompact,
+    compactDisabled,
+    compactDisabledReason,
+    subscriptionUsage,
+  } = props;
   const usedPercentage = formatPercentage(usage.usedPercentage);
   const normalizedPercentage = Math.max(0, Math.min(100, usage.usedPercentage ?? 0));
   const radius = 9.75;
@@ -155,6 +172,22 @@ export function ContextWindowMeter(props: {
                 </div>
               ) : null}
             </>
+          ) : null}
+          {subscriptionUsage ? (
+            <div className="mt-1 flex flex-col gap-2 border-t border-border/70 pt-2">
+              <div className="flex items-baseline justify-between gap-3">
+                <div className="font-medium text-muted-foreground text-xs">Subscription</div>
+                {subscriptionUsage.planLabel ? (
+                  <div className="text-secondary-label text-[11px] capitalize">
+                    {subscriptionUsage.planLabel}
+                  </div>
+                ) : null}
+              </div>
+              <SubscriptionUsageMeters
+                usage={subscriptionUsage}
+                nowMs={props.subscriptionUsageNowMs ?? 0}
+              />
+            </div>
           ) : null}
         </div>
       </PopoverPopup>

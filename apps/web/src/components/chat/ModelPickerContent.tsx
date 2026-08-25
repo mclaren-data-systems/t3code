@@ -9,6 +9,8 @@ import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { memo, useMemo, useState, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { ChevronRightIcon, SearchIcon } from "lucide-react";
 import { ModelListRow } from "./ModelListRow";
+import { SubscriptionUsageMeters } from "./SubscriptionUsageMeters";
+import { usableSubscriptionUsage } from "./SubscriptionUsage.logic";
 import { ModelPickerSidebar } from "./ModelPickerSidebar";
 import { getProviderStatusMessage, hasProviderSetup } from "./ProviderStatusBanner";
 import {
@@ -725,6 +727,17 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     };
   }, [filteredItemKeys, updateModelListScrollFades]);
 
+  // Keyed on the snapshot so the countdown re-reads the clock only when a fresh
+  // one arrives, never on every open or keystroke in the search box.
+  const selectedInstanceSubscriptionUsage = useMemo(() => {
+    const snapshot =
+      selectedInstanceId === "favorites"
+        ? undefined
+        : props.instanceEntries.find((entry) => entry.instanceId === selectedInstanceId)?.snapshot
+            .subscriptionUsage;
+    return { usage: usableSubscriptionUsage(snapshot, Date.now()), nowMs: Date.now() };
+  }, [props.instanceEntries, selectedInstanceId]);
+
   return (
     <TooltipProvider delay={0}>
       <div
@@ -948,6 +961,28 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                 No models found
               </ComboboxEmpty>
             )}
+            {/*
+              Subscription allowance for the instance the rail has selected, so
+              the answer to "which provider do I still have room on" is visible
+              at the moment of choosing. Absent for API-key sessions and for
+              providers that report no plan limits.
+            */}
+            {selectedInstanceSubscriptionUsage.usage ? (
+              <div className="border-t border-border/70 px-3 py-2.5">
+                <div className="mb-2 flex items-baseline justify-between gap-3">
+                  <div className="font-medium text-muted-foreground text-xs">Subscription</div>
+                  {selectedInstanceSubscriptionUsage.usage.planLabel ? (
+                    <div className="text-secondary-label text-[11px] capitalize">
+                      {selectedInstanceSubscriptionUsage.usage.planLabel}
+                    </div>
+                  ) : null}
+                </div>
+                <SubscriptionUsageMeters
+                  usage={selectedInstanceSubscriptionUsage.usage}
+                  nowMs={selectedInstanceSubscriptionUsage.nowMs}
+                />
+              </div>
+            ) : null}
           </div>
         </Combobox>
       </div>

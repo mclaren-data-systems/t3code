@@ -11,8 +11,9 @@ GitHub-hosted runners instead of upstream's Blacksmith ones, nothing needing cre
 fork lacks, and unsigned desktop artifacts published as pruned development-build prereleases),
 plus fork identity (this file, the `README.md` banner, the `AGENTS.md` policy sections, no
 update checking, a sidebar link to this repo) and a handful of source changes: multi-instance
-provider support (15, 16, 19), a configurable worktree branch prefix (17), and five web UX
-changes (5, 6, 7, 18, 21). Everything else — `native/`, `scripts/`, `infra/`, `pnpm-lock.yaml`,
+provider support (15, 16, 19), a configurable worktree branch prefix (17), provider
+subscription usage in the picker and context bubble (22), and five web UX changes
+(5, 6, 7, 18, 21). Everything else — `native/`, `scripts/`, `infra/`, `pnpm-lock.yaml`,
 `pnpm-workspace.yaml`, `apps/server/src/persistence/` — is byte-identical to upstream.
 
 This file is the authoritative list of what sets this fork apart, and it is written to be used
@@ -517,6 +518,85 @@ untouched lines; that is not an intentional edit.
 - **Redundancy check (`99960383`): keep.** Upstream still renders the standalone folder-plus
   button next to the scope menu and no menu item.
 - **Browser-only:** the menu item placement and the widened trigger row.
+
+### 22. Subscription usage for Claude and Codex, in the picker and the context bubble
+
+- **Intent.** A user driving two or three subscriptions all day has no way to see which one has
+  room left without leaving the app, so the choice of provider is made blind and the first
+  signal that a window is exhausted is a refused turn mid-task. Both priority providers already
+  report this and T3 Code already received it and dropped it on the floor: `ClaudeAdapter` and
+  `CodexAdapter` translate the CLIs' native rate-limit messages into
+  `account.rate-limits.updated`, `providerRuntime.ts` declares the event, and
+  `ProviderRuntimeIngestion` has no case for it. The allowance is now read where the provider
+  is chosen (the model picker) and where the current turn's cost is already shown (the context
+  bubble under the composer).
+- **Files:** `packages/contracts/src/server.ts`,
+  `apps/server/src/provider/providerSubscriptionUsage.ts` (new),
+  `apps/server/src/provider/{providerSnapshot,providerStatusCache}.ts`,
+  `apps/server/src/provider/Layers/{ClaudeProvider,CodexProvider}.ts`,
+  `apps/web/src/components/chat/{SubscriptionUsage.logic.ts,SubscriptionUsageMeters.tsx,ContextWindowMeter.tsx,ModelPickerContent.tsx,ChatComposer.tsx}`,
+  plus `providerSubscriptionUsage.test.ts`, `SubscriptionUsage.logic.test.ts` and the
+  `get_usage` round-trip added to `ClaudeCapabilitiesProbe.test.ts`
+- **Re-apply notes.** `ServerProvider` gains `subscriptionUsage` as an `optionalKey`, following
+  `versionAdvisory`/`updateState`; it rides the existing `providerStatuses` push, so no new
+  channel and no contract version bump. Decisions worth keeping:
+  1. **Read the snapshot, do not accumulate the stream.** Claude's `rate_limit_event` carries
+     one window per event (`rateLimitType` is a single value), so reconstructing the full set
+     from the stream means holding state and still showing nothing until a turn has run. The
+     SDK's structured `/usage` control request returns every window at once, including the
+     per-model weekly buckets. Codex has the same shape available as `account/rateLimits/read`.
+  2. **Collected in the status probe, not during a turn.** Both probes already spawn the CLI and
+     already ask it an account question (`account/read`; the SDK initialization handshake), so
+     the allowance is known before the first turn and the picker is useful cold. No new poll
+     loop was added — a probe spawns a process, and the existing refresh cadence is the budget.
+  3. **`Effect.timeoutOption` does not bound the Claude request.** It cannot interrupt a
+     `tryPromise` whose promise never settles, and a CLI that does not implement the control
+     request simply never answers it — the probe hangs past its own 25s ceiling. The deadline
+     therefore lives _inside_ the promise, as an `AbortSignal.timeout` raced against the call
+     and folded together with the fiber's signal. Codex needs none of this: its client resolves
+     through `Deferred.await`, which is interruptible, so the ordinary Effect timeout works.
+     `ClaudeCapabilitiesProbe.test.ts` is the regression guard — its fake CLI answered only
+     `initialize`, and the un-deadlined version hung it for the full 120s test timeout.
+  4. **The request is gated on `subscriptionType`.** Only a claude.ai plan has windows to
+     report, so API-key, Bedrock, Vertex and logged-out instances skip the call entirely rather
+     than paying the deadline every refresh to learn what the account payload already said.
+  5. **The SDK is read structurally, not by its types.** The method is named
+     `usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET` and documented to be renamed;
+     `model_scoped` (the per-model buckets, e.g. Fable) ships server-side ahead of the npm
+     types and is absent from the pinned `0.3.170` typings. The call site takes `unknown` and
+     the normalizer validates, so both a rename and a field arriving early are non-events —
+     and **no lockfile bump was needed**, since the per-model buckets come over the wire from
+     the user's own installed CLI, not from the npm package.
+  6. **Never cached to disk.** `writeProviderStatusCache` already strips `updateState`;
+     `subscriptionUsage` is stripped the same way. A percentage rehydrated from a previous run
+     is worse than no percentage. The client independently ages a snapshot out after an hour,
+     so a tab left open overnight shows nothing rather than yesterday's allowance.
+  7. **Stored as used, rendered as left.** Both providers report consumption
+     (Codex `usedPercent`, Claude `utilization`), so that is what crosses the wire; the UI
+     always says "N% left" because that is the question being asked. The bar still fills with
+     consumption, matching the context meter directly above it.
+  8. **Labels are strings, not an enum.** The set is open — Claude's per-model bucket names come
+     from the server, and Codex names its windows only by `windowDurationMins` (300 → "5 hour",
+     10080 → "Weekly"). `windows` is a `ForwardCompatibleArray` so an older client drops a
+     bucket it cannot render instead of failing the whole config decode.
+  9. **No self-ticking clock.** The reset countdown re-reads `Date.now()` only when a fresh
+     snapshot arrives, never on a timer — a continuously repainting meter in the composer is
+     exactly the GPU cost this app avoids.
+  10. **Cursor, Grok and OpenCode report nothing**, so they show nothing. This matches the
+      existing usage page, which is already scoped to `UsageProviderKind = ["claude", "codex"]`.
+
+  **Mobile carries the data but not the UI.** `ServerProvider` reaches mobile unchanged, so
+  `serverConfig.providers` already has the field; mobile has no context bubble and its own
+  provider sheets, so rendering it there is separate work.
+
+- **Drop it when:** upstream's `ServerProvider` carries a subscription/rate-limit field, or
+  `ProviderRuntimeIngestion` grows a case for `account.rate-limits.updated`. Check with
+  `grep -c subscriptionUsage packages/contracts/src/server.ts` and
+  `grep -n 'account.rate-limits.updated' apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts`
+  against clean upstream. If upstream ships its own version, check decision 3 against it first —
+  bounding the Claude request with `Effect.timeoutOption` alone is the natural thing to write
+  and it hangs.
+- **Browser-only:** the picker footer and the Subscription section of the context bubble.
 
 ## 4. Superseded changes
 
