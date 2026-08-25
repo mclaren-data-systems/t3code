@@ -40,6 +40,11 @@ const clientSettings: ClientSettings = {
   providerModelPreferences: {},
   sidebarAutoSettleAfterDays: 3,
   sidebarAutoSettleOnMerge: true,
+  sidebarLayout: {
+    top: ["profile"],
+    list: ["pinned-items"],
+    bottom: ["settings", "pull-requests", "usage", "github", "dashboard"],
+  },
   sidebarProjectGroupingMode: "repository_path",
   sidebarProjectGroupingOverrides: {
     "environment-1:/tmp/project-a": "separate",
