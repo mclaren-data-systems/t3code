@@ -179,8 +179,10 @@ import { Input } from "./ui/input";
 import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "./ui/menu";
 import { SidebarContent, SidebarGroup, SidebarMenuButton, useSidebar } from "./ui/sidebar";
 import {
+  chunkSidebarLayoutItems,
   SidebarChromeFooter,
   SidebarChromeHeader,
+  SidebarLayoutButtonRow,
   SidebarLayoutTopSlot,
 } from "./sidebar/SidebarChrome";
 import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
@@ -3811,11 +3813,12 @@ export default function Sidebar() {
             >
               <ul ref={attachListAutoAnimateRef} role="list" className="flex flex-col gap-px">
                 {(() => {
-                  // Draft block above everything, then the pinned block when
-                  // the layout setting keeps it in the list: full cards above
+                  // Draft block above everything, then the layout's list
+                  // section in configured order: button runs and, when the
+                  // layout keeps it here, the pinned block — full cards above
                   // the inbox, closed by a thin divider (the pin glyphs carry
-                  // the meaning, so no header text). Both vanish entirely at
-                  // count 0.
+                  // the meaning, so no header text). The pinned block and its
+                  // divider vanish entirely at count 0.
                   const items: ReactNode[] = [
                     <SidebarDraftBlock
                       key="draft-sessions"
@@ -3826,21 +3829,28 @@ export default function Sidebar() {
                       routeDraftId={routeDraftIdForRows}
                       onNavigateToDraft={navigateToDraft}
                     />,
-                    pinnedPlacement === "list" && pinnedBlock !== null ? (
-                      <li key="pinned-dnd" className="list-none">
-                        {pinnedBlock}
-                      </li>
-                    ) : null,
                   ];
-                  if (pinnedPlacement === "list" && pinnedThreads.length > 0) {
-                    items.push(
-                      <li
-                        key="pinned-divider"
-                        aria-hidden
-                        data-testid="sidebar-pinned-divider"
-                        className="mx-2.5 my-1.5 h-px list-none bg-sidebar-border/60"
-                      />,
-                    );
+                  for (const chunk of chunkSidebarLayoutItems(sidebarLayout.list)) {
+                    if (chunk.kind === "pinned") {
+                      if (pinnedBlock === null) continue;
+                      items.push(
+                        <li key="pinned-dnd" className="list-none">
+                          {pinnedBlock}
+                        </li>,
+                        <li
+                          key="pinned-divider"
+                          aria-hidden
+                          data-testid="sidebar-pinned-divider"
+                          className="mx-2.5 my-1.5 h-px list-none bg-sidebar-border/60"
+                        />,
+                      );
+                    } else {
+                      items.push(
+                        <li key={`layout-buttons:${chunk.ids.join("+")}`} className="list-none">
+                          <SidebarLayoutButtonRow items={chunk.ids} />
+                        </li>,
+                      );
+                    }
                   }
                   for (const thread of activeThreads) {
                     items.push(renderThreadRow(thread, "active"));

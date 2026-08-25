@@ -285,18 +285,20 @@ function SidebarLayoutButtons({ items }: { items: ReadonlyArray<SidebarLayoutIte
   );
 }
 
-/**
- * The fixed area under the sidebar header, rendering whatever the layout
- * places in its `top` section: buttons group into horizontal runs, and the
- * pinned block (built by the sidebar, which owns the drag state) drops in
- * where `pinned-items` sits.
- */
-export function SidebarLayoutTopSlot({ pinnedBlock }: { pinnedBlock?: ReactNode }) {
-  const layout = useSidebarLayout();
-  if (layout.top.length === 0) return null;
+type SidebarLayoutChunk =
+  | { readonly kind: "buttons"; readonly ids: SidebarLayoutItemId[] }
+  | { readonly kind: "pinned" };
 
-  const chunks: Array<{ kind: "buttons"; ids: SidebarLayoutItemId[] } | { kind: "pinned" }> = [];
-  for (const id of layout.top) {
+/**
+ * Groups a section's items, in order, into horizontal button runs split
+ * wherever the pinned block sits, so renderers honor the configured order
+ * without treating `pinned-items` as a button.
+ */
+export function chunkSidebarLayoutItems(
+  items: ReadonlyArray<SidebarLayoutItemId>,
+): SidebarLayoutChunk[] {
+  const chunks: SidebarLayoutChunk[] = [];
+  for (const id of items) {
     if (id === "pinned-items") {
       chunks.push({ kind: "pinned" });
       continue;
@@ -308,27 +310,89 @@ export function SidebarLayoutTopSlot({ pinnedBlock }: { pinnedBlock?: ReactNode 
       chunks.push({ kind: "buttons", ids: [id] });
     }
   }
+  return chunks;
+}
 
+/** One horizontal run of layout buttons, with optional trailing content in the same row. */
+export function SidebarLayoutButtonRow({
+  items,
+  children,
+}: {
+  items: ReadonlyArray<SidebarLayoutItemId>;
+  children?: ReactNode;
+}) {
+  return (
+    <SidebarMenu className="flex-row items-center">
+      <SidebarLayoutButtons items={items} />
+      {children}
+    </SidebarMenu>
+  );
+}
+
+// Fixed chrome (header slot and footer) must not grow with the pin count:
+// past this cap the pinned block scrolls internally instead of pushing the
+// thread list or the footer out of the viewport. The scrolling wrapper also
+// becomes the block's first scrollable ancestor, keeping drags inside it.
+function CappedPinnedBlock({ children }: { children: ReactNode }) {
+  return <div className="max-h-[40dvh] min-h-0 overflow-y-auto">{children}</div>;
+}
+
+/**
+ * One layout section rendered as stacked rows in configured order: button
+ * runs and, where `pinned-items` sits, the pinned block (built by the
+ * sidebar, which owns the drag state). `trailing` rides in the last button
+ * row, or its own row when the section has none.
+ */
+function SidebarLayoutChunkRows({
+  items,
+  pinnedBlock,
+  trailing,
+}: {
+  items: ReadonlyArray<SidebarLayoutItemId>;
+  pinnedBlock?: ReactNode;
+  trailing?: ReactNode;
+}) {
+  const chunks = chunkSidebarLayoutItems(items);
+  const lastButtonsIndex = chunks.reduce(
+    (last, chunk, index) => (chunk.kind === "buttons" ? index : last),
+    -1,
+  );
   return (
     <>
-      {chunks.map((chunk) =>
+      {chunks.map((chunk, index) =>
         // Content-derived keys: a normalized layout holds each item at most
         // once, so "pinned" and the joined button ids are unique per render.
         chunk.kind === "pinned" ? (
           pinnedBlock != null ? (
-            <div key="pinned">{pinnedBlock}</div>
+            <CappedPinnedBlock key="pinned">{pinnedBlock}</CappedPinnedBlock>
           ) : null
         ) : (
-          <SidebarMenu key={`buttons:${chunk.ids.join("+")}`} className="flex-row items-center">
-            <SidebarLayoutButtons items={chunk.ids} />
-          </SidebarMenu>
+          <SidebarLayoutButtonRow key={`buttons:${chunk.ids.join("+")}`} items={chunk.ids}>
+            {index === lastButtonsIndex ? trailing : null}
+          </SidebarLayoutButtonRow>
         ),
       )}
+      {lastButtonsIndex === -1 && trailing != null ? (
+        <SidebarMenu className="flex-row items-center">{trailing}</SidebarMenu>
+      ) : null}
     </>
   );
 }
 
-export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
+/** The fixed area under the sidebar header, rendering whatever the layout places in its `top` section. */
+export function SidebarLayoutTopSlot({ pinnedBlock }: { pinnedBlock?: ReactNode }) {
+  const layout = useSidebarLayout();
+  if (layout.top.length === 0) return null;
+
+  return <SidebarLayoutChunkRows items={layout.top} pinnedBlock={pinnedBlock} />;
+}
+
+export const SidebarUtilityMenu = memo(function SidebarUtilityMenu({
+  pinnedBlock,
+}: {
+  /** The pinned block when the layout places `pinned-items` in `bottom`. */
+  pinnedBlock?: ReactNode;
+}) {
   const navigate = useNavigate();
   const canGoBack = useCanGoBack();
   const { isMobile, setOpenMobile } = useSidebar();
@@ -356,37 +420,46 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
     }
     void navigate({ to: "/" });
   }, [canGoBack, closeMobileSidebar, navigate]);
-  const bottomButtons = layout.bottom.filter((id) => id !== "pinned-items");
+
+  // Footer pages collapse the buttons to one Back row; the pinned block
+  // stays visible above it so parked work never silently disappears.
+  if (currentFooterPage) {
+    return (
+      <>
+        {pinnedBlock != null ? <CappedPinnedBlock>{pinnedBlock}</CappedPinnedBlock> : null}
+        <SidebarMenu className="flex-row items-center">
+          <SidebarMenuItem className="min-w-0 flex-1">
+            <SidebarMenuButton onClick={handleBackClick}>
+              <ArrowLeftIcon />
+              <span>Back</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarUpdatePill />
+        </SidebarMenu>
+      </>
+    );
+  }
 
   return (
-    <SidebarMenu className="flex-row items-center">
-      {currentFooterPage ? (
-        <SidebarMenuItem className="min-w-0 flex-1">
-          <SidebarMenuButton onClick={handleBackClick}>
-            <ArrowLeftIcon />
-            <span>Back</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      ) : (
-        <SidebarLayoutButtons items={bottomButtons} />
-      )}
-      <SidebarUpdatePill />
-    </SidebarMenu>
+    <SidebarLayoutChunkRows
+      items={layout.bottom}
+      pinnedBlock={pinnedBlock}
+      trailing={<SidebarUpdatePill />}
+    />
   );
 });
 
 export const SidebarChromeFooter = memo(function SidebarChromeFooter({
   pinnedBlock,
 }: {
-  /** The pinned block when the layout places `pinned-items` in `bottom`; it renders above the button row. */
+  /** The pinned block when the layout places `pinned-items` in `bottom`. */
   pinnedBlock?: ReactNode;
 }) {
   return (
     <SidebarFooter className="p-[var(--sidebar-content-inset)]">
       <SidebarProviderUpdatePill />
       <SidebarUpdateArchitectureWarning />
-      {pinnedBlock}
-      <SidebarUtilityMenu />
+      <SidebarUtilityMenu pinnedBlock={pinnedBlock} />
     </SidebarFooter>
   );
 });

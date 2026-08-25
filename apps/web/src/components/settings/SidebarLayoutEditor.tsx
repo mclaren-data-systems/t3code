@@ -2,13 +2,19 @@ import { Fragment, useCallback, type ComponentType } from "react";
 import {
   closestCenter,
   DndContext,
+  KeyboardSensor,
   PointerSensor,
   useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { CSS } from "@dnd-kit/utilities";
 import {
@@ -103,7 +109,13 @@ function SortableItemRow({ id }: { id: SidebarLayoutItemId }) {
 export function SidebarLayoutEditor() {
   const layout = useSidebarLayout();
   const updateClientSettings = useUpdateClientSettings();
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  // Keyboard too, not just pointer: rows are focusable, so space picks one
+  // up and the arrow keys walk it through the flat list (headers included,
+  // which is how an empty section stays reachable without a pointer).
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       if (event.over === null) return;
