@@ -147,7 +147,6 @@ import {
   renderProviderTraitsPicker,
 } from "./composerProviderState";
 import { ContextWindowMeter } from "./ContextWindowMeter";
-import { usableSubscriptionUsage } from "./SubscriptionUsage.logic";
 import { resolveContextWindowModelDisplayName } from "./ContextWindowMeter.logic";
 import {
   attachVideoThumbnail,
@@ -503,7 +502,6 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   compact: boolean;
   activeContextWindow: ContextWindowSnapshot | null;
   activeSubscriptionUsage: ProviderSubscriptionUsage | undefined;
-  activeSubscriptionUsageNowMs: number;
   activeThreadModelDisplayName: string | null;
   isPreparingWorktree: boolean;
   pendingAction: {
@@ -540,7 +538,6 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
           compactDisabled={props.compactDisabled}
           compactDisabledReason={props.compactDisabledReason}
           subscriptionUsage={props.activeSubscriptionUsage}
-          subscriptionUsageNowMs={props.activeSubscriptionUsageNowMs}
         />
       ) : null}
       {props.isPreparingWorktree ? (
@@ -1198,16 +1195,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     () => resolveContextWindowModelDisplayName(activeThreadModelSelection, modelOptionsByInstance),
     [activeThreadModelSelection, modelOptionsByInstance],
   );
-  // Re-read the clock only when a new snapshot lands. The reset countdown is
-  // therefore accurate as of the last provider refresh and never repaints on
-  // its own — a self-ticking meter in the composer is a GPU cost for no gain.
-  const activeSubscriptionUsage = useMemo(() => {
-    const snapshot = selectedProviderEntry?.snapshot.subscriptionUsage;
-    return {
-      usage: usableSubscriptionUsage(snapshot, Date.now()),
-      nowMs: Date.now(),
-    };
-  }, [selectedProviderEntry?.snapshot.subscriptionUsage]);
+  // Handed over raw. The meter ages it and reads the clock when its popover
+  // opens: deciding staleness here would memoise it against a snapshot that
+  // stops changing exactly when provider refreshes stop, so an expired
+  // allowance would never age out.
+  const activeSubscriptionUsage = selectedProviderEntry?.snapshot.subscriptionUsage;
 
   // ------------------------------------------------------------------
   // Composer-local state
@@ -4330,8 +4322,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     compact={isComposerPrimaryActionsCompact}
                     activeContextWindow={activeContextWindow}
                     activeThreadModelDisplayName={activeThreadModelDisplayName}
-                    activeSubscriptionUsage={activeSubscriptionUsage.usage}
-                    activeSubscriptionUsageNowMs={activeSubscriptionUsage.nowMs}
+                    activeSubscriptionUsage={activeSubscriptionUsage}
                     pendingAction={pendingPrimaryAction}
                     isRunning={phase === "running"}
                     showPlanFollowUpPrompt={
