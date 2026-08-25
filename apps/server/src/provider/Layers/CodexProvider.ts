@@ -15,6 +15,7 @@ import * as CodexErrors from "effect-codex-app-server/errors";
 
 import type {
   CodexSettings,
+  ProviderSubscriptionUsage,
   ServerProvider,
   ServerProviderState,
   ModelCapabilities,
@@ -32,11 +33,17 @@ import {
   buildServerProvider,
   type ServerProviderDraft,
 } from "../providerSnapshot.ts";
+import { normalizeCodexSubscriptionUsage } from "../providerSubscriptionUsage.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
 import packageJson from "../../../package.json" with { type: "json" };
 const isCodexAppServerSpawnError = Schema.is(CodexErrors.CodexAppServerSpawnError);
 
 const CODEX_APP_SERVER_PROBE_FORCE_KILL_AFTER = "2 seconds" as const;
+
+/** The probe already holds a spawned app-server; one slow account read must not hold it open. */
+const CODEX_RATE_LIMITS_READ_TIMEOUT = Duration.seconds(3);
+
+const nowIsoString = DateTime.now.pipe(Effect.map(DateTime.formatIso));
 
 const CODEX_PRESENTATION = {
   displayName: "Codex",
@@ -48,6 +55,8 @@ export interface CodexAppServerProviderSnapshot {
   readonly version: string | undefined;
   readonly models: ReadonlyArray<ServerProviderModel>;
   readonly skills: ReadonlyArray<ServerProviderSkill>;
+  /** Absent when the CLI predates `account/rateLimits/read`, or the read failed. */
+  readonly subscriptionUsage?: ProviderSubscriptionUsage | undefined;
 }
 
 const REASONING_EFFORT_LABELS: Readonly<Record<string, string>> = {
@@ -398,18 +407,31 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
       version,
       models: appendCustomCodexModels([], input.customModels ?? []),
       skills: [],
+      subscriptionUsage: undefined,
     } satisfies CodexAppServerProviderSnapshot;
   }
 
-  const [skillsResponse, models] = yield* Effect.all(
+  // `account/rateLimits/read` is newer than the rest of the probe and is not
+  // worth failing a provider over: an older CLI answers with a method error and
+  // the instance still reports ready, just without a usage snapshot.
+  const rateLimitsRead = client.request("account/rateLimits/read", undefined).pipe(
+    Effect.timeoutOption(CODEX_RATE_LIMITS_READ_TIMEOUT),
+    Effect.map(Option.getOrUndefined),
+    Effect.catchCause(() => Effect.succeed(undefined)),
+  );
+
+  const [skillsResponse, models, rateLimits] = yield* Effect.all(
     [
       client.request("skills/list", {
         cwds: [input.cwd],
       }),
       requestAllCodexModels(client),
+      rateLimitsRead,
     ],
     { concurrency: "unbounded" },
   );
+
+  const collectedAt = yield* nowIsoString;
 
   return {
     account: accountResponse,
@@ -418,6 +440,10 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
       appendCustomCodexModels(models, input.customModels ?? []),
     ),
     skills: parseCodexSkillsListResponse(skillsResponse, input.cwd),
+    subscriptionUsage: normalizeCodexSubscriptionUsage({
+      snapshot: rateLimits,
+      collectedAt,
+    }),
   } satisfies CodexAppServerProviderSnapshot;
 });
 
@@ -614,6 +640,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
         input: { hint: "Describe the issue (optional)" },
       },
     ],
+    ...(snapshot.subscriptionUsage ? { subscriptionUsage: snapshot.subscriptionUsage } : {}),
     probe: {
       installed: true,
       version: snapshot.version ?? null,
