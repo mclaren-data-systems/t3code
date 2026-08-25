@@ -40,6 +40,7 @@ import {
   spawnAndCollect,
   type ServerProviderDraft,
 } from "../providerSnapshot.ts";
+import { normalizeClaudeSubscriptionUsage } from "../providerSubscriptionUsage.ts";
 import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
 import { makeClaudeEnvironment, resolveClaudeConfigDirectory } from "../Drivers/ClaudeHome.ts";
 import { discoverClaudeSkills } from "../Drivers/ClaudeSkills.ts";
@@ -691,6 +692,13 @@ type ClaudeCapabilitiesProbe = {
    */
   readonly apiProvider: string | undefined;
   readonly slashCommands: ReadonlyArray<ServerProviderSlashCommand>;
+  /**
+   * Raw structured `/usage` response, normalized by the caller so the timestamp
+   * comes from the Effect clock rather than this promise. Absent when the CLI is
+   * too old to answer, the session has no plan limits (API key, Bedrock,
+   * Vertex), or the request timed out.
+   */
+  readonly subscriptionUsageResponse?: unknown;
 };
 
 function parseClaudeInitializationCommands(
@@ -765,6 +773,61 @@ function waitForAbortSignal(signal: AbortSignal): Promise<void> {
   });
 }
 
+/** How long to wait for the structured `/usage` answer before giving up on it. */
+const CLAUDE_USAGE_REQUEST_TIMEOUT_MS = 3_000;
+
+type ClaudeUsageCapableQuery = {
+  readonly usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET?: () => Promise<unknown>;
+};
+
+/**
+ * The SDK's structured `/usage` request, which is where every plan window comes
+ * from in one answer — the streaming `rate_limit_event` only ever names the one
+ * window that just moved.
+ *
+ * Called through a structural cast rather than the SDK's own type on purpose.
+ * The method is flagged experimental and is documented to be renamed when it
+ * stabilizes, and the fields it returns (`model_scoped`, notably, which carries
+ * the per-model weekly buckets) are added server-side ahead of the npm types.
+ * Reading it as `unknown` and validating in the normalizer keeps this working
+ * across SDK versions in both directions, and keeps a rename to a compile-time
+ * non-event: the method goes missing, the probe returns undefined, and the UI
+ * shows nothing.
+ */
+async function readClaudeUsageSnapshot(query: unknown, fiberSignal: AbortSignal): Promise<unknown> {
+  const request = (query as ClaudeUsageCapableQuery | null)
+    ?.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET;
+  if (typeof request !== "function") {
+    return undefined;
+  }
+
+  // A CLI that does not implement this control request never answers it, and a
+  // promise that never settles cannot be interrupted out of — an enclosing
+  // `Effect.timeoutOption` hangs with it rather than cutting it loose. So the
+  // deadline has to live inside the promise. `AbortSignal.timeout` supplies it
+  // without a bare timer, and the fiber's own signal is folded in so an
+  // interrupt upstream releases this too.
+  const deadline = AbortSignal.any([
+    fiberSignal,
+    AbortSignal.timeout(CLAUDE_USAGE_REQUEST_TIMEOUT_MS),
+  ]);
+
+  try {
+    return await Promise.race([
+      request.call(query),
+      new Promise<undefined>((resolve) => {
+        if (deadline.aborted) {
+          resolve(undefined);
+          return;
+        }
+        deadline.addEventListener("abort", () => resolve(undefined), { once: true });
+      }),
+    ]);
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Probe account information by spawning a lightweight Claude Agent SDK
  * session and reading the initialization result.
@@ -790,40 +853,47 @@ const probeClaudeCapabilities = (
       claudeSettings.binaryPath,
       claudeEnvironment,
     );
-    return yield* Effect.tryPromise(async () => {
-      const q = claudeQuery({
-        // Never yield — we only need initialization data, not a conversation.
-        // This prevents any prompt from reaching the Anthropic API.
-        // oxlint-disable-next-line require-yield
-        prompt: (async function* (): AsyncGenerator<SDKUserMessage> {
-          await waitForAbortSignal(abort.signal);
-        })(),
-        options: buildClaudeCapabilitiesProbeQueryOptions({
-          executablePath,
-          abortController: abort,
-          environment: claudeEnvironment,
-          cwd,
-        }),
-      });
-      const init = await q.initializationResult();
-      const account = init.account as
-        | {
-            readonly email?: string;
-            readonly subscriptionType?: string;
-            readonly tokenSource?: string;
-            readonly apiKeySource?: string;
-            readonly apiProvider?: string;
-          }
-        | undefined;
-      return {
-        email: account?.email,
-        subscriptionType: account?.subscriptionType,
-        tokenSource: account?.tokenSource,
-        apiKeySource: account?.apiKeySource,
-        apiProvider: account?.apiProvider,
-        slashCommands: parseClaudeInitializationCommands(init.commands),
-      } satisfies ClaudeCapabilitiesProbe;
+    const q = claudeQuery({
+      // Never yield — we only need initialization data, not a conversation.
+      // This prevents any prompt from reaching the Anthropic API.
+      // oxlint-disable-next-line require-yield
+      prompt: (async function* (): AsyncGenerator<SDKUserMessage> {
+        await waitForAbortSignal(abort.signal);
+      })(),
+      options: buildClaudeCapabilitiesProbeQueryOptions({
+        executablePath,
+        abortController: abort,
+        environment: claudeEnvironment,
+        cwd,
+      }),
     });
+    const init = yield* Effect.tryPromise(() => q.initializationResult());
+    const account = init.account as
+      | {
+          readonly email?: string;
+          readonly subscriptionType?: string;
+          readonly tokenSource?: string;
+          readonly apiKeySource?: string;
+          readonly apiProvider?: string;
+        }
+      | undefined;
+    // Only a claude.ai plan has windows to report. Asking anyway would cost an
+    // API-key, Bedrock or logged-out instance the full request deadline on
+    // every refresh to learn what `subscriptionType` already said.
+    const usageResponse = account?.subscriptionType
+      ? yield* Effect.tryPromise((signal) => readClaudeUsageSnapshot(q, signal)).pipe(
+          Effect.orElseSucceed(() => undefined),
+        )
+      : undefined;
+    return {
+      email: account?.email,
+      subscriptionType: account?.subscriptionType,
+      tokenSource: account?.tokenSource,
+      apiKeySource: account?.apiKeySource,
+      apiProvider: account?.apiProvider,
+      slashCommands: parseClaudeInitializationCommands(init.commands),
+      subscriptionUsageResponse: usageResponse,
+    } satisfies ClaudeCapabilitiesProbe;
   }).pipe(
     Effect.ensuring(
       Effect.sync(() => {
@@ -1034,6 +1104,10 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     });
   }
 
+  const subscriptionUsage = normalizeClaudeSubscriptionUsage({
+    response: capabilities.subscriptionUsageResponse,
+    collectedAt: checkedAt,
+  });
   const authMetadata =
     claudeAuthMetadata({
       subscriptionType: capabilities.subscriptionType,
@@ -1047,6 +1121,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     slashCommands: dedupedSlashCommands,
     skills,
     configDirectory,
+    ...(subscriptionUsage ? { subscriptionUsage } : {}),
     probe: {
       installed: true,
       version: parsedVersion,
