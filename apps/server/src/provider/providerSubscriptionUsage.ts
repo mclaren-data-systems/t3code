@@ -121,6 +121,10 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
  * Codex `account/rateLimits/read` (and the identically-shaped
  * `account/rateLimits/updated` notification) into the shared contract.
  *
+ * Both carry the windows one level down, under `rateLimits`, so the whole
+ * response can be handed here directly; a bare snapshot is still accepted so a
+ * caller that has already unwrapped is not forced to re-wrap.
+ *
  * `planType` is surfaced as the plan label; `credits` is deliberately dropped
  * here because a credit balance is not a window and has no percentage to draw.
  */
@@ -128,10 +132,11 @@ export function normalizeCodexSubscriptionUsage(input: {
   readonly snapshot: unknown;
   readonly collectedAt: string;
 }): ProviderSubscriptionUsage | undefined {
-  const snapshot = asRecord(input.snapshot);
-  if (!snapshot) {
+  const payload = asRecord(input.snapshot);
+  if (!payload) {
     return undefined;
   }
+  const snapshot = asRecord(payload.rateLimits) ?? payload;
 
   const windows: Array<ProviderSubscriptionUsageWindow> = [];
   for (const [key, fallbackLabel] of [

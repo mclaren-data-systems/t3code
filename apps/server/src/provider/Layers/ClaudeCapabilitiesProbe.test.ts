@@ -172,4 +172,64 @@ it.layer(NodeServices.layer)("Claude capability probe SDK boundary", (it) => {
       assert.equal(flagSettings.disableAllHooks, true);
     }).pipe(Effect.scoped),
   );
+
+  it.effect(
+    "completes without a usage snapshot when a subscribed CLI ignores get_usage",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const tempDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-claude-probe-no-usage-" });
+        const executablePath = path.join(tempDir, "fake-claude.mjs");
+        const workspaceCwd = path.join(tempDir, "workspace");
+        yield* fs.makeDirectory(workspaceCwd, { recursive: true });
+
+        // An older CLI: it reports a subscription, so the probe does ask for
+        // usage, but it never answers that request. Without the deadline inside
+        // `readClaudeUsageSnapshot` the promise never settles and the probe
+        // hangs — `Effect.timeoutOption` cannot interrupt it.
+        yield* fs.writeFileString(
+          executablePath,
+          [
+            "#!/usr/bin/env node",
+            'import { createInterface } from "node:readline";',
+            "const lines = createInterface({ input: process.stdin });",
+            'lines.on("line", (line) => {',
+            "  const message = JSON.parse(line);",
+            '  if (message.type !== "control_request") return;',
+            '  if (message.request?.subtype !== "initialize") return;',
+            "  process.stdout.write(JSON.stringify({",
+            '    type: "control_response",',
+            "    response: {",
+            '      subtype: "success",',
+            "      request_id: message.request_id,",
+            "      response: {",
+            "        commands: [],",
+            "        agents: [],",
+            '        output_style: "default",',
+            '        available_output_styles: ["default"],',
+            "        models: [],",
+            '        account: { email: "dev@example.com", subscriptionType: "pro", tokenSource: "oauth" },',
+            "      },",
+            "    },",
+            '  }) + "\\n");',
+            "});",
+            "setInterval(() => {}, 1_000);",
+            "",
+          ].join("\n"),
+        );
+        yield* fs.chmod(executablePath, 0o755);
+
+        const capabilities = yield* probeClaudeCapabilities(
+          decodeClaudeSettings({ binaryPath: executablePath }),
+          { ...process.env },
+          workspaceCwd,
+        );
+
+        // The probe still resolves, with auth intact and no usage.
+        assert.equal(capabilities?.subscriptionType, "pro");
+        assert.equal(capabilities?.subscriptionUsageResponse, undefined);
+      }).pipe(Effect.scoped),
+    { timeout: 30_000 },
+  );
 });
