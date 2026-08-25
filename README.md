@@ -5,7 +5,7 @@
 > This is a development fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3code),
 > maintained at [mclaren-data-systems/t3code](https://github.com/mclaren-data-systems/t3code).
 > Upstream (`pingdotgg`) is treated as the source of truth and `main` here is periodically
-> rebased onto it — most recently onto `2c4158f8` on 2026-08-22.
+> rebased onto it — most recently onto `99960383` on 2026-08-25.
 >
 > On top of upstream this fork carries a deliberately thin layer: a **workflow set a fork can
 > actually run** — standard GitHub-hosted runners instead of upstream's Blacksmith ones, no
@@ -17,8 +17,9 @@
 > worktree branch prefix**, and four web UX changes (the sidebar new-thread button under the
 > project selector, a commit button on a turn's changed-files card that preselects just those
 > files, the completed dot persisting until a thread is actually read, and shell-style
-> arrow-key message recall in the composer), plus this banner and `FORK.md`.
-> `native/`, `scripts/`, `packaging/`, and `pnpm-lock.yaml` are byte-identical to upstream.
+> arrow-key message recall in the composer). Fork builds also **never check for updates**, and
+> the sidebar carries a link back to this repository whose tooltip names the running build.
+> `native/`, `scripts/`, `infra/`, and `pnpm-lock.yaml` are byte-identical to upstream.
 >
 > The authoritative, up-to-date list of everything that sets this fork apart from upstream —
 > including changes upstream has since implemented, and changes dropped by choice — lives in
