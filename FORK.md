@@ -11,8 +11,8 @@ GitHub-hosted runners instead of upstream's Blacksmith ones, nothing needing cre
 fork lacks, and unsigned desktop artifacts published as pruned development-build prereleases),
 plus fork identity (this file, the `README.md` banner, the `AGENTS.md` policy sections, no
 update checking, a sidebar link to this repo) and a handful of source changes: multi-instance
-provider support (15, 16, 19), a configurable worktree branch prefix (17), and four web UX
-changes (5, 6, 7, 18). Everything else — `native/`, `scripts/`, `infra/`, `pnpm-lock.yaml`,
+provider support (15, 16, 19), a configurable worktree branch prefix (17), and five web UX
+changes (5, 6, 7, 18, 21). Everything else — `native/`, `scripts/`, `infra/`, `pnpm-lock.yaml`,
 `pnpm-workspace.yaml`, `apps/server/src/persistence/` — is byte-identical to upstream.
 
 This file is the authoritative list of what sets this fork apart, and it is written to be used
@@ -491,6 +491,32 @@ untouched lines; that is not an intentional edit.
   still rejects a single-segment value, so the disable holds.
 - **Browser-only:** the icon, tooltip and link. The no-feed disable shows in a packaged build as
   the greyed "Check for updates" pill.
+
+### 21. New project action lives inside the project scope menu
+
+- **Intent.** The sidebar's project filter row carried a separate icon-only folder-plus button
+  squeezed against the dropdown it belongs to. The scope dropdown itself now ends with a
+  separated **New project** item that opens the same add-project command palette flow, the
+  standalone button is gone, and the filter trigger spans the full row — matching the draft
+  hero's project menu, which already ends with the same item.
+- **Files:** `apps/web/src/components/Sidebar.tsx`
+- **Re-apply notes.** Purely presentational; no logic, contract, or store changes. The item is
+  a `MenuItem` behind a `MenuSeparator` after the scope `MenuRadioGroup`, calling the existing
+  `openAddProjectCommandPalette` (`openCommandPalette({ open: "add-project" })`), styled like
+  the scope rows (`h-8 min-h-8 py-0 text-sm font-medium`, `FolderPlusIcon`). Re-deriving means
+  deleting the old `flex items-center gap-1` wrapper around trigger + button and dropping
+  `flex-1` from the trigger. This is the same project-row block entry 18 restacks — re-apply
+  the two together. Mirror `DraftHeroHeadline.tsx`'s trailing "New project" item if the menu
+  primitives change shape. Deliberately untouched: `LegacySidebar.tsx` (its add-project button
+  sits beside the "Projects" section header, not a dropdown), the sidebar empty-state "Add
+  project" button (the only way in when no projects exist), and mobile (separate add-project
+  navigation flow).
+- **Drop it when:** upstream's project scope menu carries its own new-project item. Check with
+  `grep -n "New project" apps/web/src/components/Sidebar.tsx` against clean upstream — a hit
+  only on an icon-only `aria-label` button beside the scope menu means this is still needed.
+- **Redundancy check (`99960383`): keep.** Upstream still renders the standalone folder-plus
+  button next to the scope menu and no menu item.
+- **Browser-only:** the menu item placement and the widened trigger row.
 
 ## 4. Superseded changes
 
