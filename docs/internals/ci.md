@@ -43,8 +43,9 @@ issue forms apply (`bug`, `enhancement`, `needs-triage`) in sync.
 
 [`.github/workflows/thread-transfer-report.yml`](../../.github/workflows/thread-transfer-report.yml)
 runs after **CI** completes on a pull request and comments the thread-transfer budget diff. It reads
-the `thread-transfer-results` artifact the **Test** job uploads, and loads its publisher script from
-the default branch so pull-request code never executes with the write-capable `workflow_run` token.
+the `thread-transfer-results` artifact the **Test Server** job uploads, and loads its publisher
+script from the default branch so pull-request code never executes with the write-capable
+`workflow_run` token.
 
 Upstream's `release.yml` (tag-driven signed release + npm publish) and `deploy-relay.yml` are not
 present in this fork. See [Release Checklist](../operations/release.md) for what they do upstream.
@@ -55,3 +56,8 @@ release process this fork does not run. Upstream's `publish-aur.yml` (pushes the
 `t3code-nightly-bin` AUR packages — needs `AUR_SSH_PRIVATE_KEY`) is likewise absent: it is a
 `workflow_call` target of the `release.yml` this fork does not keep. See
 [packaging/aur/README.md](../../packaging/aur/README.md).
+
+Upstream's `desktop-macos-preview.yml` (an unsigned macOS DMG per pull request labelled
+`preview:mac`) is also absent. It needs no credentials, but it runs on Blacksmith macOS runners and
+would duplicate, per labelled pull request, artifacts `desktop-artifacts.yml` already publishes on
+every push to `main`.
