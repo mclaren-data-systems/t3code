@@ -5,21 +5,23 @@
 > This is a development fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3code),
 > maintained at [mclaren-data-systems/t3code](https://github.com/mclaren-data-systems/t3code).
 > Upstream (`pingdotgg`) is treated as the source of truth and `main` here is periodically
-> rebased onto it — most recently onto `99960383` on 2026-08-25.
+> rebased onto it — most recently onto `94401d01b` on 2026-08-28.
 >
 > On top of upstream this fork carries a deliberately thin layer: a **workflow set a fork can
 > actually run** — standard GitHub-hosted runners instead of upstream's Blacksmith ones, no
 > workflow needing credentials a fork lacks, and unsigned desktop artifacts built on every
 > push to `main` and published as pruned development-build prereleases — plus three server
-> changes for **running more than one provider instance**
-> (a logged-out Claude instance reports as unauthenticated instead of ready, usage scans every
-> configured instance, and the usage report breaks totals down per instance), a **configurable
-> worktree branch prefix**, and four web UX changes (the sidebar new-thread button under the
-> project selector, a commit button on a turn's changed-files card that preselects just those
-> files, the completed dot persisting until a thread is actually read, and shell-style
-> arrow-key message recall in the composer). Fork builds also **never check for updates**, and
-> the sidebar carries a link back to this repository whose tooltip names the running build.
-> `native/`, `scripts/`, `infra/`, and `pnpm-lock.yaml` are byte-identical to upstream.
+> changes for **running more than one provider instance** (a logged-out Claude instance reports
+> as unauthenticated instead of ready, usage scans every configured instance, and the usage
+> report breaks totals down per instance), **subscription allowances for Claude and Codex** in
+> the model picker and the context bubble so you can see which plan still has room, a
+> **configurable worktree branch prefix**, and five web UX changes (the sidebar new-thread
+> button under the project selector, "New project" moved into the project scope menu, a commit
+> button on a turn's changed-files card that preselects just those files, the completed dot
+> persisting until a thread is actually read, and shell-style arrow-key message recall in the
+> composer). Fork builds also **never check for updates**, and the sidebar carries a link back
+> to this repository whose tooltip names the running build. `native/`, `scripts/`, `infra/`,
+> and `pnpm-lock.yaml` are byte-identical to upstream.
 >
 > The authoritative, up-to-date list of everything that sets this fork apart from upstream —
 > including changes upstream has since implemented, and changes dropped by choice — lives in
