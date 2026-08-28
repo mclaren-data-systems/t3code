@@ -1,6 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { ProviderInstanceId, ServerSettings } from "@t3tools/contracts";
+import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -9,6 +10,23 @@ import * as Schema from "effect/Schema";
 import { resolveUsageTranscriptSources } from "./usageTranscriptSources.ts";
 
 const decodeServerSettings = Schema.decodeUnknownSync(ServerSettings);
+
+/**
+ * Grok exposes no per-instance home, so it always contributes exactly one
+ * source. Pinning `GROK_HOME` keeps that source inside the test's temp
+ * directory instead of the real `~/.grok` of whichever machine runs the suite.
+ */
+const withGrokHome = (grokHome: string) =>
+  Effect.provideService(HostProcessEnvironment, { GROK_HOME: grokHome });
+
+const grokSource = (sessionsDir: string) => ({
+  provider: "grok" as const,
+  dir: sessionsDir,
+  instanceId: ProviderInstanceId.make("grok"),
+  displayName: null,
+  accentColor: null,
+  fileName: "updates.jsonl",
+});
 
 /**
  * Every instance in these settings carries an explicit `homePath`: the default
@@ -31,18 +49,19 @@ function settingsWith(input: {
 
 it.layer(NodeServices.layer)("usageTranscriptSources", (it) => {
   describe("resolveUsageTranscriptSources", () => {
-    it.effect("reports one Claude and one Codex source for a default-only setup", () =>
+    it.effect("reports one source per provider for a default-only setup", () =>
       Effect.gen(function* () {
         const fileSystem = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
         const home = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3code-usage-solo-" });
+        const grokHome = path.join(home, "grok");
 
         const sources = yield* resolveUsageTranscriptSources(
           settingsWith({
             claudeHome: path.join(home, "claude"),
             codexHome: path.join(home, "codex"),
           }),
-        );
+        ).pipe(withGrokHome(grokHome));
 
         assert.deepStrictEqual(sources, [
           {
@@ -59,6 +78,7 @@ it.layer(NodeServices.layer)("usageTranscriptSources", (it) => {
             displayName: null,
             accentColor: null,
           },
+          grokSource(path.join(grokHome, "sessions")),
         ]);
       }).pipe(Effect.scoped),
     );
@@ -73,7 +93,7 @@ it.layer(NodeServices.layer)("usageTranscriptSources", (it) => {
 
         const sources = yield* resolveUsageTranscriptSources(
           settingsWith({ claudeHome: home, codexHome: path.join(home, "codex") }),
-        );
+        ).pipe(withGrokHome(path.join(home, "grok")));
 
         assert.strictEqual(sources[0]?.dir, nested);
       }).pipe(Effect.scoped),
@@ -84,6 +104,7 @@ it.layer(NodeServices.layer)("usageTranscriptSources", (it) => {
         const fileSystem = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
         const home = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3code-usage-multi-" });
+        const grokHome = path.join(home, "grok");
 
         const sources = yield* resolveUsageTranscriptSources(
           settingsWith({
@@ -102,7 +123,7 @@ it.layer(NodeServices.layer)("usageTranscriptSources", (it) => {
               },
             },
           }),
-        );
+        ).pipe(withGrokHome(grokHome));
 
         assert.deepStrictEqual(sources, [
           {
@@ -135,6 +156,7 @@ it.layer(NodeServices.layer)("usageTranscriptSources", (it) => {
             displayName: null,
             accentColor: null,
           },
+          grokSource(path.join(grokHome, "sessions")),
         ]);
       }).pipe(Effect.scoped),
     );
@@ -144,6 +166,7 @@ it.layer(NodeServices.layer)("usageTranscriptSources", (it) => {
         const fileSystem = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
         const home = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3code-usage-off-" });
+        const grokHome = path.join(home, "grok");
 
         // Usage is a record of tokens already spent; switching a provider off
         // must not retroactively erase them from the dashboard.
@@ -159,7 +182,7 @@ it.layer(NodeServices.layer)("usageTranscriptSources", (it) => {
               },
             },
           }),
-        );
+        ).pipe(withGrokHome(grokHome));
 
         assert.deepStrictEqual(
           sources.map((source) => source.dir),
@@ -167,6 +190,7 @@ it.layer(NodeServices.layer)("usageTranscriptSources", (it) => {
             path.join(home, "claude", "projects"),
             path.join(home, "claude-retired", "projects"),
             path.join(home, "codex", "sessions"),
+            path.join(grokHome, "sessions"),
           ],
         );
       }).pipe(Effect.scoped),
@@ -178,6 +202,7 @@ it.layer(NodeServices.layer)("usageTranscriptSources", (it) => {
         const path = yield* Path.Path;
         const home = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3code-usage-shared-" });
         const shared = path.join(home, "claude");
+        const grokHome = path.join(home, "grok");
 
         // Two presets over one config dir is a supported setup; nothing else
         // de-duplicates inside a single environment, so a second walk here
@@ -190,7 +215,7 @@ it.layer(NodeServices.layer)("usageTranscriptSources", (it) => {
               claudeAgent_preset: { driver: "claudeAgent", config: { homePath: shared } },
             },
           }),
-        );
+        ).pipe(withGrokHome(grokHome));
 
         assert.deepStrictEqual(
           sources.map((source) => [source.dir, source.instanceId]),
@@ -199,6 +224,7 @@ it.layer(NodeServices.layer)("usageTranscriptSources", (it) => {
             // transcripts underneath carry nothing that tells the two apart.
             [path.join(shared, "projects"), "claudeAgent"],
             [path.join(home, "codex", "sessions"), "codex"],
+            [path.join(grokHome, "sessions"), "grok"],
           ],
         );
       }).pipe(Effect.scoped),
@@ -209,6 +235,7 @@ it.layer(NodeServices.layer)("usageTranscriptSources", (it) => {
         const fileSystem = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
         const home = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3code-usage-claim-" });
+        const grokHome = path.join(home, "grok");
 
         const sources = yield* resolveUsageTranscriptSources(
           settingsWith({
@@ -221,11 +248,15 @@ it.layer(NodeServices.layer)("usageTranscriptSources", (it) => {
               },
             },
           }),
-        );
+        ).pipe(withGrokHome(grokHome));
 
         assert.deepStrictEqual(
           sources.map((source) => source.dir),
-          [path.join(home, "explicit", "projects"), path.join(home, "codex", "sessions")],
+          [
+            path.join(home, "explicit", "projects"),
+            path.join(home, "codex", "sessions"),
+            path.join(grokHome, "sessions"),
+          ],
         );
       }).pipe(Effect.scoped),
     );
@@ -235,6 +266,7 @@ it.layer(NodeServices.layer)("usageTranscriptSources", (it) => {
         const fileSystem = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
         const home = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3code-usage-bad-" });
+        const grokHome = path.join(home, "grok");
 
         // One unreadable envelope must not zero out the whole usage page.
         const sources = yield* resolveUsageTranscriptSources(
@@ -245,11 +277,15 @@ it.layer(NodeServices.layer)("usageTranscriptSources", (it) => {
               claudeAgent_broken: { driver: "claudeAgent", config: { homePath: 42 } },
             },
           }),
-        );
+        ).pipe(withGrokHome(grokHome));
 
         assert.deepStrictEqual(
           sources.map((source) => source.dir),
-          [path.join(home, "claude", "projects"), path.join(home, "codex", "sessions")],
+          [
+            path.join(home, "claude", "projects"),
+            path.join(home, "codex", "sessions"),
+            path.join(grokHome, "sessions"),
+          ],
         );
       }).pipe(Effect.scoped),
     );
