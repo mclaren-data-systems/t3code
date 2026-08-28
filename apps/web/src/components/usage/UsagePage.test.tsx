@@ -64,6 +64,9 @@ vi.mock("./usageProviders", async (importOriginal) => {
     PROVIDER_PRESENTATION: {
       codex: { colors: ["white"], label: "Codex", mark: "span" },
       claude: { colors: ["orange"], label: "Claude Code", mark: "span" },
+      // Must cover every UsageProviderKind: PROVIDER_ORDER is not mocked, so an
+      // empty report still stands a row in for each provider it lists.
+      grok: { colors: ["grey"], label: "Grok Build", mark: "span" },
     },
   };
 });
