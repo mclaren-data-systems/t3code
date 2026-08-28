@@ -1,6 +1,7 @@
 import {
   ProviderInstanceId,
   USAGE_CONTRACT_VERSION,
+  USAGE_MERGE_COMPATIBLE_SINCE,
   type EnvironmentId,
   type UsageBucket,
   type UsageDay,
@@ -185,7 +186,10 @@ describe("mergeUsage", () => {
     expect(merged.staleEnvironments).toEqual(["env-b"]);
   });
 
-  it("keeps the previous compatible contract version so additive provider expansions still merge", () => {
+  it("merges every environment back to the oldest compatible contract version", () => {
+    // The floor is a constant, not `expected - 1`: a bump is only additive when
+    // `USAGE_MERGE_COMPATIBLE_SINCE` stays put, and this fork's instance-keyed
+    // buckets moved it, so the two constants currently coincide.
     const merged = mergeUsage(
       [
         environment(
@@ -200,7 +204,7 @@ describe("mergeUsage", () => {
           summary(
             [bucket({ costUsd: 4, provider: "codex", model: "gpt-5.6-sol" })],
             [{ provider: "codex", hostId: "linux", homePath: "/b" }],
-            USAGE_CONTRACT_VERSION - 1,
+            USAGE_MERGE_COMPATIBLE_SINCE,
           ),
         ),
       ],
@@ -209,6 +213,32 @@ describe("mergeUsage", () => {
 
     expect(merged.costUsd).toBe(14);
     expect(merged.staleEnvironments).toEqual([]);
+  });
+
+  it("excludes an environment one version below the compatible floor", () => {
+    const merged = mergeUsage(
+      [
+        environment(
+          "env-a",
+          summary(
+            [bucket({ costUsd: 10 })],
+            [{ provider: "claude", hostId: "mac", homePath: "/a" }],
+          ),
+        ),
+        environment(
+          "env-b",
+          summary(
+            [bucket({ costUsd: 4, provider: "codex", model: "gpt-5.6-sol" })],
+            [{ provider: "codex", hostId: "linux", homePath: "/b" }],
+            USAGE_MERGE_COMPATIBLE_SINCE - 1,
+          ),
+        ),
+      ],
+      USAGE_CONTRACT_VERSION,
+    );
+
+    expect(merged.costUsd).toBe(10);
+    expect(merged.staleEnvironments).toEqual(["env-b"]);
   });
 
   it("derives provider shares and cost quality", () => {
