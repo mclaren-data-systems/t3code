@@ -5,7 +5,7 @@
 > This is a development fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3code),
 > maintained at [mclaren-data-systems/t3code](https://github.com/mclaren-data-systems/t3code).
 > Upstream (`pingdotgg`) is treated as the source of truth and `main` here is periodically
-> rebased onto it — most recently onto `94401d01b` on 2026-08-28.
+> rebased onto it — most recently onto `e4f7b14fa` on 2026-08-31.
 >
 > On top of upstream this fork carries a deliberately thin layer: a **workflow set a fork can
 > actually run** — standard GitHub-hosted runners instead of upstream's Blacksmith ones, no
