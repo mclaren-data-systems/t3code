@@ -2,138 +2,98 @@
 
 ## 1. Purpose
 
-This is a development fork of `pingdotgg/t3code` maintained at `mclaren-data-systems/t3code`,
-and it is not a hard fork: upstream is the source of truth, `main` here is rebased onto it
-indefinitely, and every entry below is provisional — when upstream ships an equivalent, the fork
-change is dropped rather than defended. The layer it carries is deliberately thin. Its one
+This is a development fork of `pingdotgg/t3code` maintained at `mclaren-data-systems/t3code`, and
+it is not a hard fork: upstream is the source of truth, `main` here is rebased onto it
+indefinitely, and every entry in section 3 is provisional — when upstream ships an equivalent, the
+fork change is dropped rather than defended. The layer it carries is deliberately thin. Its one
 substantive piece of infrastructure is **a CI/workflow set a fork can actually run** (standard
 GitHub-hosted runners instead of upstream's Blacksmith ones, nothing needing a credential a fork
-lacks, and unsigned desktop artifacts published as pruned development prereleases). Around that
-sit fork identity (this file, the `README.md` banner, the `AGENTS.md` policy sections, no update
+lacks, unsigned desktop artifacts published as pruned development prereleases). Around that sit
+fork identity (this file, the `README.md` banner, the `AGENTS.md` policy sections, no update
 checking, a sidebar link to this repo) and a handful of source changes: multi-instance provider
 support (15, 16, 19), a configurable worktree branch prefix (17), provider subscription usage in
 the model picker and context bubble (22), and five web UX changes (5, 6, 7, 18, 21). Everything
 else — `native/`, `scripts/`, `infra/`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`,
 `apps/server/src/persistence/` — is byte-identical to upstream.
 
-This file is the authoritative list of what sets this fork apart, and it is written to be used
-when rebasing onto a newer upstream. **Work from intent, not from the old diff.** For each
-numbered entry: run the drop-check first, and if upstream now covers the intent, move the entry
-to section 4; otherwise re-derive the intent against current upstream code, taking upstream's
-version of anything that moved. Then update section 2.
+This file is the authoritative list of what sets this fork apart, and it is written to be used when
+rebasing. **Work from intent, not from the old diff.** For each numbered entry: run the drop-check
+first, and if upstream now covers the intent, move the entry to section 4; otherwise re-derive the
+intent against current upstream code, taking upstream's version of anything that moved.
 
 ## 2. Last rebase
 
-> **2026-08-31**, onto `pingdotgg/t3code` `main` at **`e4f7b14fa`** — _chore: add Windows setup
-> script to t3.json (#8814)_. Took in **72 upstream commits** (`94401d01b..e4f7b14fa`) and replayed
-> the fork's 31 commits as 30 (see the fold below). The previous tip `b7c65c2a9` (based on
-> `94401d01b`, 2026-08-28) is backed up at `origin/backup/main-pre-rebase-2026-08-31`; `main` was
-> then force-pushed to the rebased tip. Earlier backups still on `origin`:
-> `backup/main-pre-rebase-2026-08-28`, `-2026-08-25`, `-2026-08-22`, `-2026-08-21`.
+> **2026-09-01**, onto `pingdotgg/t3code` `main` at **`0df043fd4`** — _Add auto_review
+> configuration to coderabbit.yaml_. Took in **33 upstream commits** (`e4f7b14fa..0df043fd4`) and
+> replayed the fork's 31 commits, plus one new commit (below), for 32. The previous tip
+> `823859ebd` is backed up at `origin/backup/main-pre-rebase-2026-09-01`; `main` was then
+> force-pushed to the rebased tip.
 >
-> **Nothing was superseded.** All fourteen active entries were re-checked against `e4f7b14fa` and
+> **Nothing was superseded.** All fourteen active entries were re-checked against `0df043fd4` and
 > every drop-check still comes back empty.
 >
-> **No new upstream workflows.** Upstream's `.github/` changes in this range are one `VOUCHED.td`
-> vouch, a `release.yml` nightly-cron minute, and two `ci.yml` edits — both of which this fork now
-> carries: a job-level `permissions: contents: read`, and the preload-bundle verification moving
-> from inline shell to `apps/desktop/scripts/verify-preload-bundle.mjs`. The kept-workflow set is
-> unchanged (`ci.yml`, `desktop-artifacts.yml`, `issue-labels.yml`, `thread-transfer-report.yml`).
+> **No upstream `.github/` changes at all in this range**, so entry 14's kept set (`ci.yml`,
+> `desktop-artifacts.yml`, `issue-labels.yml`, `thread-transfer-report.yml`) is unchanged and no new
+> workflow had to be judged against the rule. Entry 14's standing drift check also came back clean:
+> upstream's `release.yml` build job is untouched this range, so `desktop-artifacts.yml` still
+> mirrors it.
 >
-> **Four conflicts, all resolved by taking upstream's version and re-applying fork intent:**
+> **One conflict**, in `apps/web/src/session-logic.test.ts`: upstream deleted `deriveTurnPlans`
+> while entry 5's commit added `deriveCommitExcludedFilePaths` to the same import list. Resolved by
+> keeping upstream's list plus entry 5's symbol.
 >
-> - `.github/VOUCHED.td` and `.github/workflows/release.yml` (modify/delete) — resolved as
->   deletions per entry 14.
-> - `docs/internals/ci.md` — took upstream's new description of the preload verifier and kept the
->   fork's job breakdown; the mobile-native paragraph stays dropped with the jobs.
-> - `apps/web/src/components/settings/ProviderInstanceCard.tsx` — upstream `5e63aea2d` (#8504) and
->   `f276e632c` (#8472) reworked the settings list/editor again. Took upstream's structure wholesale
->   and re-inserted entry 15's "Resolved config directory" block after `ProviderSettingsForm`.
-> - `apps/web/src/components/Sidebar.tsx` — the substantive one; see below.
+> **One new commit, and it is transient.** Upstream's tip pushed `.coderabbit.yaml` straight to
+> `main` with four-space indentation that `vp fmt` rejects. The fork's `ci.yml` `check` job runs
+> `vp check` (format + lint + types), so `main` would have landed red. Reindented in `265d07fa9`.
+> **Drop it the moment upstream reformats the file** — it is a formatting repair, not fork intent,
+> and gets no entry number.
 >
-> **The sidebar project row was the substantive merge.** Upstream `48c176b3c` (#5931), refined by
-> `074bcd6dc` (#8627), replaced the project-scope `Menu`/`MenuRadioGroup` with a searchable
-> `Combobox` driven by `projectScopeItems` / `filteredProjectScopeItems` and a
-> `reduceSidebarProjectScopeMenuState` reducer. Entries 18 and 21 both live in that block, so both
-> were re-derived against the combobox rather than replayed:
+> **Checked against incoming upstream work and needed no change:**
 >
-> - Entry 21's **New project** action is no longer a `MenuItem` after a `MenuSeparator` — a
->   `ComboboxItem` would join the filtered collection and become selectable scope. It is now a
->   plain button after `ComboboxList`, behind a `ComboboxSeparator`, styled like the scope rows. The
->   combobox owns its open state, so a new `handleNewProjectFromScopeMenu` dispatches
->   `{ type: "open-changed", open: false }` before opening the add-project palette; the old
->   `MenuItem`'s `closeOnClick` did that implicitly.
-> - Entry 18's full-width labelled **New thread** button sits below the combobox unchanged, and the
->   standalone folder-plus button and its `flex items-center gap-1` wrapper are gone, so the
->   combobox trigger drops `flex-1` and spans the row on its own.
-> - **Entry 21's commit folded into entry 18's.** `d8b467b9b` (_feat(web): move new project action
->   into the sidebar project dropdown_) was written against the deleted `Menu` markup and had no
->   applicable hunks left once entry 18's replay landed the re-derived block; it was skipped, so
->   the fork now replays 30 commits, not 31. Entry 21 itself is unchanged and stays in section 3 —
->   its own re-apply note already says entries 18 and 21 are re-applied together.
->
-> **Checked and needed no change:**
->
-> - Entry 14's standing drift check on `desktop-artifacts.yml` against upstream's `release.yml`
->   build job. Upstream's only change to `release.yml` in this range is the nightly cron minute.
+> - Entry 7 against the composer churn (`30175a8af`, `9842518c9`, `3f62e6fa6`, `bba79cc25`,
+>   `ef84bc987`) and the 524 lines `30175a8af` cut from `index.css`. Both anchors survived: the
+>   history hook still sits after the slash/mention menu handling and after the Enter submission
+>   intent in `onComposerCommandKey`, and the append still rides `submitComposerDraft`'s
+>   `didDispatch`. No fork code referenced a deleted composer glass class.
+> - Entries 15 and 22 against `f86c5e8c8` (#8634), which skips IDE detection in Claude probes. It
+>   adds env vars to the same probe spawn the fork reads its account and usage snapshot from —
+>   adjacent, not colliding.
 > - Entry 16's duplicated default-slot merge rule: `deriveProviderInstanceConfigMap` in
->   `ProviderInstanceRegistryHydration.ts` is unchanged, so `instanceConfigsForDriver` has not
+>   `ProviderInstanceRegistryHydration.ts` is untouched, so `instanceConfigsForDriver` has not
 >   drifted.
-> - Entry 19's provider ramps: `UsageProviderKind` is still `claude | codex | grok`, so no ramp was
->   missing and the `Record<UsageProviderKind, …>` types still compile.
-> - Entry 20's mechanism: `resolveGitHubPublishConfig` in `scripts/build-desktop-artifact.ts` still
->   reads `T3CODE_DESKTOP_UPDATE_REPOSITORY` and still rejects a single-segment value, so
->   `fork-updates-disabled` keeps resolving no publish config.
-> - Entry 22 against upstream `c131f2892` (#8610), which stops querying Claude context usage after
->   turns. It touches `ClaudeAdapter` only — the turn path — while entry 22 reads the snapshot in
->   the capabilities probe, which is the same intent, not a collision.
-> - Entry 7 against the composer churn (`660cddd3b`, `3d32797f6`, `8dcb96314`, `bcb855a63`): the
->   history hook still sits after the slash/mention menu handling and the Enter submission intent,
->   and the append still rides `submitComposerDraft`'s `didDispatch`.
+> - Entry 19's provider ramps: `UsageProviderKind` is still `claude | codex | grok`, so the
+>   `Record<UsageProviderKind, …>` types stay exhaustive.
+> - Entries 18 and 21 against `Sidebar.tsx`, which upstream did not touch this range. Upstream still
+>   renders the icon-only new-thread button in the search row and the standalone folder-plus button
+>   beside the scope trigger, so both entries are still needed and replayed clean.
+> - Entry 5 against upstream's `session-logic.ts` rework; `ChangedFilesTree.tsx` and
+>   `GitActionsControl.tsx` were untouched upstream.
+>
+> **Verification.** Node **24.13.1** was put on `PATH` first (`package.json` pins
+> `engines.node: ^24.13.1`); the host ships 22. `pnpm install --frozen-lockfile` succeeded with no
+> lockfile drift. `vp run -r typecheck` is clean across all 15 packages (Effect lint _suggestions_
+> only, all pre-existing). `vp lint` reports warnings only, no errors. `vp fmt --check` passes after
+> the `.coderabbit.yaml` repair. The 19 fork-touched test files run **593 passed, 1 failed**; the
+> failure is the `server.test.ts` case _"reports workspace root stat failures without relabeling
+> them as missing"_, which `chmod 0o000`s a directory and expects the stat to fail — **it cannot
+> fail as uid 0**, and the rebase container runs as root. It is byte-identical to upstream's and the
+> fork's `server.test.ts` diff is purely additive elsewhere, so this is an environment artifact, not
+> a regression.
 >
 > Keep syncing by rebase, not merge — a merge commit makes "what does this fork carry?" a graph
 > question instead of a `git diff upstream/main HEAD` one.
 
-### Verification at this rebase
-
-The host had node 22, so node **24.13.1** was put on `PATH` first (`package.json` pins
-`engines.node: ^24.13.1`). `pnpm install --frozen-lockfile` succeeded and left `pnpm-lock.yaml`
-byte-identical. Typecheck clean across `@t3tools/contracts`, `@t3tools/shared`, `t3`,
-`@t3tools/web` and `@t3tools/mobile` (only pre-existing `unnecessaryFailYieldableError`
-_suggestions_ in untouched upstream files). Web tests **3072 passed** across 287 files;
-`apps/server/src/{usage,provider}` **786 passed / 8 skipped**; `packages/contracts` **294 passed**;
-`ProviderCommandReactor` **51 passed**. `vp lint` and `vp fmt --check` are clean over all 87 files
-the fork touches, and `@t3tools/web` builds.
-
-One failure in that run was **environmental, not a regression** — always diff against clean
-upstream before chasing one:
-
-- `packages/shared/src/Net.test.ts` fails in containers without IPv6 (the preferred port is
-  reported taken). Untouched by this fork.
-
-Also known: `server.test.ts`'s workspace-root-stat and keybindings-config tests, plus
-`update-release-package-versions.test.ts` and `terminal/Manager.test.ts`, fail **as root**
-(`id -u` is 0) because they chmod a path to `0o000` and expect the next operation to be denied;
-root ignores the mode bits. Several server tests also fail locally on Windows (process-spawn and
-POSIX-path assumptions) but pass on Linux CI.
-
-Note `vp run` **bails on the first failing task**, so one environmental failure hides every
-package after it — re-run the survivors with `--filter` before concluding the suite is red.
-Note also that the pre-commit hook runs `vp fmt` over this file, so any edit here reflows a few
-untouched lines; that is not an intentional edit.
-
 ## 3. Fork changes
 
-> Entry numbers are **stable identifiers** and are never renumbered. A gap means the entry moved
-> to section 4 or 5. Numbers 1, 4, 8, 9, 10 and the symlink half of 12 are superseded; 2, 3 and
-> 11 are dropped.
+> Entry numbers are **stable identifiers** and are never renumbered. A gap means the entry moved to
+> section 4 or 5. Numbers 1, 4, 8, 9, 10 and the symlink half of 12 are superseded; 2, 3 and 11 are
+> dropped.
 
 ### 5. Commit exactly the files a turn changed
 
-- **Intent.** Committing a thread's work should not require hand-unchecking every unrelated
-  dirty file. The completion "Changed files" card gets a **Commit** button beside "Open diff"
-  that opens the commit modal with only this turn's files checked; the regular commit button
-  still selects all.
+- **Intent.** Committing a thread's work should not require hand-unchecking every unrelated dirty
+  file. The completion "Changed files" card gets a **Commit** button beside "Open diff" that opens
+  the commit modal with only this turn's files checked; the regular commit button still selects all.
 - **Files:** `apps/web/src/session-logic.ts` (+ test), `components/ChatView.tsx`,
   `components/GitActionsControl.tsx`,
   `components/chat/{ChangedFilesTree,ChatHeader,MessagesTimeline}.tsx`
@@ -148,26 +108,26 @@ untouched lines; that is not an intentional edit.
   reworks that dialog.
 - **Drop it when:** upstream's commit dialog can be opened with a preselected file set. Check with
   `grep -rn "onCommitTurnFiles\|Preselection" apps/web/src` against clean upstream.
-- **Redundancy check (`e4f7b14fa`): keep.** Drop-check comes back empty.
+- **Checked at `0df043fd4`: keep.** Drop-check empty.
 - **Browser-only:** the button-to-dialog flow. Unit tests cover path matching only.
 
 ### 6. Keep the completed dot until the thread is actually read
 
 - **Intent.** Opening a thread instantly cleared its green completed dot, so it was easy to lose
-  track of which completed threads had been looked at. The dot now survives until the completion
-  is acknowledged by viewing the thread, and wake-driven visit bumps do not clear it.
+  track of which completed threads had been looked at. The dot now survives until the completion is
+  acknowledged by viewing the thread, and wake-driven visit bumps do not clear it.
 - **Files:** `apps/web/src/uiStateStore.ts` (+ test), `components/Sidebar.logic.ts` (+ test),
   `components/Sidebar.tsx`, `components/ThreadStatusIndicators.tsx`, `components/ChatView.tsx`
 - **Re-apply.** Anchor on the persisted-UI-state shape: mirror everything done for
   `threadLastVisitedAtById` (initial state, hydrate seed, persist, mark-unread reset) for a new
-  `threadLastCompletionAcknowledgedAtById`. The acknowledged-at value reaches
-  `hasUnseenCompletion` through `ThreadStatusInput` and its two call sites, **not** by patching
-  the store read. `ChatView` stamps the acknowledgement on visit at the turn's `completedAt`. The
-  maintainer's refinement — only mark read after ~3s of visibility — is still unimplemented; this
-  field is the seam for it. `LegacySidebar.tsx` is opt-in and untouched.
+  `threadLastCompletionAcknowledgedAtById`. The acknowledged-at value reaches `hasUnseenCompletion`
+  through `ThreadStatusInput` and its two call sites, **not** by patching the store read. `ChatView`
+  stamps the acknowledgement on visit at the turn's `completedAt`. The maintainer's refinement —
+  only mark read after ~3s of visibility — is still unimplemented; this field is the seam for it.
+  `LegacySidebar.tsx` is opt-in and untouched.
 - **Drop it when:** upstream's `uiStateStore.ts` tracks a completion acknowledgement. Check with
   `grep -c AcknowledgedAt apps/web/src/uiStateStore.ts` against clean upstream.
-- **Redundancy check (`e4f7b14fa`): keep.** Upstream still tracks only `threadLastVisitedAtById`.
+- **Checked at `0df043fd4`: keep.** Upstream still tracks only `threadLastVisitedAtById`.
 
 ### 7. Shell-style message recall in the composer
 
@@ -175,21 +135,18 @@ untouched lines; that is not an intentional edit.
 - **Files:** `apps/web/src/threadMessageHistory.ts` (new, + test),
   `apps/web/src/threadMessageHistoryStore.ts` (new), `components/chat/ChatComposer.tsx`
 - **Re-apply.** Every sent message is appended to a per-thread history (capped at 100, keyed by
-  `scopedThreadKey`). ArrowUp/ArrowDown walk it, **but only** when the cursor is on the
-  first/last line — otherwise arrows move the cursor normally. The in-progress draft is stashed
-  and restored when navigating past the newest entry. The pure module ports verbatim; the part
-  that must be redone on any composer rework is the hook placement: it sits in
-  `onComposerCommandKey` **after** the slash/mention/skills menu handling and the Enter
-  submission intent, so history only sees arrows the menu declined. Navigation reads through the
-  existing `readComposerSnapshot` and applies prompts through the draft-store `setPrompt` path;
-  the history append sits behind `submitComposerDraft`'s `didDispatch` so validation failures
-  record no phantom entries.
+  `scopedThreadKey`). ArrowUp/ArrowDown walk it, **but only** when the cursor is on the first/last
+  line — otherwise arrows move the cursor normally. The in-progress draft is stashed and restored
+  when navigating past the newest entry. The pure module ports verbatim; the part that must be
+  redone on any composer rework is the hook placement: it sits in `onComposerCommandKey` **after**
+  the slash/mention/skills menu handling and the Enter submission intent, so history only sees
+  arrows the menu declined. Navigation reads through the existing `readComposerSnapshot` and applies
+  prompts through the draft-store `setPrompt` path; the history append sits behind
+  `submitComposerDraft`'s `didDispatch` so validation failures record no phantom entries.
 - **Drop it when:** upstream's composer recalls prior messages. Check with
   `grep -c MessageHistory apps/web/src/components/chat/ChatComposer.tsx` against clean upstream.
-- **Redundancy check (`e4f7b14fa`): keep.** No history recall upstream. The composer saw heavy
-  churn (`660cddd3b`, `3d32797f6`, `8dcb96314`, `bcb855a63`) but the hook's two anchor points —
-  after the menu handling in `onComposerCommandKey`, and behind `didDispatch` on submit — both
-  survived intact.
+- **Checked at `0df043fd4`: keep.** No history recall upstream. The composer keeps churning, but
+  both anchors survived again — see section 2.
 - **Browser-only:** the arrow-key interaction. Unit tests cover the pure navigation rules only.
 
 ### 12. `AGENTS.md`: fork Git/GitHub policy
@@ -202,93 +159,88 @@ untouched lines; that is not an intentional edit.
 - **Re-apply.** Take upstream's `AGENTS.md` prose wholesale and re-insert the two fork sections.
   `CLAUDE.md` is **not** part of this entry — take upstream's regular file containing `@AGENTS.md`
   and do not restore the old symlink (see section 4).
-- **Redundancy check (`e4f7b14fa`): keep, clean replay.** Upstream touched neither file.
+- **Checked at `0df043fd4`: keep, clean replay.** Upstream touched neither file.
 
 ### 13. Fork identity in `README.md`, and this file
 
 - **Intent.** Anyone landing on this repo should see immediately that it is a rebasing fork and
   where the authoritative change list lives.
-- **Files:** `README.md` (an "About this fork" blockquote before the `# T3 Code` heading),
-  `FORK.md`
-- **Re-apply.** The banner is delimited by `<!-- FORK-BANNER:START -->` /
-  `<!-- FORK-BANNER:END -->` — **re-derive its text, never merge it**, since it goes stale every
-  time an entry moves out of section 3. Refresh the rebase marker inside it too.
-- **Redundancy check (`e4f7b14fa`): keep, refreshed.** Upstream made no `README.md` change in this
-  range; the banner's rebase marker moved to `e4f7b14fa` / 2026-08-31. Its body still reads true —
-  no entry moved out of section 3.
+- **Files:** `README.md` (an "About this fork" blockquote before the `# T3 Code` heading), `FORK.md`
+- **Re-apply.** The banner is delimited by `<!-- FORK-BANNER:START -->` / `<!-- FORK-BANNER:END -->`
+  — **re-derive its text, never merge it**, since it goes stale every time an entry moves out of
+  section 3. Refresh the rebase marker inside it too.
+- **Checked at `0df043fd4`: keep, refreshed.** Upstream made no `README.md` change; the banner's
+  rebase marker moved to `0df043fd4` / 2026-09-01 and its body still reads true.
 
 ### 14. A workflow set this fork can actually run
 
-- **Intent.** CI that runs here. A workflow stays only if it uses **standard GitHub-hosted
-  runners** (upstream's `blacksmith-*` labels never resolve — jobs sat queued for 24h and were
-  auto-cancelled) and needs **no credential beyond the automatic `GITHUB_TOKEN`**. Everything
-  else is deleted, not disabled. Beyond that, keep only the minimum the fork needs to build and
-  to check code quality, and prefer GitHub-native actions.
+- **Intent.** CI that runs here. A workflow stays only if it uses **standard GitHub-hosted runners**
+  (upstream's `blacksmith-*` labels never resolve — jobs sat queued for 24h and were auto-cancelled)
+  and needs **no credential beyond the automatic `GITHUB_TOKEN`**. Everything else is deleted, not
+  disabled. Beyond that, keep only the minimum the fork needs to build and to check code quality,
+  and prefer GitHub-native actions.
 - **Files:** `.github/workflows/{ci,desktop-artifacts}.yml`; deleted
   `.github/workflows/{release,deploy-relay,mobile-eas-preview,mobile-eas-production,mobile-showcase-screenshots,pr-size,pr-vouch,web-preview,mobile-fingerprint-check,publish-aur,desktop-macos-preview}.yml`
   and `.github/VOUCHED.td`; fork notes in `docs/internals/ci.md`, `docs/operations/release.md`,
   `docs/operations/mobile-app-store-screenshots.md`, `infra/relay/README.md`,
   `packaging/aur/README.md`; fallout in `CONTRIBUTING.md` and `infra/relay/scripts/deploy.test.ts`
 - **Kept (3 upstream workflows).** `ci.yml` with every Blacksmith runner swapped to `ubuntu-24.04`
-  (five jobs: `check`, `test`, `test_server`, `rust`, `release_smoke`) and both mobile jobs
-  dropped — the macOS-only `mobile_native_static_analysis` and the `mobile_native_changes` gate
-  that exists only to decide whether it boots. `issue-labels.yml` and
-  `thread-transfer-report.yml` unmodified; the latter publishes the thread-transfer budget diff
-  from an artifact produced by the **sharded `test_server`** job, so dropping or renaming
-  `test_server` would silently break it.
+  (five jobs: `check`, `test`, `test_server`, `rust`, `release_smoke`) and both mobile jobs dropped
+  — the macOS-only `mobile_native_static_analysis` and the `mobile_native_changes` gate that exists
+  only to decide whether it boots. `issue-labels.yml` and `thread-transfer-report.yml` unmodified;
+  the latter publishes the thread-transfer budget diff from an artifact produced by the **sharded
+  `test_server`** job, so dropping or renaming `test_server` would silently break it.
 - **Added.** `desktop-artifacts.yml` — the four platforms upstream's `release.yml` matrix covers
   (macOS `arm64`/`x64` DMG, Linux `x64` AppImage, Windows `x64` NSIS), **unsigned**, on every push
   to `main` and on dispatch, uploaded as workflow artifacts and then published as a
   `desktop-dev-<run number>` **prerelease**, pruning older `desktop-dev-*` releases to the current
-  one plus two. That publish-and-prune tail is fork intent, not an implementation detail —
-  re-apply it even if the build job around it is rebuilt from scratch. The release job is the one
-  place `GITHUB_TOKEN` is used (job-scoped `contents: write`). It carries over the three
-  secret-free things that matter from upstream's build job: the `dtolnay/rust-toolchain` setup
-  with a per-matrix `rust_target` (the desktop build cargo-builds `native/resource-monitor`), the
-  Linux `node-pty` prebuild bundled into the Windows artifact (non-fatal when missing), and the
-  Spectre-mitigated MSVC libs install. It never passes `--signed`, which is what would pull
-  signing credentials into `scripts/build-desktop-artifact.ts`.
+  one plus two. That publish-and-prune tail is fork intent, not an implementation detail — re-apply
+  it even if the build job around it is rebuilt from scratch. The release job is the one place
+  `GITHUB_TOKEN` is used (job-scoped `contents: write`). It carries over the three secret-free things
+  that matter from upstream's build job: the `dtolnay/rust-toolchain` setup with a per-matrix
+  `rust_target` (the desktop build cargo-builds `native/resource-monitor`), the Linux `node-pty`
+  prebuild bundled into the Windows artifact (non-fatal when missing), and the Spectre-mitigated
+  MSVC libs install. It never passes `--signed`, which is what would pull signing credentials into
+  `scripts/build-desktop-artifact.ts`.
 - **Deleted, and why.** Needing credentials and/or Blacksmith: `release.yml` (Cloudflare, Clerk,
   Apple, Azure, npm OIDC, a release GitHub App), `deploy-relay.yml`,
   `mobile-eas-{preview,production}.yml` (`EXPO_TOKEN`), `mobile-showcase-screenshots.yml`,
   `web-preview.yml` (Vercel tokens), `publish-aur.yml` (`AUR_SSH_PRIVATE_KEY`; it is a
   `workflow_call` target of the deleted `release.yml`, so nothing here would invoke it —
-  `packaging/aur/` sources stay byte-identical and `packaging/aur/scripts/release.sh` still runs
-  by hand). Credential-free but not needed: `desktop-macos-preview.yml` (Blacksmith runners, and
-  it duplicates artifacts `desktop-artifacts.yml` already ships) and
-  `mobile-fingerprint-check.yml` (it labels PRs that would break OTA reach until the next store
-  build, and this fork ships no store builds). Upstream community governance: `pr-vouch.yml` +
-  `.github/VOUCHED.td` and `pr-size.yml`. Fallout: the release-workflow tracing-config guard in
-  `infra/relay/scripts/deploy.test.ts` read `release.yml` off disk and was dropped with a restore
-  note; `CONTRIBUTING.md` lost its `vouch:*` / `size:*` paragraph.
+  `packaging/aur/` sources stay byte-identical and `packaging/aur/scripts/release.sh` still runs by
+  hand). Credential-free but not needed: `desktop-macos-preview.yml` (Blacksmith runners, and it
+  duplicates artifacts `desktop-artifacts.yml` already ships) and `mobile-fingerprint-check.yml` (it
+  labels PRs that would break OTA reach until the next store build, and this fork ships no store
+  builds). Upstream community governance: `pr-vouch.yml` + `.github/VOUCHED.td` and `pr-size.yml`.
+  Fallout: the release-workflow tracing-config guard in `infra/relay/scripts/deploy.test.ts` read
+  `release.yml` off disk and was dropped with a restore note; `CONTRIBUTING.md` lost its `vouch:*` /
+  `size:*` paragraph.
 - **Re-apply.** Highest-churn entry. Re-derive from upstream's **new** workflow files and re-apply
   the standing rule rather than force-keeping stale fork copies; a new upstream workflow is
   opt-**in** and ships only if it passes the rule and the fork actually needs it. Separately,
-  `desktop-artifacts.yml` is fork-owned and can drift against upstream's desktop build
-  requirements **without ever showing up as a merge conflict** — diff it against upstream's
-  `release.yml` build job on every sync.
-- **Redundancy check (`e4f7b14fa`): keep.** Upstream added no workflow in this range. `ci.yml`
-  gained a job-level `permissions: contents: read` and moved preload-bundle verification into
-  `apps/desktop/scripts/verify-preload-bundle.mjs`; both replayed cleanly, so the fork's `ci.yml`
-  diff against upstream is still only the runner swap and the two dropped mobile jobs. Upstream's
-  only other `.github/` edits are a `VOUCHED.td` vouch and `release.yml`'s nightly cron minute,
-  both in files this fork deletes. Every kept workflow is on `ubuntu-24.04` with no secret beyond
-  `GITHUB_TOKEN`; `grep -rn blacksmith .github/workflows/` matches only the explanatory comment in
+  `desktop-artifacts.yml` is fork-owned and can drift against upstream's desktop build requirements
+  **without ever showing up as a merge conflict** — diff it against upstream's `release.yml` build
+  job on every sync. The `check` job runs `vp check`, which includes `vp fmt --check`, so an upstream
+  formatting break lands `main` red here even when the fork changed nothing; repair it in place and
+  drop the repair once upstream fixes the file.
+- **Checked at `0df043fd4`: keep.** Upstream made **no** `.github/` change in this range and its
+  `release.yml` build job is untouched, so both the kept set and the `desktop-artifacts.yml` drift
+  check are clean. `grep -rn blacksmith .github/workflows/` matches only the explanatory comment in
   `desktop-artifacts.yml`.
 
 ### 15. A logged-out Claude instance reports as unauthenticated, and shows the directory it resolved
 
 - **Intent.** Never infer "authenticated" from "the probe answered". `checkClaudeProviderStatus`
-  treated the SDK capability probe returning an object as proof of a login, but Claude Code
-  answers the handshake **locally** and a logged-out CLI still emits an `account` object filled
-  with blanks plus `tokenSource: "none"`. So a second Claude instance pointed at a config
-  directory with no login rendered as a bare "Authenticated" with an empty email while every turn
-  failed — invisible everywhere except inside a chat.
+  treated the SDK capability probe returning an object as proof of a login, but Claude Code answers
+  the handshake **locally** and a logged-out CLI still emits an `account` object filled with blanks
+  plus `tokenSource: "none"`. So a second Claude instance pointed at a config directory with no login
+  rendered as a bare "Authenticated" with an empty email while every turn failed — invisible
+  everywhere except inside a chat.
 - **Files:** `packages/contracts/src/server.ts` (`ServerProviderConfigDirectory`, optional
   `ServerProvider.configDirectory`), `apps/server/src/provider/providerSnapshot.ts`,
   `provider/providerStatusCache.ts`, `provider/Drivers/ClaudeHome.ts` (holds
-  `resolveClaudeConfigDirPath`, moved in from `ClaudeSkills.ts`),
-  `provider/Drivers/ClaudeSkills.ts`, `provider/Layers/ClaudeProvider.ts`,
+  `resolveClaudeConfigDirPath`, moved in from `ClaudeSkills.ts`), `provider/Drivers/ClaudeSkills.ts`,
+  `provider/Layers/ClaudeProvider.ts`,
   `apps/web/src/components/settings/ProviderInstanceCard.tsx`,
   `components/chat/ProviderStatusBanner.tsx`; tests in
   `provider/Layers/{ProviderRegistry,ClaudeCapabilitiesProbe}.test.ts` and
@@ -300,66 +252,61 @@ untouched lines; that is not an intentional edit.
   `unknown` + `warning` bucket, because a CLI authenticated through a `profile` source reports an
   empty account object and an older CLI may omit `tokenSource` entirely. Neither must be called
   logged-out. The fragile coupling is that `tokenSource: "none"` contract, which is Claude Code's,
-  not T3 Code's — re-confirm it against the CLI version in play before re-deriving. If it changes
-  shape the classification moves but the three-way structure stays. Everything else is additive:
-  `configDirectory` (`{ path, credentialsFound }`) is optional and driver-agnostic on the wire,
-  `credentialsFound: false` is **not** proof of a logout (macOS keeps credentials in the keychain)
-  so it renders only as detail on an already-failed auth state, and `ProviderStatusBanner` prefers
-  the server's message over its hardcoded sign-in line. The docs half adds the Windows/PowerShell
-  form of the multi-account instructions: PowerShell does not expand `~` inside a quoted string
-  and neither does Claude Code, so upstream's bash-only `CLAUDE_CONFIG_DIR=~/.claude_x` writes the
-  login into a folder literally named `~`, which T3 Code — which does expand — never sees.
+  not T3 Code's — re-confirm it against the CLI version in play before re-deriving. Everything else
+  is additive: `configDirectory` (`{ path, credentialsFound }`) is optional and driver-agnostic on
+  the wire, `credentialsFound: false` is **not** proof of a logout (macOS keeps credentials in the
+  keychain) so it renders only as detail on an already-failed auth state, and `ProviderStatusBanner`
+  prefers the server's message over its hardcoded sign-in line. The docs half adds the
+  Windows/PowerShell form of the multi-account instructions: PowerShell does not expand `~` inside a
+  quoted string and neither does Claude Code, so upstream's bash-only `CLAUDE_CONFIG_DIR=~/.claude_x`
+  writes the login into a folder literally named `~`, which T3 Code — which does expand — never sees.
 - **Why it is not just a UI nicety.** With `unauthenticated` reachable, the existing filters in
   `apps/mobile/src/lib/modelOptions.ts`, `apps/web/src/components/CommandPalette.tsx` and
   `packages/client-runtime/src/operations/projects.ts` apply to Claude for the first time — a
   logged-out instance drops out of pickers instead of being offered and failing.
-- **Drop it when:** upstream's `ClaudeProvider.ts` emits `auth.status: "unauthenticated"` on its
-  own. Check with `grep -c '"unauthenticated"' apps/server/src/provider/Layers/ClaudeProvider.ts`
-  and `grep -c configDirectory packages/contracts/src/server.ts` against clean upstream. Partial
+- **Drop it when:** upstream's `ClaudeProvider.ts` emits `auth.status: "unauthenticated"` on its own.
+  Check with `grep -c '"unauthenticated"' apps/server/src/provider/Layers/ClaudeProvider.ts` and
+  `grep -c configDirectory packages/contracts/src/server.ts` against clean upstream. Partial
   supersession is likely — keep whichever half is still missing.
-- **Redundancy check (`e4f7b14fa`): keep.** Both drop-checks come back **0**. Upstream `f276e632c`
-  (#8472) and `5e63aea2d` (#8504) reworked the settings list and editor again — a second rewrite of
-  this file in two rebases, so expect the block to move every sync. Took upstream's structure and
-  re-inserted the "Resolved config directory" block after `ProviderSettingsForm`, which is still
-  the field that produces the path.
+- **Checked at `0df043fd4`: keep.** Both drop-checks come back **0**. `ProviderInstanceCard.tsx` was
+  rewritten twice in the two prior rebases; expect the "Resolved config directory" block after
+  `ProviderSettingsForm` to move again.
 
 ### 16. Usage scans every configured provider instance
 
 - **Intent.** Usage totals must cover every configured instance, not just the default one.
   `resolveTranscriptDirs` built a **fixed list** from the legacy `settings.providers.*` blobs and
   never consulted `settings.providerInstances`, so a second Claude account's transcripts were
-  silently skipped — the dashboard kept reporting, the totals just quietly excluded what that
-  account spent.
+  silently skipped — the dashboard kept reporting, the totals just quietly excluded what that account
+  spent.
 - **Files:** `apps/server/src/usage/usageTranscriptSources.ts` (new, + test),
   `apps/server/src/usage/UsageService.ts`
 - **Re-apply.** A new module enumerates one directory per configured instance and `UsageService`
   consumes it; the scan loop already iterated a `dirs` array, so **no contract change and no UI
-  change** are needed for this entry alone. Decisions worth keeping: disabled instances are
-  **still scanned** (usage records tokens already spent; switching a provider off must not
-  retroactively erase them); instances resolving to one directory are walked **once**, keyed
-  case-insensitively on Windows (sharing a config dir between presets is documented, and nothing
-  else de-duplicates within an environment); a single undecodable instance config is **logged and
-  skipped**, not fatal; and ordering is Claude, then Codex, then Grok, default slot before custom
-  instances sorted by id, which reproduces the old fixed-list output exactly for a single-instance
-  environment. **Grok has no per-instance home** — its settings expose only a binary path — so it
-  iterates its driver's instances like the others and the de-duplication collapses them onto the
-  one `$GROK_HOME` (or `~/.grok`) directory; it is the only source carrying a `fileName`.
-  **The one drift risk:** `instanceConfigsForDriver` duplicates the default-slot merge rule from
-  `deriveProviderInstanceConfigMap` rather than importing it (importing would drag
-  `BUILT_IN_DRIVERS`, the whole driver graph, in for a pure function). If upstream changes that
-  merge rule, this copy must follow — re-verify it every rebase.
-- **Drop it when:** upstream's `resolveTranscriptDirs` reads `settings.providerInstances`. Check
-  with `grep -c providerInstances apps/server/src/usage/UsageService.ts` against clean upstream.
-- **Redundancy check (`e4f7b14fa`): keep.** Drop-check is **0**, and the duplicated default-slot
-  merge rule did not drift: `deriveProviderInstanceConfigMap` is unchanged this range.
+  change** are needed for this entry alone. Decisions worth keeping: disabled instances are **still
+  scanned** (usage records tokens already spent; switching a provider off must not retroactively
+  erase them); instances resolving to one directory are walked **once**, keyed case-insensitively on
+  Windows; a single undecodable instance config is **logged and skipped**, not fatal; and ordering is
+  Claude, then Codex, then Grok, default slot before custom instances sorted by id, which reproduces
+  the old fixed-list output exactly for a single-instance environment. **Grok has no per-instance
+  home** — its settings expose only a binary path — so its instances collapse onto the one
+  `$GROK_HOME` (or `~/.grok`) directory; it is the only source carrying a `fileName`. **The one drift
+  risk:** `instanceConfigsForDriver` duplicates the default-slot merge rule from
+  `deriveProviderInstanceConfigMap` rather than importing it (importing would drag `BUILT_IN_DRIVERS`,
+  the whole driver graph, in for a pure function). If upstream changes that merge rule, this copy
+  must follow — re-verify it every rebase.
+- **Drop it when:** upstream's `resolveTranscriptDirs` reads `settings.providerInstances`. Check with
+  `grep -c providerInstances apps/server/src/usage/UsageService.ts` against clean upstream.
+- **Checked at `0df043fd4`: keep.** Drop-check **0**, and `deriveProviderInstanceConfigMap` is
+  unchanged this range, so the duplicated merge rule has not drifted.
 
 ### 17. The worktree branch prefix is configurable, not hardcoded to `t3code`
 
 - **Intent.** `WORKTREE_BRANCH_PREFIX = "t3code"` was a `const` with no setting behind it, so the
-  vendor name landed in every teammate's branch list and in every PR head branch, and
-  repositories with branch-naming rules (`<handle>/*`, `feature/*`, protected prefixes) could not
-  be satisfied at all. One new server setting, `worktreeBranchPrefix`, applied at the two places
-  the server names a worktree branch.
+  vendor name landed in every teammate's branch list and in every PR head branch, and repositories
+  with branch-naming rules (`<handle>/*`, `feature/*`, protected prefixes) could not be satisfied at
+  all. One new server setting, `worktreeBranchPrefix`, applied at the two places the server names a
+  worktree branch.
 - **Files:** `packages/contracts/src/settings.ts`, `packages/shared/src/git.ts` (+ test),
   `apps/server/src/ws.ts`, `apps/server/src/orchestration/Layers/ProviderCommandReactor.ts`
   (+ test), `apps/server/src/server.test.ts`,
@@ -370,205 +317,199 @@ untouched lines; that is not an intentional edit.
      before they could know the setting, so `buildTemporaryWorktreeBranchName`'s signature is
      unchanged and the three client call sites are untouched. `ws.ts` rewrites the placeholder at
      `prepareWorktree` time and the existing `thread.meta.update` reports the real branch back.
-  2. **Placeholders carry a `t3-` marker, and the marker is the whole point.** Provenance is
-     inferred from the refName, not recorded. Under the default prefix a bare `t3code/deadbeef`
-     was safe; under a configured prefix it is not (`deadbeef`, `cafebabe` are plausible
-     hand-written names), so matching `<prefix>/<8 hex>` would rename a user's own branch. Mint
-     and match `<prefix>/t3-<8 hex>`. Unmarked and UUID-shaped tokens stay matchable **under the
-     default prefix only**.
-  3. **The matcher accepts the configured prefix _and_ the default**, or changing the prefix
-     strands every thread whose placeholder was already minted.
-  4. **A blank or unusable prefix falls back to `t3code`; it does not mean "no prefix"** — an
-     empty namespace would put placeholders at the repository root and lets a bad setting produce
-     an invalid refName.
+  2. **Placeholders carry a `t3-` marker, and the marker is the whole point.** Provenance is inferred
+     from the refName, not recorded. Under the default prefix a bare `t3code/deadbeef` was safe;
+     under a configured prefix it is not (`deadbeef`, `cafebabe` are plausible hand-written names),
+     so matching `<prefix>/<8 hex>` would rename a user's own branch. Mint and match
+     `<prefix>/t3-<8 hex>`. Unmarked and UUID-shaped tokens stay matchable **under the default prefix
+     only**.
+  3. **The matcher accepts the configured prefix _and_ the default**, or changing the prefix strands
+     every thread whose placeholder was already minted.
+  4. **A blank or unusable prefix falls back to `t3code`; it does not mean "no prefix"** — an empty
+     namespace would put placeholders at the repository root and lets a bad setting produce an
+     invalid refName.
   5. **A branch the user named is never rewritten**, so picking a branch before the first message
      still opts a thread out entirely.
 
-  The rename site is `maybeGenerateAndRenameWorktreeBranchForFirstTurn`, and the settings read
-  must sit **inside** the guarded `Effect.gen` whose `catchCause` logs failures, or a
-  `ServerSettingsError` escapes a path that previously could not fail. The `ws.ts` site is the
-  `bootstrap.prepareWorktree` block, where `branch` is optional — rewrite only when defined, since
-  an absent `newRefName` means "check out the base ref, do not create a branch".
+  The rename site is `maybeGenerateAndRenameWorktreeBranchForFirstTurn`, and the settings read must
+  sit **inside** the guarded `Effect.gen` whose `catchCause` logs failures, or a `ServerSettingsError`
+  escapes a path that previously could not fail. The `ws.ts` site is the `bootstrap.prepareWorktree`
+  block, where `branch` is optional — rewrite only when defined, since an absent `newRefName` means
+  "check out the base ref, do not create a branch".
 
 - **Not fixed here:** no mobile settings UI. Mobile surfaces no server settings today; the setting
   still applies to threads started from mobile, since the server does the naming.
 - **Drop it when:** upstream makes the prefix configurable. Check with
-  `grep -n "WORKTREE_BRANCH_PREFIX\|worktreeBranchPrefix" packages/shared/src/git.ts` against
-  clean upstream — a lone `export const WORKTREE_BRANCH_PREFIX = "t3code"` means this is still
-  needed.
-- **Redundancy check (`e4f7b14fa`): keep.** Still the lone hardcoded const upstream.
+  `grep -n "WORKTREE_BRANCH_PREFIX\|worktreeBranchPrefix" packages/shared/src/git.ts` against clean
+  upstream — a lone `export const WORKTREE_BRANCH_PREFIX = "t3code"` means this is still needed.
+- **Checked at `0df043fd4`: keep.** Still the lone hardcoded const upstream.
 
 ### 18. New thread button under the project selector, and scoped to it
 
-- **Intent.** The sidebar header should read search → scope → act. The new thread button sat on
-  the search row, above the project selector that gives it its context, as a bare glyph beside a
-  text field it has nothing to do with — and it ignored the scope menu directly beneath it,
-  always opening the command palette picker even when the sidebar was already scoped to one
-  project. It now sits below the project row as a full-width labelled `SidebarMenuButton`, and
-  when scoped it creates there immediately.
+- **Intent.** The sidebar header should read search → scope → act. The new thread button sat on the
+  search row, above the project selector that gives it its context, as a bare glyph beside a text
+  field it has nothing to do with — and it ignored the scope menu directly beneath it, always opening
+  the command palette picker even when the sidebar was already scoped to one project. It now sits
+  below the project row as a full-width labelled `SidebarMenuButton`, and when scoped it creates
+  there immediately.
 - **Files:** `apps/web/src/components/Sidebar.tsx`, `components/Sidebar.logic.ts` (+ test),
   `docs/user/thread-sidebar.md`
 - **Re-apply.** Three decisions worth keeping:
   1. **The branch lives in a pure helper.** `resolveNewThreadClickTarget` returns
-     `"scoped-project" | "current-project" | "picker"` and delegates the unscoped case to the
-     existing `shouldCreateNewThreadInCurrentProject`, so the old rule is untouched.
-  2. **The scoped target resolves through `buildSidebarProjectPickerEntries`**, the same builder
-     the command palette uses. A scope entry is a _logical_ project (several checkouts grouped),
-     so picking its representative by hand would target a different member than the picker does.
-  3. **The scoped tooltip drops the shortcut and names the project.** `chat.new` is not
-     scope-aware, so printing its shortcut next to a scoped button would advertise the wrong
-     target.
+     `"scoped-project" | "current-project" | "picker"` and delegates the unscoped case to the existing
+     `shouldCreateNewThreadInCurrentProject`, so the old rule is untouched.
+  2. **The scoped target resolves through `buildSidebarProjectPickerEntries`**, the same builder the
+     command palette uses. A scope entry is a _logical_ project (several checkouts grouped), so
+     picking its representative by hand would target a different member than the picker does.
+  3. **The scoped tooltip drops the shortcut and names the project.** `chat.new` is not scope-aware,
+     so printing its shortcut next to a scoped button would advertise the wrong target.
 
-  Also gone: the button no longer renders `disabled` when there are no projects — it renders with
-  the project row, which is already hidden in that state. Not touched: `LegacySidebar.tsx`, the
-  mobile home header, and the `chat.new` / `chat.newLocal` keybindings.
+  Also gone: the button no longer renders `disabled` when there are no projects — it renders with the
+  project row, which is already hidden in that state. Not touched: `LegacySidebar.tsx`, the mobile
+  home header, and the `chat.new` / `chat.newLocal` keybindings.
 
 - **Drop it when:** upstream's `Sidebar.tsx` renders the new thread button below the project scope
   menu with a text label. Check with `grep -n "New thread" apps/web/src/components/Sidebar.tsx`
   against clean upstream — an icon-only button in the search row means this is still needed.
-- **Redundancy check (`e4f7b14fa`): keep, re-derived.** Upstream still renders the icon-only button
-  in the search row. But `48c176b3c` (#5931), refined by `074bcd6dc` (#8627), turned the project
-  scope menu into a searchable `Combobox`, so the row this entry restacks was rewritten: the
-  labelled button below it replayed unchanged, and the trigger dropped `flex-1` now that nothing
-  sits beside it. **This block is the fork's highest-churn UI surface — re-derive, never replay.**
+- **Checked at `0df043fd4`: keep, clean replay.** Upstream did not touch `Sidebar.tsx` this range.
+  **This block is still the fork's highest-churn UI surface** — upstream turned the project scope
+  menu into a searchable `Combobox` one rebase ago (`48c176b3c`, refined by `074bcd6dc`), so
+  re-derive rather than replay whenever it moves again.
 - **Browser-only:** the header re-stack wants one look in a real client if re-derived.
 
 ### 19. Usage reports each provider instance separately
 
-- **Intent.** Entry 16 made the _scan_ read every instance, but everything downstream still
-  grouped by `UsageProviderKind`, so a work and a personal Claude Code collapsed into one row —
-  the exact question a second account is configured to answer was unanswerable. It also left a
-  **real double count**: `ownedContribution` resolved ownership per provider _kind_, so if
-  environment A owned a shared Claude directory and B reported that directory plus another one,
-  every bucket B reported survived, including the one A had already counted. The report's unit of
-  grouping is now the provider instance.
+- **Intent.** Entry 16 made the _scan_ read every instance, but everything downstream still grouped
+  by `UsageProviderKind`, so a work and a personal Claude Code collapsed into one row — the exact
+  question a second account is configured to answer was unanswerable. It also left a **real double
+  count**: `ownedContribution` resolved ownership per provider _kind_, so if environment A owned a
+  shared Claude directory and B reported that directory plus another one, every bucket B reported
+  survived, including the one A had already counted. The report's unit of grouping is now the
+  provider instance.
 - **Files:** `packages/contracts/src/usage.ts`, `packages/shared/src/{usageMerge,usageFormat}.ts`,
   `apps/server/src/usage/{usageTranscriptSources,usageAggregation,UsageService}.ts`,
-  `apps/web/src/components/usage/*`, `apps/mobile/src/features/usage/*`, `docs/user/usage.md`,
-  plus the test files
+  `apps/web/src/components/usage/*`, `apps/mobile/src/features/usage/*`, `docs/user/usage.md`, plus
+  the test files
 - **Re-apply.** `UsageBucket` gains `instanceId`; `UsageSource` gains `instanceId`, `displayName`,
   `accentColor`; `USAGE_CONTRACT_VERSION` and `USAGE_MERGE_COMPATIBLE_SINCE` both move to the new
-  version. The aggregator keys by `(day, hourStart?, provider, instanceId, model)` and
-  `mergeUsage` resolves ownership per instance, exposing `instances` in place of `providers` with
-  per-period maps keyed `byInstance`. Decisions worth keeping:
+  version. The aggregator keys by `(day, hourStart?, provider, instanceId, model)` and `mergeUsage`
+  resolves ownership per instance, exposing `instances` in place of `providers` with per-period maps
+  keyed `byInstance`. Decisions worth keeping:
   1. **Series are keyed by instance id alone, not `(environment, instance)`.** Every environment's
-     default Claude instance is `claudeAgent`, so keying by the pair would split one person's
-     laptop and desktop into two rows.
-  2. **`UsageSourceFingerprint` stays physical** — host, provider, path, volume, no instance id.
-     It answers "is this the same directory"; folding the id in breaks cross-environment dedupe.
+     default Claude instance is `claudeAgent`, so keying by the pair would split one person's laptop
+     and desktop into two rows.
+  2. **`UsageSourceFingerprint` stays physical** — host, provider, path, volume, no instance id. It
+     answers "is this the same directory"; folding the id in breaks cross-environment dedupe.
   3. **Presentation travels on the wire** (`displayName`, `accentColor`) rather than the client
      joining usage against the provider snapshot stream — mobile has no equivalent of web's
-     `providerInstances` projection. The client still owns the _rule_: `formatInstanceLabel`
-     resolves configured name → brand label for a default instance → humanized instance id.
+     `providerInstances` projection. The client still owns the _rule_: `formatInstanceLabel` resolves
+     configured name → brand label for a default instance → humanized instance id.
   4. **De-duplication stays global across instances.** A record copied forward when a session is
      resumed under a second account is still one response.
   5. **Instances sharing one directory report as one**, under the first instance id in scan order.
   6. **Colors:** a configured `accentColor` wins, else a per-provider ramp indexed by `shadeIndex`
      assigned in an order that does not move when spending does. Index 0 is the brand color, so a
-     single-instance environment looks untouched. Both `usageProviders` modules type their ramps
-     as `Record<UsageProviderKind, …>`, so **a provider upstream adds needs a ramp here or the
-     build breaks** — which is the intended failure mode.
+     single-instance environment looks untouched. Both `usageProviders` modules type their ramps as
+     `Record<UsageProviderKind, …>`, so **a provider upstream adds needs a ramp here or the build
+     breaks** — which is the intended failure mode.
   7. **Idle series are not drawn, and the empty state still shows one row per provider.**
-     `buildUsageSeries` filters instances with no tokens and no cost — that is upstream
-     `17dbe8dd`'s (#7563) `providersWithUsage` intent, applied at instance granularity — and falls
-     back to per-provider stand-in rows only when nothing at all was reported, so the page does
-     not collapse to a bare headline. That fallback reads `PROVIDER_ORDER`, so a test that mocks
-     `PROVIDER_PRESENTATION` must cover **every** `UsageProviderKind`.
-  8. **The merge floor moves with the version.** `USAGE_MERGE_COMPATIBLE_SINCE` exists for
-     _additive_ bumps; this one is not additive, because a payload from before it has no instance
-     to attribute. Leaving the floor behind would admit instance-less buckets.
+     `buildUsageSeries` filters instances with no tokens and no cost — that is upstream `17dbe8dd`'s
+     (#7563) `providersWithUsage` intent, applied at instance granularity — and falls back to
+     per-provider stand-in rows only when nothing at all was reported. That fallback reads
+     `PROVIDER_ORDER`, so a test that mocks `PROVIDER_PRESENTATION` must cover **every**
+     `UsageProviderKind`.
+  8. **The merge floor moves with the version.** `USAGE_MERGE_COMPATIBLE_SINCE` exists for _additive_
+     bumps; this one is not additive, because a payload from before it has no instance to attribute.
+     Leaving the floor behind would admit instance-less buckets.
 
   **The contract bump is the cost:** a fleet on mixed server versions excludes older environments
-  from totals until they update. That path already existed and already says so in the UI; it is
-  why this was not folded into entry 16.
+  from totals until they update. That path already existed and already says so in the UI; it is why
+  this was not folded into entry 16.
 
 - **Drop it when:** upstream's `UsageBucket` carries an instance id. Check with
-  `grep -c instanceId packages/contracts/src/usage.ts` against clean upstream. If upstream ships
-  its own per-instance breakdown, drop **both** this and entry 16, and re-verify its ownership
-  rule against the double count in the intent above — a kind-level `ownedContribution` is the
-  natural shape to write and is wrong.
-- **Redundancy check (`e4f7b14fa`): keep.** Drop-check is **0**, and `UsageProviderKind` is still
+  `grep -c instanceId packages/contracts/src/usage.ts` against clean upstream. If upstream ships its
+  own per-instance breakdown, drop **both** this and entry 16, and re-verify its ownership rule
+  against the double count in the intent above — a kind-level `ownedContribution` is the natural
+  shape to write and is wrong.
+- **Checked at `0df043fd4`: keep.** Drop-check **0**, and `UsageProviderKind` is still
   `claude | codex | grok`, so decision 6's ramps stayed exhaustive.
 
 ### 20. No update checking, and a sidebar link to this fork with build provenance
 
 - **Intent.** The fork identifies as the fork and never offers updates. Its CI cuts no signed
-  releases, so the inherited update feed could only error against this repo — or, pointed
-  elsewhere, offer upstream's builds over this fork's. With update checking gone, the GitHub
-  link's tooltip becomes the way to see which build is running.
+  releases, so the inherited update feed could only error against this repo — or, pointed elsewhere,
+  offer upstream's builds over this fork's. With update checking gone, the GitHub link's tooltip
+  becomes the way to see which build is running.
 - **Files:** `.github/workflows/desktop-artifacts.yml` (build-step env), `apps/web/vite.config.ts`,
   `apps/web/src/vite-env.d.ts`, `apps/web/src/branding.ts`,
   `apps/web/src/components/sidebar/SidebarChrome.tsx`
 - **Re-apply.** Two halves:
   1. **Update checking off.** The workflow sets
      `T3CODE_DESKTOP_UPDATE_REPOSITORY: fork-updates-disabled` on the build step. The value is
-     deliberately single-segment: `resolveGitHubPublishConfig` requires `owner/repo` so it
-     resolves **no** publish config, and being set it also stops the `GITHUB_REPOSITORY` fallback
-     (which in Actions is this repo). electron-builder then writes no `app-update.yml` and the
-     app's own `getAutoUpdateDisabledReason` lands in its designed "no update feed is configured"
-     state. **The disable lives at the feed, not in `DesktopUpdates.ts`** — hardcoding it in the
-     updater would break its ~25 update-machine tests and diverge a file upstream actively
-     maintains.
+     deliberately single-segment: `resolveGitHubPublishConfig` requires `owner/repo` so it resolves
+     **no** publish config, and being set it also stops the `GITHUB_REPOSITORY` fallback (which in
+     Actions is this repo). electron-builder then writes no `app-update.yml` and the app's own
+     `getAutoUpdateDisabledReason` lands in its designed "no update feed is configured" state. **The
+     disable lives at the feed, not in `DesktopUpdates.ts`** — hardcoding it in the updater would
+     break its ~25 update-machine tests and diverge a file upstream actively maintains.
   2. **Sidebar GitHub link.** A utility item in the sidebar footer right of Usage, same
      `SidebarMenuButton size="icon"` shape as its neighbours, wearing the existing `GitHubIcon` in
      bright red (`text-red-500!` **needs** the important marker — `SidebarMenuButton` forces
-     `[&>svg]:text-[var(--sidebar-icon-color)]`). It is a real anchor with `target="_blank"`,
-     which covers every surface (the desktop window's `setWindowOpenHandler` routes it to the OS
-     browser). Its tooltip shows short commit hash and build time from two Vite defines beside the
-     existing `APP_VERSION` one — `BUILD_COMMIT` and `BUILD_TIMESTAMP` — exported through
-     `branding.ts`; empty values degrade the tooltip to a plain "GitHub". The item sits inside the
-     same conditional block as Settings/Usage so it hides with them on the settings pages.
+     `[&>svg]:text-[var(--sidebar-icon-color)]`). It is a real anchor with `target="_blank"`, which
+     covers every surface (the desktop window's `setWindowOpenHandler` routes it to the OS browser).
+     Its tooltip shows short commit hash and build time from two Vite defines beside the existing
+     `APP_VERSION` one — `BUILD_COMMIT` and `BUILD_TIMESTAMP` — exported through `branding.ts`; empty
+     values degrade the tooltip to a plain "GitHub". The item sits inside the same conditional block
+     as Settings/Usage so it hides with them on the settings pages.
 - **Drop it when:** never on upstream's account — this is fork identity. But **both halves need
   re-deriving every rebase**: the workflow half moves with entry 14's re-derive rule and stops
   working silently if upstream renames `T3CODE_DESKTOP_UPDATE_REPOSITORY` or reworks
   `resolveGitHubPublishConfig`; the `SidebarChrome.tsx` item must be re-applied whenever upstream
   reworks the utility menu.
-- **Redundancy check (`e4f7b14fa`): keep.** `resolveGitHubPublishConfig` still reads the env and
-  still rejects a single-segment value, so the disable holds.
-- **Browser-only:** the icon, tooltip and link. The no-feed disable shows in a packaged build as
-  the greyed "Check for updates" pill.
+- **Checked at `0df043fd4`: keep.** `resolveGitHubPublishConfig` still reads the env and still
+  rejects a single-segment value, so the disable holds.
+- **Browser-only:** the icon, tooltip and link. The no-feed disable shows in a packaged build as the
+  greyed "Check for updates" pill.
 
 ### 21. New project action lives inside the project scope menu
 
 - **Intent.** The sidebar's project filter row carried a separate icon-only folder-plus button
   squeezed against the dropdown it belongs to. The scope dropdown itself now ends with a separated
-  **New project** item that opens the same add-project command palette flow, the standalone button
-  is gone, and the filter trigger spans the full row — matching the draft hero's project menu,
-  which already ends with the same item.
+  **New project** item that opens the same add-project command palette flow, the standalone button is
+  gone, and the filter trigger spans the full row — matching the draft hero's project menu, which
+  already ends with the same item.
 - **Files:** `apps/web/src/components/Sidebar.tsx`
-- **Re-apply.** No contract or store changes; one small handler. The scope popup is a `Combobox`,
-  so the item must **not** be a `ComboboxItem` — that would join `filteredProjectScopeItems` and
-  become selectable scope. It is a plain `<button>` after `ComboboxList`, behind a
-  `ComboboxSeparator`, styled like the scope rows (`h-8 min-h-8 py-0 text-sm font-medium`,
-  `FolderPlusIcon`). The combobox owns its open state through
-  `reduceSidebarProjectScopeMenuState`, so the click handler
-  (`handleNewProjectFromScopeMenu`) dispatches `{ type: "open-changed", open: false }` before
-  calling the existing `openAddProjectCommandPalette`
-  (`openCommandPalette({ open: "add-project" })`) — the old `MenuItem` got that from
-  `closeOnClick`. Re-deriving also means deleting the `flex items-center gap-1` wrapper around
-  trigger + standalone button and dropping `flex-1` from the trigger. This is the same project-row block entry 18 restacks — re-apply the two
-  together. Mirror `DraftHeroHeadline.tsx`'s trailing "New project" item if the menu primitives
-  change shape. Deliberately untouched: `LegacySidebar.tsx` (its add-project button sits beside
-  the "Projects" section header, not a dropdown), the sidebar empty-state "Add project" button
-  (the only way in when no projects exist), and mobile (separate add-project navigation flow).
+- **Re-apply.** No contract or store changes; one small handler. The scope popup is a `Combobox`, so
+  the item must **not** be a `ComboboxItem` — that would join `filteredProjectScopeItems` and become
+  selectable scope. It is a plain `<button>` after `ComboboxList`, behind a `ComboboxSeparator`,
+  styled like the scope rows (`h-8 min-h-8 py-0 text-sm font-medium`, `FolderPlusIcon`). The combobox
+  owns its open state through `reduceSidebarProjectScopeMenuState`, so the click handler
+  (`handleNewProjectFromScopeMenu`) dispatches `{ type: "open-changed", open: false }` before calling
+  the existing `openAddProjectCommandPalette` (`openCommandPalette({ open: "add-project" })`) — the
+  old `MenuItem` got that from `closeOnClick`. Re-deriving also means deleting the
+  `flex items-center gap-1` wrapper around trigger + standalone button and dropping `flex-1` from the
+  trigger. **This is the same project-row block entry 18 restacks — re-apply the two together.**
+  Mirror `DraftHeroHeadline.tsx`'s trailing "New project" item if the menu primitives change shape.
+  Deliberately untouched: `LegacySidebar.tsx` (its add-project button sits beside the "Projects"
+  section header, not a dropdown), the sidebar empty-state "Add project" button (the only way in when
+  no projects exist), and mobile (separate add-project navigation flow).
 - **Drop it when:** upstream's project scope menu carries its own new-project item. Check with
-  `grep -n "New project" apps/web/src/components/Sidebar.tsx` against clean upstream — a hit only
-  on an icon-only `aria-label` button beside the scope menu means this is still needed.
-- **Redundancy check (`e4f7b14fa`): keep, re-derived.** Upstream still renders the standalone
-  folder-plus button next to the scope trigger and no in-menu item. Its menu is now a `Combobox`
-  (`48c176b3c`, #8627), which changes how this item is built — see the **Re-apply** note above.
+  `grep -n "New project" apps/web/src/components/Sidebar.tsx` against clean upstream — a hit only on
+  an icon-only `aria-label` button beside the scope menu means this is still needed.
+- **Checked at `0df043fd4`: keep, clean replay.** Upstream still renders the standalone folder-plus
+  button next to the scope trigger and no in-menu item.
 - **Browser-only:** the menu item placement and the widened trigger row.
 
 ### 22. Subscription usage for Claude and Codex, in the picker and the context bubble
 
-- **Intent.** A user driving two or three subscriptions all day has no way to see which one has
-  room left without leaving the app, so the choice of provider is made blind and the first signal
-  that a window is exhausted is a refused turn mid-task. Both priority providers already report
-  this and T3 Code already received it and dropped it on the floor: `ClaudeAdapter` and
-  `CodexAdapter` translate the CLIs' native rate-limit messages into `account.rate-limits.updated`,
-  `providerRuntime.ts` declares the event, and `ProviderRuntimeIngestion` has no case for it. The
-  allowance is now read where the provider is chosen (the model picker) and where the current
-  turn's cost is already shown (the context bubble under the composer).
+- **Intent.** A user driving two or three subscriptions all day has no way to see which one has room
+  left without leaving the app, so the choice of provider is made blind and the first signal that a
+  window is exhausted is a refused turn mid-task. Both priority providers already report this and T3
+  Code already received it and dropped it on the floor: `ClaudeAdapter` and `CodexAdapter` translate
+  the CLIs' native rate-limit messages into `account.rate-limits.updated`, `providerRuntime.ts`
+  declares the event, and `ProviderRuntimeIngestion` has no case for it. The allowance is now read
+  where the provider is chosen (the model picker) and where the current turn's cost is already shown
+  (the context bubble under the composer).
 - **Files:** `packages/contracts/src/server.ts`,
   `apps/server/src/provider/providerSubscriptionUsage.ts` (new, + test),
   `apps/server/src/provider/{providerSnapshot,providerStatusCache}.ts`,
@@ -581,68 +522,66 @@ untouched lines; that is not an intentional edit.
   and no contract version bump. Decisions worth keeping:
   1. **Read the snapshot, do not accumulate the stream.** Claude's `rate_limit_event` carries one
      window per event (`rateLimitType` is a single value), so reconstructing the full set from the
-     stream means holding state and still showing nothing until a turn has run. The SDK's
-     structured `/usage` control request returns every window at once, including the per-model
-     weekly buckets. Codex has the same shape available as `account/rateLimits/read`.
+     stream means holding state and still showing nothing until a turn has run. The SDK's structured
+     `/usage` control request returns every window at once, including the per-model weekly buckets.
+     Codex has the same shape available as `account/rateLimits/read`.
   2. **Collected in the status probe, not during a turn.** Both probes already spawn the CLI and
      already ask it an account question (`account/read`; the SDK initialization handshake), so the
      allowance is known before the first turn and the picker is useful cold. No new poll loop was
      added — a probe spawns a process, and the existing refresh cadence is the budget.
-  3. **`Effect.timeoutOption` does not bound the Claude request.** It cannot interrupt a
-     `tryPromise` whose promise never settles, and a CLI that does not implement the control
-     request simply never answers it — the probe hangs past its own 25s ceiling. The deadline
-     therefore lives _inside_ the promise, as an `AbortSignal.timeout` raced against the call and
-     folded together with the fiber's signal. Codex needs none of this: its client resolves
-     through `Deferred.await`, which is interruptible, so the ordinary Effect timeout works.
-     `ClaudeCapabilitiesProbe.test.ts` is the regression guard — its fake CLI answered only
-     `initialize`, and the un-deadlined version hung it for the full 120s test timeout.
-  4. **The request is gated on `subscriptionType`.** Only a claude.ai plan has windows to report,
-     so API-key, Bedrock, Vertex and logged-out instances skip the call entirely rather than
-     paying the deadline every refresh to learn what the account payload already said.
+  3. **`Effect.timeoutOption` does not bound the Claude request.** It cannot interrupt a `tryPromise`
+     whose promise never settles, and a CLI that does not implement the control request simply never
+     answers it — the probe hangs past its own 25s ceiling. The deadline therefore lives _inside_ the
+     promise, as an `AbortSignal.timeout` raced against the call and folded together with the fiber's
+     signal. Codex needs none of this: its client resolves through `Deferred.await`, which is
+     interruptible, so the ordinary Effect timeout works. `ClaudeCapabilitiesProbe.test.ts` is the
+     regression guard — its fake CLI answered only `initialize`, and the un-deadlined version hung it
+     for the full 120s test timeout.
+  4. **The request is gated on `subscriptionType`.** Only a claude.ai plan has windows to report, so
+     API-key, Bedrock, Vertex and logged-out instances skip the call entirely rather than paying the
+     deadline every refresh to learn what the account payload already said.
   5. **The SDK is read structurally, not by its types.** The method is named
      `usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET` and documented to be renamed;
-     `model_scoped` (the per-model buckets) ships server-side ahead of the npm types. The call
-     site takes `unknown` and the normalizer validates, so both a rename and a field arriving
-     early are non-events — and **no lockfile bump was needed**, since the per-model buckets come
-     over the wire from the user's own installed CLI, not from the npm package.
+     `model_scoped` (the per-model buckets) ships server-side ahead of the npm types. The call site
+     takes `unknown` and the normalizer validates, so both a rename and a field arriving early are
+     non-events — and **no lockfile bump was needed**, since the per-model buckets come over the wire
+     from the user's own installed CLI, not from the npm package.
   6. **Codex nests its windows under a `rateLimits` key.** `account/rateLimits/read` returns an
-     envelope, not a bare snapshot; the normalizer unwraps it when present and still accepts a
-     bare one, which also covers the `account/rateLimits/updated` notification. Unit tests that
-     feed the normalizer an already-unwrapped snapshot exercise it correctly and never the wiring
-     — this shipped broken once for exactly that reason.
+     envelope, not a bare snapshot; the normalizer unwraps it when present and still accepts a bare
+     one, which also covers the `account/rateLimits/updated` notification. Unit tests that feed the
+     normalizer an already-unwrapped snapshot exercise it correctly and never the wiring — this
+     shipped broken once for exactly that reason.
   7. **Never cached to disk.** `writeProviderStatusCache` already strips `updateState`;
      `subscriptionUsage` is stripped the same way. A percentage rehydrated from a previous run is
      worse than no percentage.
-  8. **Ageing happens where the clock is read, not in a memo.** The meter ages the raw snapshot
-     itself and reads `Date.now()` when its popover opens; the picker reads it once per open, its
-     popup being unmounted while closed. Deciding staleness in a composer memo keyed on the
-     snapshot freezes the decision exactly when provider refreshes stop, which is the case the
-     one-hour age-out exists for. Still **no self-ticking clock** — a continuously repainting
-     meter in the composer is exactly the GPU cost this app avoids.
+  8. **Ageing happens where the clock is read, not in a memo.** The meter ages the raw snapshot itself
+     and reads `Date.now()` when its popover opens; the picker reads it once per open, its popup being
+     unmounted while closed. Deciding staleness in a composer memo keyed on the snapshot freezes the
+     decision exactly when provider refreshes stop, which is the case the one-hour age-out exists
+     for. Still **no self-ticking clock** — a continuously repainting meter in the composer is exactly
+     the GPU cost this app avoids.
   9. **Stored as used, rendered as left.** Both providers report consumption (Codex `usedPercent`,
      Claude `utilization`), so that is what crosses the wire; the UI always says "N% left" because
      that is the question being asked. The bar still fills with consumption, matching the context
      meter directly above it.
-  10. **Labels are strings, not an enum.** The set is open — Claude's per-model bucket names come
-      from the server, and Codex names its windows only by `windowDurationMins` (300 → "5 hour",
-      10080 → "Weekly"). `windows` is a `ForwardCompatibleArray` so an older client drops a bucket
-      it cannot render instead of failing the whole config decode.
+  10. **Labels are strings, not an enum.** The set is open — Claude's per-model bucket names come from
+      the server, and Codex names its windows only by `windowDurationMins` (300 → "5 hour", 10080 →
+      "Weekly"). `windows` is a `ForwardCompatibleArray` so an older client drops a bucket it cannot
+      render instead of failing the whole config decode.
   11. **Cursor, Grok and OpenCode report nothing**, so they show nothing.
 
   **Mobile carries the data but not the UI.** `ServerProvider` reaches mobile unchanged, so
-  `serverConfig.providers` already has the field; mobile has no context bubble and its own
-  provider sheets, so rendering it there is separate work.
+  `serverConfig.providers` already has the field; mobile has no context bubble and its own provider
+  sheets, so rendering it there is separate work.
 
 - **Drop it when:** upstream's `ServerProvider` carries a subscription/rate-limit field, or
   `ProviderRuntimeIngestion` grows a case for `account.rate-limits.updated`. Check with
   `grep -c subscriptionUsage packages/contracts/src/server.ts` and
   `grep -n 'account.rate-limits.updated' apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts`
-  against clean upstream. If upstream ships its own version, check decisions 3 and 6 against it
-  first — both are things the natural implementation gets wrong.
-- **Redundancy check (`e4f7b14fa`): keep.** Both drop-checks come back **0**. Upstream `c131f2892`
-  (#8610) stopped querying Claude context usage after turns — the same "do not pay for this during
-  a turn" intent as decision 2, and it touches `ClaudeAdapter` only, so the probe-side read is
-  untouched.
+  against clean upstream. If upstream ships its own version, check decisions 3 and 6 against it first
+  — both are things the natural implementation gets wrong.
+- **Checked at `0df043fd4`: keep.** Both drop-checks come back **0**. Upstream `f86c5e8c8` (#8634)
+  added IDE-skip env vars to the same Claude probe spawn — adjacent to the usage read, not colliding.
 - **Browser-only:** the picker footer and the Subscription section of the context bubble.
 
 ## 4. Superseded changes
@@ -651,34 +590,34 @@ Changes the fork used to carry that upstream has since implemented. **Do not re-
 
 | #            | Fork change                       | Superseded by                                                             | Verified at |
 | ------------ | --------------------------------- | ------------------------------------------------------------------------- | ----------- |
-| 1            | Windows build: no shell mode      | `edb1240` — _fix(cli): publish nightly branded favicons (#4372)_          | `e4f7b14fa` |
-| 4            | Terminal Ctrl-chord forwarding    | `acf761b2` — _feat(web): render terminals with libghostty-vt (#4860)_     | `e4f7b14fa` |
-| 5 (core)     | Thread-scoped changed files       | `AssistantChangedFilesSection` per-turn checkpoints                       | `e4f7b14fa` |
-| 8            | Full timestamp on hover           | `formatChatTimestampTooltip` in `apps/web/src/timestampFormat.ts`         | `e4f7b14fa` |
-| 9            | Always-visible new-thread btn     | `0de95407` — _feat: sidebar v2 is now the default sidebar (#5672)_        | `e4f7b14fa` |
-| 10           | Package-local vitest configs      | `vp` (vite-plus) test-runner migration                                    | `e4f7b14fa` |
-| 12 (symlink) | `CLAUDE.md` symlink → `AGENTS.md` | `4cb676cc` — _docs: point CLAUDE.md at AGENTS.md with an @import (#7171)_ | `e4f7b14fa` |
+| 1            | Windows build: no shell mode      | `edb1240` — _fix(cli): publish nightly branded favicons (#4372)_          | `0df043fd4` |
+| 4            | Terminal Ctrl-chord forwarding    | `acf761b2` — _feat(web): render terminals with libghostty-vt (#4860)_     | `0df043fd4` |
+| 5 (core)     | Thread-scoped changed files       | `AssistantChangedFilesSection` per-turn checkpoints                       | `0df043fd4` |
+| 8            | Full timestamp on hover           | `formatChatTimestampTooltip` in `apps/web/src/timestampFormat.ts`         | `0df043fd4` |
+| 9            | Always-visible new-thread btn     | `0de95407` — _feat: sidebar v2 is now the default sidebar (#5672)_        | `0df043fd4` |
+| 10           | Package-local vitest configs      | `vp` (vite-plus) test-runner migration                                    | `0df043fd4` |
+| 12 (symlink) | `CLAUDE.md` symlink → `AGENTS.md` | `4cb676cc` — _docs: point CLAUDE.md at AGENTS.md with an @import (#7171)_ | `0df043fd4` |
 
-- **1 — Windows build shell mode.** The fork removed `shell: process.platform === "win32"` from
-  the `buildCmd` spawn because shell mode broke builds from paths containing spaces. Upstream now
-  hardcodes `shell: false` on that step and routes other spawns through `resolveSpawnCommand` —
-  the fork's intent, arrived at independently.
+- **1 — Windows build shell mode.** The fork removed `shell: process.platform === "win32"` from the
+  `buildCmd` spawn because shell mode broke builds from paths containing spaces. Upstream now
+  hardcodes `shell: false` on that step and routes other spawns through `resolveSpawnCommand` — the
+  fork's intent, arrived at independently.
 - **4 — terminal Ctrl-chord forwarding.** The fork mapped plain `Ctrl+[a-z]` to its control byte
-  because the app's keybindings swallowed Ctrl+C. Upstream's libghostty-vt surface now routes
-  every unclaimed key through `GhosttyCore.encodeKey` with `preventDefault()` **and**
-  `stopPropagation()`. Keeping the fork block would be **actively harmful** — returning `false`
-  from `beforeKey` bails before `encodeKey`, so chords would bypass any negotiated Kitty
-  keyboard-protocol encoding. Behavioral note: upstream binds copy to Ctrl+Shift+C, so plain
-  Ctrl+C now interrupts even with a selection, matching every other terminal.
+  because the app's keybindings swallowed Ctrl+C. Upstream's libghostty-vt surface now routes every
+  unclaimed key through `GhosttyCore.encodeKey` with `preventDefault()` **and** `stopPropagation()`.
+  Keeping the fork block would be **actively harmful** — returning `false` from `beforeKey` bails
+  before `encodeKey`, so chords would bypass any negotiated Kitty keyboard-protocol encoding.
+  Behavioral note: upstream binds copy to Ctrl+Shift+C, so plain Ctrl+C now interrupts even with a
+  selection, matching every other terminal.
 - **5 (core) — thread-scoped changed files.** Upstream attributes changed files per turn. Only the
   commit-preselect button remains; see entry 5.
-- **8 — hover timestamp.** Upstream renders `formatChatTimestampTooltip` as a real tooltip on both
-  the `createdAt` and `updatedAt` rows — a strictly better version of the same idea.
-- **9 — always-visible new-thread button.** Sidebar v2 became the default; its button sits in a
-  plain `<div className="shrink-0">` with no hover gating and the tooltip this entry wanted.
+- **8 — hover timestamp.** Upstream renders `formatChatTimestampTooltip` as a real tooltip on both the
+  `createdAt` and `updatedAt` rows — a strictly better version of the same idea.
+- **9 — always-visible new-thread button.** Sidebar v2 became the default; its button sits in a plain
+  `<div className="shrink-0">` with no hover gating and the tooltip this entry wanted.
   `LegacySidebar.tsx` still carries the old crossfade; leave it, it is opt-in.
-- **10 — package-local vitest configs.** The `vp` migration made them inapplicable and upstream
-  ships none of its own. Revisit only if those process-spawning tests flake under `vp`.
+- **10 — package-local vitest configs.** The `vp` migration made them inapplicable and upstream ships
+  none of its own. Revisit only if those process-spawning tests flake under `vp`.
 - **12 (symlink half).** Upstream replaced the symlink with a regular file whose content is
   `@AGENTS.md` — the `@file` import syntax in the one position where it resolves. **Do not restore
   the symlink**; re-adding it would silently revert #7171 on every future rebase. Entry 12 still
@@ -686,20 +625,20 @@ Changes the fork used to carry that upstream has since implemented. **Do not re-
 
 ## 5. Dropped changes
 
-Removed by choice, not superseded. Upstream has **not** implemented these, so a redundancy check
-will keep reporting them as missing — that is expected. **Do not re-introduce without an explicit
-decision to take the maintenance back on.**
+Removed by choice, not superseded. Upstream has **not** implemented these, so a redundancy check will
+keep reporting them as missing — that is expected. **Do not re-introduce without an explicit decision
+to take the maintenance back on.**
 
 - **2 & 3 — GitHub Copilot CLI and Gemini CLI providers.** Dropped at the 2026-08-05 rebase. A
-  complete provider layer for two agent CLIs upstream does not support (~6,400 lines), which was
-  the fork's entire source diff and its entire maintenance cost: every upstream change to the
+  complete provider layer for two agent CLIs upstream does not support (~6,400 lines), which was the
+  fork's entire source diff and its entire maintenance cost: every upstream change to the
   provider/driver contract broke it silently at typecheck. Incompatible with a thin,
-  rebase-indefinitely fork. If you want them back, do not resurrect the old files — re-derive
-  against `apps/server/src/provider/builtInDrivers.ts` and the current `Drivers/ClaudeDriver.ts`,
-  and check first whether upstream has shipped its own.
-- **11 — TODO list moved into this file.** Retired by the maintainer in `f194c2d6`; the TODO
-  section below stays, only the entry documenting the old `TODO.md` deletion is gone. Treat 11 as
-  a permanently retired number.
+  rebase-indefinitely fork. If you want them back, do not resurrect the old files — re-derive against
+  `apps/server/src/provider/builtInDrivers.ts` and the current `Drivers/ClaudeDriver.ts`, and check
+  first whether upstream has shipped its own.
+- **11 — TODO list moved into this file.** Retired by the maintainer in `f194c2d6`; the TODO section
+  below stays, only the entry documenting the old `TODO.md` deletion is gone. Treat 11 as a
+  permanently retired number.
 
 ---
 
