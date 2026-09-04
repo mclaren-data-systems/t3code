@@ -138,12 +138,13 @@ jobs:
         with:
           targets: ${{ matrix.rust_target }}
 
-      - name: Install ImageMagick
+      - name: Install Linux desktop build libraries
         if: matrix.platform == 'linux'
         shell: bash
         run: |
+          sudo apt-get update
+          sudo apt-get install -y libsecret-1-dev pkg-config
           if ! command -v magick >/dev/null 2>&1 && ! command -v convert >/dev/null 2>&1; then
-              sudo apt-get update
               sudo apt-get install -y imagemagick
           fi
 
