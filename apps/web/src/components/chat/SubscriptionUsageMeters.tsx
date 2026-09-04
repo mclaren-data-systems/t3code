@@ -2,11 +2,7 @@ import type { ServerProviderUsageLimits } from "@t3tools/contracts";
 import { formatResetsIn } from "@t3tools/shared/usageLimits";
 
 import { cn } from "~/lib/utils";
-import {
-  formatRemainingPercent,
-  remainingPercent,
-  usageBarColor,
-} from "./SubscriptionUsage.logic";
+import { formatRemainingPercent, remainingPercent, usageBarColor } from "./SubscriptionUsage.logic";
 
 /**
  * One row per subscription window: what it is, how much is left, and when it

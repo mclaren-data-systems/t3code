@@ -11,9 +11,10 @@ GitHub-hosted runners instead of upstream's Blacksmith ones, nothing needing a c
 lacks, unsigned desktop artifacts published as pruned development prereleases). Around that sit
 fork identity (this file, the `README.md` banner, the `AGENTS.md` policy sections, no update
 checking, a sidebar link to this repo) and a handful of source changes: multi-instance provider
-support (15, 16, 19), a configurable worktree branch prefix (17), provider subscription usage in
-the model picker and context bubble (22), and five web UX changes (5, 6, 7, 18, 21). Everything
-else is byte-identical to upstream — `native/`, `scripts/`, `apps/desktop/`,
+support (15, 16, 19), a configurable worktree branch prefix (17), upstream's provider subscription
+limits surfaced in the model picker and context bubble (22, web-only since this rebase), and five
+web UX changes (5, 6, 7, 18, 21). Everything else is byte-identical to upstream — `native/`,
+`scripts/`, `apps/desktop/`,
 `packages/client-runtime/`, `apps/server/src/persistence/`, `pnpm-lock.yaml` and
 `pnpm-workspace.yaml` are untouched, and the only edits under `infra/` and `packaging/` are the
 entry 14 notes explaining which workflow no longer runs them. Mobile carries entry 19's usage
@@ -26,98 +27,91 @@ intent against current upstream code, taking upstream's version of anything that
 
 ## 2. Last rebase
 
-> **2026-09-04**, onto `pingdotgg/t3code` `main` at **`9c9ae3dc`** — _fix(server): keep events
-> during thread subscription startup (#9521)_. Took in **233 upstream commits**
-> (`0df043fd4..9c9ae3dc`) and replayed **32 of the fork's 33 commits**; the 33rd was dropped as
-> already upstream (below). The previous tip `9e8c96b9f` is backed up at
-> `origin/backup/main-pre-rebase-2026-09-04`; `main` was then force-pushed to the rebased tip.
+> **2026-09-04** (second sync that day), onto `pingdotgg/t3code` `main` at **`c8f77e0d`** —
+> _perf(server): stop caching unused OpenCode tool parts (#9738)_. Took in **108 upstream commits**
+> (`9c9ae3dc..c8f77e0d`) and replayed **32 of the fork's 33 commits**; the 33rd was skipped because
+> its whole content was either superseded or folded into the re-derivation below. The previous tip
+> `d2f75881` is backed up at `origin/backup/main-pre-rebase-2026-09-04-2` (the plain
+> `-2026-09-04` name was already taken by the morning's rebase); `main` was then force-pushed to
+> the rebased tip.
 >
-> **One supersession: the banner half of entry 15.** Upstream's `06336460` (#9348, Google
-> Antigravity) extracted `getProviderStatusMessage`, whose first line is
-> `if (status.message) return status.message;` — exactly what the fork had inlined so a
-> directory-naming server message could reach the user in chat. `ProviderStatusBanner.tsx` and its
-> test are now byte-identical to upstream; the fork's two static-markup tests were dropped because
-> upstream's own `getProviderStatusMessage` describe block covers both cases directly. The rest of
-> entry 15 (three-way auth classification, `configDirectory` on the wire, the settings card block)
-> still stands. Every other drop-check comes back **0**.
+> **One supersession: the server half of entry 22.** Upstream's `19d8ab2a` (#9507, Limits tab),
+> `1641b4ab` (#9534, Codex reset credits) and `b34ff8f5` (#9584) ship `ServerProvider.usageLimits`:
+> Claude's `get_usage` read in the capabilities probe, Codex's `account/rateLimits/read`, a
+> `ProviderUsageLimitsIngestion` layer for the mid-turn `account.rate-limits.updated` event the
+> fork's entry named as its own drop-check, per-model weekly buckets read structurally, and a Limits
+> view on the Usage page for web and mobile. That is everything the fork collected and more, so the
+> fork's contract field, `providerSubscriptionUsage.ts`, its probe changes in `ClaudeProvider.ts` /
+> `CodexProvider.ts`, the cache strip and both test files are gone — those server files are
+> byte-identical to upstream again. What upstream does **not** do is put the numbers where the
+> provider is chosen, so entry 22's web half was **re-derived** onto `usageLimits`: same two
+> surfaces, same "N% left" rule, same open-time ageing, reset countdowns now from upstream's
+> `formatResetsIn`, and an `unavailable` snapshot renders nothing. Every other drop-check comes
+> back **0**.
 >
-> **The `.coderabbit.yaml` reindent commit is gone**, as the last rebase said it should be: upstream
-> reformatted the file itself, so `git rebase` dropped the fork's repair as already-upstream. It
-> never had an entry number and needs no replacement.
+> **Entry 14: two new upstream workflows, both declined.** `windows-tests.yml` (`f96a220b`, #9538)
+> is a manual-only Windows lane on `blacksmith-8vcpu-windows-2025` whose own header says nothing
+> in the suite passes on Windows yet — it fails the runner rule and is not a quality gate.
+> `cursor-hygiene-webhook.yml` (`44701efd`, `e3723e06`) POSTs repository events to Cursor using two
+> `CURSOR_T3CODE_*` secrets — community tooling needing credentials. `.github/VOUCHED.td` was
+> updated upstream (`95390ed7`) and stays deleted with `pr-vouch.yml`. `ci.yml` and `release.yml`
+> were **untouched** this range, so `desktop-artifacts.yml` has no drift to port. The kept set is
+> unchanged: `ci.yml`, `desktop-artifacts.yml`, `issue-labels.yml`, `thread-transfer-report.yml`.
 >
-> **Entry 14 needed a real port, not just a replay.** Upstream's `498ab9c3` (#7261, Chromium cookie
-> keys on Linux) added `libsecret-1-dev pkg-config` installs to `ci.yml` (which merged in cleanly)
-> **and** to `release.yml`'s Linux desktop build — a file this fork deletes, so that half arrived as
-> nothing at all. `desktop-artifacts.yml` mirrors that build job and would have started failing on
-> Linux with no merge conflict to warn anyone, which is the silent drift the entry exists to catch.
-> Its `Install ImageMagick` step is now `Install Linux desktop build libraries` and installs the two
-> packages unconditionally. Upstream's other `release.yml` work this range (`fff33f9e`, `db4bf949`)
-> is a cross-job pnpm-verification cache that only pays off in a multi-job signed release; not
-> ported. `.github/VOUCHED.td` (`b21d8724`) stays deleted with `pr-vouch.yml`. **No new upstream
-> workflow files**, so the kept set is unchanged: `ci.yml`, `desktop-artifacts.yml`,
-> `issue-labels.yml`, `thread-transfer-report.yml`.
+> **Two ports that no merge conflict would have surfaced** (both found by typecheck):
 >
-> **Eleven conflicts, all of them upstream moving code the fork sits next to:**
+> - Entry 7's `threadMessageHistoryStore.ts` used `createDebouncedStorage`, which `dab5f6e6`
+>   (#9695) replaced with a typed `createDeferredStorage(base, serialize, ms)`. Ported with an
+>   identity serializer, since `createJSONStorage` already stringifies before the store sees it.
+> - Upstream's new `UsageLimits.tsx` reads `PROVIDER_PRESENTATION[kind].color`, a field entry 19
+>   replaced with a `colors` ramp. Now reads `colors[0]`, the brand shade.
 >
-> - `.github/{VOUCHED.td,workflows/release.yml}` — modify/delete. Resolved as delete: entry 14.
-> - `docs/internals/ci.md` — upstream documented the release-only pnpm verification cache. Dropped;
->   it describes a workflow this fork does not carry.
-> - `ClaudeSkills.ts` — upstream added managed-settings and `skillOverrides` handling around the
->   spot entry 15 moved `resolveClaudeConfigDirPath` out of. Kept upstream wholesale, minus the
->   moved function (verified identical to the `ClaudeHome.ts` copy) and its now-stale doc comment.
-> - `ClaudeProvider.ts` / `SidebarChrome.tsx` / `ContextWindowMeter.tsx` — import lists; unioned.
->   `SidebarChrome.tsx` also carried a local `T3Wordmark` that upstream extracted to its own module
->   in `b520120c`; the fork's copy was dropped for the import.
-> - `ProviderRegistry.test.ts` — upstream context only; entry 15's tests kept.
-> - `ProviderInstanceCard.tsx` — upstream's `6effe0a2` (#8508) rebuilt the editor as a label-left
->   field grid. Entry 15's "Resolved config directory" block was **re-derived** into that grid
->   (label span + content cell) rather than replayed.
-> - `UsageService.ts`, twice — upstream's `8f1ef8b9` (#9024) split the scan into a `collectDirs`
->   pass returning `ScannedDir[]` and a separate reporting loop. Entry 16's `FileSystem` provision
->   moved to the new call site; entry 19's `instanceId`/`displayName`/`accentColor` now ride
->   `ScannedDir`, typed as `Pick<UsageTranscriptSource, …>` so the branded `ProviderInstanceId`
->   stays in sync rather than being restated.
-> - `SourceControlSettings.tsx` — upstream made `SourceControlWritingSettingsSection` render
->   unconditionally (its rows are `serverScoped`). Kept that; entry 17's section stays gated on
->   `isPrimaryEnvironment`.
-> - `settingsSearch.ts` — upstream added five source-control entries. Entry 17's row was reinserted
->   after `source-control` and given the `searchTerms` + `primaryOnly: true` its neighbours now
->   carry.
-> - `Sidebar.tsx` + `docs/user/thread-sidebar.md` — import list and doc section; entries 18 and 21
->   otherwise replayed clean across eight upstream sidebar commits. `resolveSettledTimestamp` was
->   dropped from the import: upstream deleted it.
+> **Six conflicts, all of them upstream moving code the fork sits next to:**
+>
+> - `.github/VOUCHED.td` — modify/delete. Resolved as delete: entry 14.
+> - `docs/internals/ci.md` — upstream documented the Windows lane and (again) `release.yml`;
+>   both paragraphs dropped, a one-line note on the declined Windows lane added.
+> - `ProviderInstanceCard.tsx` — rewritten a **fourth** time (`343db2c3` #9354 settings
+>   reorganisation, `8357eef1`): the card is now a stack of `SettingsSection`s. Entry 15's
+>   "Resolved config directory" block was re-derived as a `SettingsRow` at the end of the Runtime
+>   section, its hint in the row description; upstream had also dropped the `ScrollArea` import it
+>   uses.
+> - `apps/mobile/.../UsageRouteScreen.tsx` — upstream added `<UsageLimitsSection />` where entry
+>   19 renamed the `merged` prop to `series`; unioned.
+> - `docs/user/usage.md` — entry 19's per-instance paragraph now sits ahead of upstream's Limits
+>   section.
+> - `ChatComposer.tsx` — import list only; entry 22 (above) then rewrote its own hunk.
 >
 > **Checked against incoming upstream work and needed no change:**
 >
-> - Entry 7 against **19 composer commits**, including the resting-composer collapse work
->   (`5b8445b7`, `044ea8e3`, `03728361`, `77138cf3`, `126afb56`, `522ebe65`). Both anchors survived:
->   the history hook still sits after the slash/mention menu handling and after the Enter submission
->   intent in `onComposerCommandKey`, and the append still rides `submitComposerDraft`'s
->   `didDispatch`.
-> - Entries 16 and 19 against `8f1ef8b9`'s append-only transcript scanning — it changed _how_ bytes
->   are read, not which directories are enumerated. `deriveProviderInstanceConfigMap` is untouched,
->   so entry 16's duplicated default-slot merge rule has not drifted.
-> - Entry 19's provider ramps against `06336460`: upstream's new **Antigravity** driver is a
->   `ProviderDriverKind`, not a `UsageProviderKind` — that literal is still `claude | codex | grok`,
->   so the `Record<UsageProviderKind, …>` ramps stay exhaustive.
-> - Entry 22 against `03542836` (#9084, remote Claude model manifest) and `c17d02cf` — both change
->   which models the probe reports, not the `/usage` control request beside it.
-> - Entry 6 (`uiStateStore.ts`), entry 17 (`packages/shared/src/git.ts`) and the usage contracts —
->   **zero** upstream commits this range.
-> - Entry 20's disable: `resolveGitHubPublishConfig` still reads `T3CODE_DESKTOP_UPDATE_REPOSITORY`
->   and still rejects a single-segment value.
+> - Entry 7 against **161 changed lines** in `ChatComposer.tsx` (compact-composer, slash-menu and
+>   helper-text work). Both anchors survived: the history hook still runs after the Enter
+>   submission intent in `onComposerCommandKey`, and the append still rides
+>   `submitComposerDraft`'s `didDispatch`.
+> - Entries 18 and 21 against `f0347322` (draft indicator), `c7bf3115` (multi-select unpin) and
+>   `ec3ec6f0` (muted branch name) in `Sidebar.tsx`; the header block replayed clean.
+> - Entry 17 against `343db2c3`'s settings reorganisation: `settingsSearch.ts` gained a
+>   `usage-providers` row and a renamed appearance target; entry 17's row replayed clean and
+>   `WorktreeBranchSettingsSection` still mounts from `SourceControlSettings.tsx`.
+> - Entry 19's ramps against `UsageProviderKind`, still `claude | codex | grok`; entry 16's
+>   duplicated merge rule against `deriveProviderInstanceConfigMap`, untouched this range.
+> - Entry 20: `resolveGitHubPublishConfig` is untouched (the build script's only change is Windows
+>   sidecar packing); `SidebarChrome.tsx`'s `bf40fa78` wordmark alignment replayed clean.
+> - Entry 6 (`uiStateStore.ts`) and entry 17's `packages/shared/src/git.ts` — **zero** upstream
+>   commits this range.
 >
-> **Verification.** Node **24.13.1** was put on `PATH` first (`package.json` pins
-> `engines.node: ^24.13.1`); the host ships 22. `pnpm install --frozen-lockfile` succeeded with no
-> lockfile drift. `vp run -r typecheck` is clean across all 15 packages (Effect lint _suggestions_
-> only, all pre-existing). `vp lint` reports **0 errors**, warnings only. `vp fmt --check` passes.
-> The 19 fork-touched test files run **475 passed, 1 failed**; the failure is the `server.test.ts`
-> case _"reports workspace root stat failures without relabeling them as missing"_, which
-> `chmod 0o000`s a directory and expects the stat to fail — **it cannot fail as uid 0**, and the
-> rebase container runs as root. That file's fork diff does not touch the case, so this is the same
-> environment artifact as last rebase, not a regression. One `ProviderCommandReactor.test.ts` case
-> failed only when that file was run alongside five others and passed on its own — that file sets
-> `fileParallelism: false`, which is why CI shards `test_server` by itself.
+> **Verification.** Node **24.13.1** was fetched as a tarball and put on `PATH` first (`package.json`
+> pins `engines.node: ^24.13.1`; the host ships 22 and `pnpm env` refuses to manage Node there).
+> `pnpm install --frozen-lockfile` succeeded with no lockfile drift. `vp run -r typecheck` is clean
+> across all 15 packages after the two ports above (Effect lint _suggestions_ only, all
+> pre-existing). `vp lint` over the 82 files the fork changes reports **0 errors**, warnings only.
+> `vp fmt --check` passes. The 17 fork-touched test files run **629 passed, 1 failed**; the failure
+> is the `server.test.ts` case _"reports workspace root stat failures without relabeling them as
+> missing"_, which `chmod 0o000`s a directory and expects the stat to fail — **it cannot fail as
+> uid 0**, and the rebase container runs as root. Same environment artifact as the last two
+> rebases, not a regression. Nothing was checked in a browser: the re-derived picker footer and
+> context-bubble section of entry 22, and the re-derived settings row of entry 15, want one look in
+> a real client.
 >
 > Keep syncing by rebase, not merge — a merge commit makes "what does this fork carry?" a graph
 > question instead of a `git diff upstream/main HEAD` one.
@@ -125,8 +119,8 @@ intent against current upstream code, taking upstream's version of anything that
 ## 3. Fork changes
 
 > Entry numbers are **stable identifiers** and are never renumbered. A gap means the entry moved to
-> section 4 or 5. Numbers 1, 4, 8, 9, 10 and the symlink half of 12 are superseded; 2, 3 and 11 are
-> dropped.
+> section 4 or 5. Numbers 1, 4, 8, 9, 10, the symlink half of 12, the banner half of 15 and the
+> server half of 22 are superseded; 2, 3 and 11 are dropped.
 
 ### 5. Commit exactly the files a turn changed
 
@@ -147,8 +141,8 @@ intent against current upstream code, taking upstream's version of anything that
   reworks that dialog.
 - **Drop it when:** upstream's commit dialog can be opened with a preselected file set. Check with
   `grep -rn "onCommitTurnFiles\|Preselection" apps/web/src` against clean upstream.
-- **Checked at `9c9ae3dc`: keep.** Drop-check empty. Upstream reworked `session-logic.ts` five
-  times this range and `GitActionsControl.tsx` twice; both replayed clean.
+- **Checked at `c8f77e0d`: keep.** Drop-check empty. Upstream's pull-request preview work
+  (`95103905`, #9631) reworked `session-logic.ts` again; replayed clean.
 - **Browser-only:** the button-to-dialog flow. Unit tests cover path matching only.
 
 ### 6. Keep the completed dot until the thread is actually read
@@ -167,7 +161,7 @@ intent against current upstream code, taking upstream's version of anything that
   `LegacySidebar.tsx` is opt-in and untouched.
 - **Drop it when:** upstream's `uiStateStore.ts` tracks a completion acknowledgement. Check with
   `grep -c AcknowledgedAt apps/web/src/uiStateStore.ts` against clean upstream.
-- **Checked at `9c9ae3dc`: keep.** No upstream commit touched `uiStateStore.ts` this range; it
+- **Checked at `c8f77e0d`: keep.** No upstream commit touched `uiStateStore.ts` this range; it
   still tracks only `threadLastVisitedAtById`.
 
 ### 7. Shell-style message recall in the composer
@@ -186,9 +180,10 @@ intent against current upstream code, taking upstream's version of anything that
   `submitComposerDraft`'s `didDispatch` so validation failures record no phantom entries.
 - **Drop it when:** upstream's composer recalls prior messages. Check with
   `grep -c MessageHistory apps/web/src/components/chat/ChatComposer.tsx` against clean upstream.
-- **Checked at `9c9ae3dc`: keep.** No history recall upstream. The composer keeps churning — **19
-  commits this range**, including the resting-composer collapse work — but
-  both anchors survived again — see section 2.
+- **Checked at `c8f77e0d`: keep, one port.** No history recall upstream; both composer anchors
+  survived again. `threadMessageHistoryStore.ts` moved from `createDebouncedStorage` to upstream's
+  new typed `createDeferredStorage` (`dab5f6e6`, #9695) with an identity serializer — see
+  section 2. The storage helper is the piece of this entry most likely to move again.
 - **Browser-only:** the arrow-key interaction. Unit tests cover the pure navigation rules only.
 
 ### 12. `AGENTS.md`: fork Git/GitHub policy
@@ -201,7 +196,7 @@ intent against current upstream code, taking upstream's version of anything that
 - **Re-apply.** Take upstream's `AGENTS.md` prose wholesale and re-insert the two fork sections.
   `CLAUDE.md` is **not** part of this entry — take upstream's regular file containing `@AGENTS.md`
   and do not restore the old symlink (see section 4).
-- **Checked at `9c9ae3dc`: keep, clean replay.** Upstream touched neither file.
+- **Checked at `c8f77e0d`: keep, clean replay.** Upstream touched neither file.
 
 ### 13. Fork identity in `README.md`, and this file
 
@@ -211,8 +206,9 @@ intent against current upstream code, taking upstream's version of anything that
 - **Re-apply.** The banner is delimited by `<!-- FORK-BANNER:START -->` / `<!-- FORK-BANNER:END -->`
   — **re-derive its text, never merge it**, since it goes stale every time an entry moves out of
   section 3. Refresh the rebase marker inside it too.
-- **Checked at `9c9ae3dc`: keep, refreshed.** Upstream made no `README.md` change; the banner's
-  rebase marker moved to `9c9ae3dc` / 2026-09-04 and its body still reads true.
+- **Checked at `c8f77e0d`: keep, refreshed.** Upstream made no `README.md` change; the banner's
+  rebase marker moved to `c8f77e0d` and its subscription sentence now says the allowances come
+  from upstream's Limits view.
 
 ### 14. A workflow set this fork can actually run
 
@@ -266,15 +262,14 @@ intent against current upstream code, taking upstream's version of anything that
   job on every sync. The `check` job runs `vp check`, which includes `vp fmt --check`, so an upstream
   formatting break lands `main` red here even when the fork changed nothing; repair it in place and
   drop the repair once upstream fixes the file.
-- **Checked at `9c9ae3dc`: keep, and the drift check earned its keep.** No new upstream workflow
-  files, so the kept set is unchanged. But `498ab9c3` (#7261) added `libsecret-1-dev pkg-config` to
-  both `ci.yml` (merged in) **and** `release.yml`'s Linux desktop build — a file this fork deletes,
-  so `desktop-artifacts.yml` would have started failing on Linux with **no merge conflict to warn
-  anyone**. Ported: `Install ImageMagick` is now `Install Linux desktop build libraries`. Upstream's
-  other `release.yml` work (`fff33f9e`, `db4bf949`) is a cross-job pnpm-verification cache that only
-  pays off in a multi-job signed release; not ported. `.github/VOUCHED.td` (`b21d8724`) stays
-  deleted. `grep -rn blacksmith .github/workflows/` matches only the explanatory comment in
-  `desktop-artifacts.yml`.
+- **Checked at `c8f77e0d`: keep; two new upstream workflows declined.** `windows-tests.yml`
+  (`f96a220b`, #9538) runs on `blacksmith-8vcpu-windows-2025`, is `workflow_dispatch`-only, and by
+  its own header nothing in the suite passes on Windows yet — not a quality gate. Revisit only if
+  upstream folds it into `ci.yml` on a standard runner. `cursor-hygiene-webhook.yml` (`44701efd`,
+  `e3723e06`) forwards repository events to Cursor with two `CURSOR_T3CODE_*` secrets. Both
+  deleted. `.github/VOUCHED.td` (`95390ed7`) stays deleted. `ci.yml` and `release.yml` were
+  untouched, so `desktop-artifacts.yml` has no drift to port this time. `grep -rn blacksmith
+.github/workflows/` still matches only the explanatory comment in `desktop-artifacts.yml`.
 
 ### 15. A logged-out Claude instance reports as unauthenticated, and shows the directory it resolved
 
@@ -315,10 +310,10 @@ intent against current upstream code, taking upstream's version of anything that
   Check with `grep -c '"unauthenticated"' apps/server/src/provider/Layers/ClaudeProvider.ts` and
   `grep -c configDirectory packages/contracts/src/server.ts` against clean upstream. Partial
   supersession is likely — keep whichever half is still missing.
-- **Checked at `9c9ae3dc`: keep, minus the banner half — see section 4.** The server drop-checks
-  still come back **0**. `ProviderInstanceCard.tsx` was rewritten a third time (`6effe0a2`, #8508,
-  now a label-left field grid); the "Resolved config directory" block was re-derived into it as a
-  grid row after the Runtime `ProviderSettingsForm`. Expect it to move again.
+- **Checked at `c8f77e0d`: keep.** The server drop-checks still come back **0**.
+  `ProviderInstanceCard.tsx` was rewritten a **fourth** time (`343db2c3` #9354, `8357eef1`): it is
+  now a stack of `SettingsSection`s, and the "Resolved config directory" block was re-derived as a
+  `SettingsRow` closing the Runtime section, hint in the row description. Expect it to move again.
 
 ### 16. Usage scans every configured provider instance
 
@@ -345,9 +340,10 @@ intent against current upstream code, taking upstream's version of anything that
   must follow — re-verify it every rebase.
 - **Drop it when:** upstream's `resolveTranscriptDirs` reads `settings.providerInstances`. Check with
   `grep -c providerInstances apps/server/src/usage/UsageService.ts` against clean upstream.
-- **Checked at `9c9ae3dc`: keep.** Drop-check **0**, and `deriveProviderInstanceConfigMap` is
-  unchanged this range, so the duplicated merge rule has not drifted. Upstream's `8f1ef8b9` (#9024)
-  moved the scan into a `collectDirs` pass; the `FileSystem` provision moved with it.
+- **Checked at `c8f77e0d`: keep.** Drop-check **0**, and `deriveProviderInstanceConfigMap` is
+  unchanged this range, so the duplicated merge rule has not drifted. Upstream's new
+  `UsageLimitSources.ts` / `cliproxyUsageLimits.ts` live beside this code but read hubs, not
+  transcript directories.
 
 ### 17. The worktree branch prefix is configurable, not hardcoded to `t3code`
 
@@ -391,8 +387,9 @@ intent against current upstream code, taking upstream's version of anything that
 - **Drop it when:** upstream makes the prefix configurable. Check with
   `grep -n "WORKTREE_BRANCH_PREFIX\|worktreeBranchPrefix" packages/shared/src/git.ts` against clean
   upstream — a lone `export const WORKTREE_BRANCH_PREFIX = "t3code"` means this is still needed.
-- **Checked at `9c9ae3dc`: keep.** No upstream commit touched `packages/shared/src/git.ts` this
-  range; still the lone hardcoded const.
+- **Checked at `c8f77e0d`: keep.** No upstream commit touched `packages/shared/src/git.ts` this
+  range; still the lone hardcoded const. The settings row survived `343db2c3`'s page
+  reorganisation without a conflict.
 
 ### 18. New thread button under the project selector, and scoped to it
 
@@ -421,11 +418,10 @@ intent against current upstream code, taking upstream's version of anything that
 - **Drop it when:** upstream's `Sidebar.tsx` renders the new thread button below the project scope
   menu with a text label. Check with `grep -n "New thread" apps/web/src/components/Sidebar.tsx`
   against clean upstream — an icon-only button in the search row means this is still needed.
-- **Checked at `9c9ae3dc`: keep, clean replay.** Upstream shipped **eight** `Sidebar.tsx` commits
-  this range (project icons `f6c04c55`, environment machine icons `0fbb9424`, shelf collapse
-  `31eeb443`, visibility-leased status `fc53b273`) and the header block survived all of them; only
-  the import list conflicted. **This is still the fork's highest-churn UI surface** — re-derive
-  rather than replay whenever the block itself moves.
+- **Checked at `c8f77e0d`: keep, clean replay.** Upstream changed 159 lines of `Sidebar.tsx`
+  this range (unsent-draft indicator `f0347322`, multi-select unpin `c7bf3115`, muted branch name
+  `ec3ec6f0`) and the header block survived without a conflict. **This is still the fork's
+  highest-churn UI surface** — re-derive rather than replay whenever the block itself moves.
 - **Browser-only:** the header re-stack wants one look in a real client if re-derived.
 
 ### 19. Usage reports each provider instance separately
@@ -482,11 +478,12 @@ intent against current upstream code, taking upstream's version of anything that
   own per-instance breakdown, drop **both** this and entry 16, and re-verify its ownership rule
   against the double count in the intent above — a kind-level `ownedContribution` is the natural
   shape to write and is wrong.
-- **Checked at `9c9ae3dc`: keep.** Drop-check **0**. Upstream's new **Antigravity** driver
-  (`06336460`, #9348) is a `ProviderDriverKind` only — `UsageProviderKind` is still
-  `claude | codex | grok`, so decision 6's ramps stayed exhaustive. `ScannedDir` now carries the
-  instance identity as `Pick<UsageTranscriptSource, …>` so the branded `ProviderInstanceId` cannot
-  drift.
+- **Checked at `c8f77e0d`: keep, one port.** Drop-check **0**; `UsageProviderKind` is still
+  `claude | codex | grok`. Upstream's Limits tab (`19d8ab2a`) added `UsageLimits.tsx`, which
+  colours its bars from `PROVIDER_PRESENTATION[kind].color` — a field decision 6 replaced with a
+  `colors` ramp. It now reads `colors[0]`. `f1e90e38` (#9599) moved the usage-provider controls
+  into settings and `UsageRouteScreen.tsx` gained `<UsageLimitsSection />` beside the renamed
+  `series` prop; neither touched the per-instance model.
 
 ### 20. No update checking, and a sidebar link to this fork with build provenance
 
@@ -520,10 +517,9 @@ intent against current upstream code, taking upstream's version of anything that
   working silently if upstream renames `T3CODE_DESKTOP_UPDATE_REPOSITORY` or reworks
   `resolveGitHubPublishConfig`; the `SidebarChrome.tsx` item must be re-applied whenever upstream
   reworks the utility menu.
-- **Checked at `9c9ae3dc`: keep.** `resolveGitHubPublishConfig` still reads the env and still
-  rejects a single-segment value, so the disable holds. `SidebarChrome.tsx` moved four times;
-  upstream extracted `T3Wordmark` to its own module (`b520120c`) and the fork's inherited local copy
-  was dropped for the import.
+- **Checked at `c8f77e0d`: keep.** `resolveGitHubPublishConfig` is untouched this range (the
+  build script's only change is Windows sidecar packing), so the disable holds. `SidebarChrome.tsx`
+  took `bf40fa78`'s wordmark baseline fix without a conflict.
 - **Browser-only:** the icon, tooltip and link. The no-feed disable shows in a packaged build as the
   greyed "Check for updates" pill.
 
@@ -552,109 +548,62 @@ intent against current upstream code, taking upstream's version of anything that
 - **Drop it when:** upstream's project scope menu carries its own new-project item. Check with
   `grep -n "New project" apps/web/src/components/Sidebar.tsx` against clean upstream — a hit only on
   an icon-only `aria-label` button beside the scope menu means this is still needed.
-- **Checked at `9c9ae3dc`: keep, clean replay.** Upstream still renders the standalone folder-plus
+- **Checked at `c8f77e0d`: keep, clean replay.** Upstream still renders the standalone folder-plus
   button next to the scope trigger and no in-menu item.
 - **Browser-only:** the menu item placement and the widened trigger row.
 
-### 22. Subscription usage for Claude and Codex, in the picker and the context bubble
+### 22. Subscription allowances in the picker and the context bubble
 
-- **Intent.** A user driving two or three subscriptions all day has no way to see which one has room
-  left without leaving the app, so the choice of provider is made blind and the first signal that a
-  window is exhausted is a refused turn mid-task. Both priority providers already report this and T3
-  Code already received it and dropped it on the floor: `ClaudeAdapter` and `CodexAdapter` translate
-  the CLIs' native rate-limit messages into `account.rate-limits.updated`, `providerRuntime.ts`
-  declares the event, and `ProviderRuntimeIngestion` has no case for it. The allowance is now read
-  where the provider is chosen (the model picker) and where the current turn's cost is already shown
-  (the context bubble under the composer).
-- **Files:** `packages/contracts/src/server.ts`,
-  `apps/server/src/provider/providerSubscriptionUsage.ts` (new, + test),
-  `apps/server/src/provider/{providerSnapshot,providerStatusCache}.ts`,
-  `apps/server/src/provider/Layers/{ClaudeProvider,CodexProvider}.ts`,
-  `apps/web/src/components/chat/{SubscriptionUsage.logic.ts,SubscriptionUsageMeters.tsx,ContextWindowMeter.tsx,ModelPickerContent.tsx,ChatComposer.tsx}`,
-  plus `SubscriptionUsage.logic.test.ts` and the `get_usage` round-trip in
-  `ClaudeCapabilitiesProbe.test.ts`
-- **Re-apply.** `ServerProvider` gains `subscriptionUsage` as an `optionalKey`, following
-  `versionAdvisory`/`updateState`; it rides the existing `providerStatuses` push, so no new channel
-  and no contract version bump. Decisions worth keeping:
-  1. **Read the snapshot, do not accumulate the stream.** Claude's `rate_limit_event` carries one
-     window per event (`rateLimitType` is a single value), so reconstructing the full set from the
-     stream means holding state and still showing nothing until a turn has run. The SDK's structured
-     `/usage` control request returns every window at once, including the per-model weekly buckets.
-     Codex has the same shape available as `account/rateLimits/read`.
-  2. **Collected in the status probe, not during a turn.** Both probes already spawn the CLI and
-     already ask it an account question (`account/read`; the SDK initialization handshake), so the
-     allowance is known before the first turn and the picker is useful cold. No new poll loop was
-     added — a probe spawns a process, and the existing refresh cadence is the budget.
-  3. **`Effect.timeoutOption` does not bound the Claude request.** It cannot interrupt a `tryPromise`
-     whose promise never settles, and a CLI that does not implement the control request simply never
-     answers it — the probe hangs past its own 25s ceiling. The deadline therefore lives _inside_ the
-     promise, as an `AbortSignal.timeout` raced against the call and folded together with the fiber's
-     signal. Codex needs none of this: its client resolves through `Deferred.await`, which is
-     interruptible, so the ordinary Effect timeout works. `ClaudeCapabilitiesProbe.test.ts` is the
-     regression guard — its fake CLI answered only `initialize`, and the un-deadlined version hung it
-     for the full 120s test timeout.
-  4. **The request is gated on `subscriptionType`.** Only a claude.ai plan has windows to report, so
-     API-key, Bedrock, Vertex and logged-out instances skip the call entirely rather than paying the
-     deadline every refresh to learn what the account payload already said.
-  5. **The SDK is read structurally, not by its types.** The method is named
-     `usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET` and documented to be renamed;
-     `model_scoped` (the per-model buckets) ships server-side ahead of the npm types. The call site
-     takes `unknown` and the normalizer validates, so both a rename and a field arriving early are
-     non-events — and **no lockfile bump was needed**, since the per-model buckets come over the wire
-     from the user's own installed CLI, not from the npm package.
-  6. **Codex nests its windows under a `rateLimits` key.** `account/rateLimits/read` returns an
-     envelope, not a bare snapshot; the normalizer unwraps it when present and still accepts a bare
-     one, which also covers the `account/rateLimits/updated` notification. Unit tests that feed the
-     normalizer an already-unwrapped snapshot exercise it correctly and never the wiring — this
-     shipped broken once for exactly that reason.
-  7. **Never cached to disk.** `writeProviderStatusCache` already strips `updateState`;
-     `subscriptionUsage` is stripped the same way. A percentage rehydrated from a previous run is
-     worse than no percentage.
-  8. **Ageing happens where the clock is read, not in a memo.** The meter ages the raw snapshot itself
-     and reads `Date.now()` when its popover opens; the picker reads it once per open, its popup being
-     unmounted while closed. Deciding staleness in a composer memo keyed on the snapshot freezes the
-     decision exactly when provider refreshes stop, which is the case the one-hour age-out exists
-     for. Still **no self-ticking clock** — a continuously repainting meter in the composer is exactly
-     the GPU cost this app avoids.
-  9. **Stored as used, rendered as left.** Both providers report consumption (Codex `usedPercent`,
-     Claude `utilization`), so that is what crosses the wire; the UI always says "N% left" because
-     that is the question being asked. The bar still fills with consumption, matching the context
-     meter directly above it.
-  10. **Labels are strings, not an enum.** The set is open — Claude's per-model bucket names come from
-      the server, and Codex names its windows only by `windowDurationMins` (300 → "5 hour", 10080 →
-      "Weekly"). `windows` is a `ForwardCompatibleArray` so an older client drops a bucket it cannot
-      render instead of failing the whole config decode.
-  11. **Cursor, Grok and OpenCode report nothing**, so they show nothing.
-
-  **Mobile carries the data but not the UI.** `ServerProvider` reaches mobile unchanged, so
-  `serverConfig.providers` already has the field; mobile has no context bubble and its own provider
-  sheets, so rendering it there is separate work.
-
-- **Drop it when:** upstream's `ServerProvider` carries a subscription/rate-limit field, or
-  `ProviderRuntimeIngestion` grows a case for `account.rate-limits.updated`. Check with
-  `grep -c subscriptionUsage packages/contracts/src/server.ts` and
-  `grep -n 'account.rate-limits.updated' apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts`
-  against clean upstream. If upstream ships its own version, check decisions 3 and 6 against it first
-  — both are things the natural implementation gets wrong.
-- **Checked at `9c9ae3dc`: keep.** Both drop-checks come back **0**. Upstream's Claude probe work
-  this range (`03542836` #9084 remote model manifest, `c17d02cf`) changes which models are reported,
-  not the `/usage` control request beside it.
+- **Intent.** A user driving two or three subscriptions all day should see which one has room left
+  **at the moment of choosing a provider**, not on a separate page. Upstream now collects the
+  allowance (`ServerProvider.usageLimits`, see section 4) and shows it on the Usage page's Limits
+  view; that still means leaving the chat to find out, and the first signal that a window is
+  exhausted is still a refused turn mid-task. This entry reads the same field where the provider is
+  chosen (the model picker) and where the current turn's cost is already shown (the context bubble
+  under the composer). **Web-only, no server or contract change.**
+- **Files:**
+  `apps/web/src/components/chat/{SubscriptionUsage.logic.ts (+ test),SubscriptionUsageMeters.tsx,ContextWindowMeter.tsx,ModelPickerContent.tsx,ChatComposer.tsx}`,
+  `docs/user/composer.md`
+- **Re-apply.** `SubscriptionUsageMeters` renders one row per `usageLimits.windows` entry; the
+  picker shows it for the instance the rail has selected, the context bubble for the instance the
+  thread runs on. Decisions worth keeping:
+  1. **Stored as used, rendered as left.** Upstream's `usedPercent` crosses the wire; the UI always
+     says "N% left" because that is the question being asked. The bar still fills with consumption,
+     matching the context meter directly above it. Whole numbers except under 1% left.
+  2. **Ageing happens where the clock is read, not in a memo.** The meter ages the raw snapshot and
+     reads `Date.now()` when its popover opens (`onOpenChange`); the picker reads it once per open,
+     its popup being unmounted while closed. Deciding staleness in a composer memo keyed on the
+     snapshot freezes the decision exactly when provider refreshes stop, which is the case the
+     one-hour age-out exists for. Still **no self-ticking clock** — a continuously repainting meter
+     in the composer is exactly the GPU cost this app avoids. Reset countdowns come from upstream's
+     `formatResetsIn` in `@t3tools/shared/usageLimits`, so the two views phrase them identically.
+  3. **An `unavailable` snapshot renders nothing.** API-key, Bedrock and failed-probe cases are
+     explained on the Limits view; in the composer silence is the right answer, the same as for
+     Cursor, Grok and OpenCode, which report no `usageLimits` at all.
+  4. **The composer hands the field over raw** (`selectedProviderEntry?.snapshot.usageLimits`) and
+     the meter/picker apply `usableSubscriptionUsage`; keep it that way for the reason in 2.
+- **Drop it when:** upstream renders `usageLimits` inside the model picker or the context meter.
+  Check with `grep -c usageLimits apps/web/src/components/chat/ModelPickerContent.tsx
+apps/web/src/components/chat/ContextWindowMeter.tsx` against clean upstream.
+- **Checked at `c8f77e0d`: re-derived.** The server half is superseded (section 4); this UI half
+  was rebuilt on `usageLimits` in the same rebase. Both drop-checks come back **0**.
 - **Browser-only:** the picker footer and the Subscription section of the context bubble.
 
 ## 4. Superseded changes
 
 Changes the fork used to carry that upstream has since implemented. **Do not re-introduce them.**
 
-| #            | Fork change                       | Superseded by                                                                             | Verified at |
-| ------------ | --------------------------------- | ----------------------------------------------------------------------------------------- | ----------- |
-| 1            | Windows build: no shell mode      | `edb1240` — _fix(cli): publish nightly branded favicons (#4372)_                          | `9c9ae3dc`  |
-| 4            | Terminal Ctrl-chord forwarding    | `acf761b2` — _feat(web): render terminals with libghostty-vt (#4860)_                     | `9c9ae3dc`  |
-| 5 (core)     | Thread-scoped changed files       | `AssistantChangedFilesSection` per-turn checkpoints                                       | `9c9ae3dc`  |
-| 8            | Full timestamp on hover           | `formatChatTimestampTooltip` in `apps/web/src/timestampFormat.ts`                         | `9c9ae3dc`  |
-| 9            | Always-visible new-thread btn     | `0de95407` — _feat: sidebar v2 is now the default sidebar (#5672)_                        | `9c9ae3dc`  |
-| 10           | Package-local vitest configs      | `vp` (vite-plus) test-runner migration                                                    | `9c9ae3dc`  |
-| 12 (symlink) | `CLAUDE.md` symlink → `AGENTS.md` | `4cb676cc` — _docs: point CLAUDE.md at AGENTS.md with an @import (#7171)_                 | `9c9ae3dc`  |
-| 15 (banner)  | Status banner prefers server msg  | `06336460` — _feat(providers): add Google Antigravity via the official ACP agent (#9348)_ | `9c9ae3dc`  |
+| #            | Fork change                       | Superseded by                                                                                 | Verified at |
+| ------------ | --------------------------------- | --------------------------------------------------------------------------------------------- | ----------- |
+| 1            | Windows build: no shell mode      | `edb1240` — _fix(cli): publish nightly branded favicons (#4372)_                              | `c8f77e0d`  |
+| 4            | Terminal Ctrl-chord forwarding    | `acf761b2` — _feat(web): render terminals with libghostty-vt (#4860)_                         | `c8f77e0d`  |
+| 5 (core)     | Thread-scoped changed files       | `AssistantChangedFilesSection` per-turn checkpoints                                           | `c8f77e0d`  |
+| 8            | Full timestamp on hover           | `formatChatTimestampTooltip` in `apps/web/src/timestampFormat.ts`                             | `c8f77e0d`  |
+| 9            | Always-visible new-thread btn     | `0de95407` — _feat: sidebar v2 is now the default sidebar (#5672)_                            | `c8f77e0d`  |
+| 10           | Package-local vitest configs      | `vp` (vite-plus) test-runner migration                                                        | `c8f77e0d`  |
+| 12 (symlink) | `CLAUDE.md` symlink → `AGENTS.md` | `4cb676cc` — _docs: point CLAUDE.md at AGENTS.md with an @import (#7171)_                     | `c8f77e0d`  |
+| 15 (banner)  | Status banner prefers server msg  | `06336460` — _feat(providers): add Google Antigravity via the official ACP agent (#9348)_     | `c8f77e0d`  |
+| 22 (server)  | Subscription usage collection     | `19d8ab2a` — _feat(usage): show Codex and Claude subscription limits on a Limits tab (#9507)_ | `c8f77e0d`  |
 
 - **1 — Windows build shell mode.** The fork removed `shell: process.platform === "win32"` from the
   `buildCmd` spawn because shell mode broke builds from paths containing spaces. Upstream now
@@ -685,6 +634,23 @@ Changes the fork used to carry that upstream has since implemented. **Do not re-
   static-markup tests came out with it. `ProviderStatusBanner.tsx` and `ProviderStatusBanner.test.tsx`
   are now byte-identical to upstream. **The rest of entry 15 still stands** — nothing upstream
   produces the `unauthenticated` status or the `configDirectory` payload that message is built from.
+- **22 (server half).** The fork collected Claude's `get_usage` and Codex's `account/rateLimits/read`
+  in the status probes and shipped them as `ServerProvider.subscriptionUsage`. Upstream's `19d8ab2a`
+  (#9507), `1641b4ab` (#9534) and `b34ff8f5` (#9584) ship the same data as
+  `ServerProvider.usageLimits`, and more: a `ProviderUsageLimitsIngestion` layer merging the
+  mid-turn `account.rate-limits.updated` event onto the published snapshot (the very ingestion gap
+  the fork's entry named), per-model weekly buckets read structurally from `model_scoped`, Codex
+  reset credits, CLIProxyAPI hubs as read-only sources, and a Limits view for web and mobile. The
+  fork's `providerSubscriptionUsage.ts`, its probe edits, the cache strip and the contract field are
+  gone; `ClaudeProvider.ts`, `CodexProvider.ts`, `providerStatusCache.ts` and
+  `ClaudeCapabilitiesProbe.test.ts` are byte-identical to upstream again. Checked against the two
+  decisions the fork flagged as easy to get wrong: **Codex's envelope (old decision 6)** — upstream
+  reads `response.rateLimits` off the typed client, correct. **The Claude deadline (old decision 3)** — upstream's `q.usage_EXPERIMENTAL…()` call is `.then(ok, () => undefined)` with **no
+  timeout of its own**, and the fork's note recorded that a CLI which never answers the control
+  request hung the probe past its 25s ceiling. Not ported: upstream pins a CLI that answers, and
+  carrying a server-side deviation for a hang that cannot be reproduced here is not worth the
+  drift. **Watch item:** if provider status refreshes start stalling on a Claude instance, this is
+  the first place to look, and an `AbortSignal.timeout` raced inside the promise is the fix.
 - **12 (symlink half).** Upstream replaced the symlink with a regular file whose content is
   `@AGENTS.md` — the `@file` import syntax in the one position where it resolves. **Do not restore
   the symlink**; re-adding it would silently revert #7171 on every future rebase. Entry 12 still

@@ -55,7 +55,9 @@ const PACE: Record<LimitPace, { readonly label: string; readonly icon: typeof Ga
 function barColor(driver: ServerProvider["driver"]): string {
   const kind: UsageProviderKind | undefined =
     driver === "codex" ? "codex" : driver === "claudeAgent" ? "claude" : undefined;
-  return kind ? PROVIDER_PRESENTATION[kind].color : "var(--foreground)";
+  // Index 0 of the ramp is the brand colour, which is what a single-instance
+  // cost chart draws.
+  return kind ? PROVIDER_PRESENTATION[kind].colors[0] : "var(--foreground)";
 }
 
 /** Pace as a glyph with the words on hover. */

@@ -2,14 +2,17 @@ import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { createDebouncedStorage, createMemoryStorage } from "./lib/storage";
+import { createDeferredStorage, createMemoryStorage } from "./lib/storage";
 import { appendThreadMessageHistoryEntry } from "./threadMessageHistory";
 
 export const THREAD_MESSAGE_HISTORY_STORAGE_KEY = "t3code:thread-message-history:v1";
 const THREAD_MESSAGE_HISTORY_PERSIST_DEBOUNCE_MS = 300;
 
-const threadMessageHistoryStorage = createDebouncedStorage(
+// `createJSONStorage` below already serializes, so the deferred write carries
+// the finished string through as-is; the deferral only coalesces bursts.
+const threadMessageHistoryStorage = createDeferredStorage<string>(
   typeof localStorage !== "undefined" ? localStorage : createMemoryStorage(),
+  (value) => value,
   THREAD_MESSAGE_HISTORY_PERSIST_DEBOUNCE_MS,
 );
 
