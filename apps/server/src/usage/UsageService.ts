@@ -53,7 +53,10 @@ import {
   pruneScanCache,
   type ScanCache,
 } from "./usageScanCache.ts";
-import { resolveUsageTranscriptSources } from "./usageTranscriptSources.ts";
+import {
+  resolveUsageTranscriptSources,
+  type UsageTranscriptSource,
+} from "./usageTranscriptSources.ts";
 import type { UsageRecord } from "./usageTranscripts.ts";
 
 const LITELLM_RATES_URL =
@@ -333,12 +336,12 @@ export const make = Effect.gen(function* () {
     });
 
   /** One provider directory's walk and parse, before rates are involved. */
-  interface ScannedDir {
+  interface ScannedDir extends Pick<
+    UsageTranscriptSource,
+    "instanceId" | "displayName" | "accentColor"
+  > {
     readonly provider: UsageProviderKind;
     readonly dir: string;
-    readonly instanceId: string;
-    readonly displayName: string | null;
-    readonly accentColor: string | null;
     readonly volumeId: string;
     /** Parsed records per file, or `null` when the directory does not exist. */
     readonly files:
