@@ -1717,6 +1717,9 @@ export default function ChatView(props: ChatViewProps) {
   const visitThreadMutation = useAtomCommand(threadEnvironment.visit, { reportFailure: false });
   const lastDispatchedVisitRef = useRef<string | null>(null);
   const lastVisitDispatchAtRef = useRef(0);
+  const markThreadCompletionAcknowledged = useUiStateStore(
+    (store) => store.markThreadCompletionAcknowledged,
+  );
   const settings = useEnvironmentSettings(environmentId);
   const clientSettingsHydrated = useClientSettingsHydrated();
   const setStickyComposerModelSelection = useComposerDraftStore(
@@ -2371,6 +2374,25 @@ export default function ChatView(props: ChatViewProps) {
     const existingThreadKeys = new Set<string>([...serverThreadKeys, ...draftThreadKeys]);
     return openTerminalThreadKeys.filter((nextThreadKey) => existingThreadKeys.has(nextThreadKey));
   }, [draftThreadKeys, openTerminalThreadKeys, serverThreadKeys]);
+  // Reading a finished thread acknowledges its completion, which is what the
+  // sidebar's green dot keys on. Stamped at the run's completion time — not
+  // now/updatedAt — so it clears exactly the completion the user is looking
+  // at: a completion that lands later still gets its signal. Visits stamped
+  // elsewhere (Woke dismiss, archive) do not touch it, so the dot survives
+  // them until the thread is actually read.
+  useEffect(() => {
+    const completedAt = serverThread?.latestRun?.completedAt;
+    if (!serverThread?.id || !completedAt) return;
+    markThreadCompletionAcknowledged(
+      scopedThreadKey(scopeThreadRef(serverThread.environmentId, serverThread.id)),
+      completedAt,
+    );
+  }, [
+    markThreadCompletionAcknowledged,
+    serverThread?.environmentId,
+    serverThread?.id,
+    serverThread?.latestRun?.completedAt,
+  ]);
   useEffect(() => {
     setMountedTerminalThreadKeys((currentThreadIds) => {
       const nextThreadIds = reconcileMountedTerminalThreadIds({
