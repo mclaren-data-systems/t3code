@@ -117,6 +117,10 @@ export interface TranscriptUsageFormat<State> {
 /** A configured instance of the driver, its config already decoded by `driver.configSchema`. */
 export interface ProviderUsageInstance<Config> {
   readonly instanceId: ProviderInstanceId;
+  /** The name the user gave the instance in Settings, when any. */
+  readonly displayName?: string;
+  /** The accent colour the user gave the instance in Settings, when any. */
+  readonly accentColor?: string;
   /**
    * `undefined` when the stored config does not decode. The instance still has
    * history on disk, so readers that need no config read it anyway.
@@ -129,8 +133,31 @@ export interface ProviderUsageInstance<Config> {
 }
 
 /** One source a `scan` reader read. */
+/**
+ * The provider instance a scanned source reports under. Instances sharing a
+ * directory collapse onto the first one in scan order; the transcripts
+ * underneath carry nothing to tell them apart.
+ */
+export type ProviderUsageSourceInstance = Pick<
+  UsageSource,
+  "instanceId" | "displayName" | "accentColor"
+> & {
+  readonly instanceId: ProviderInstanceId;
+};
+
+/** The identity a source scanned for `instance` reports under. */
+export const usageSourceInstance = (
+  instance: ProviderUsageInstance<unknown>,
+): ProviderUsageSourceInstance => ({
+  instanceId: instance.instanceId,
+  ...(instance.displayName ? { displayName: instance.displayName } : {}),
+  ...(instance.accentColor ? { accentColor: instance.accentColor } : {}),
+});
+
 export interface ProviderUsageScan {
   readonly dir: string;
+  /** The configured instance this source belongs to, when scanned for one. */
+  readonly instance?: ProviderUsageSourceInstance;
   /** Identity of the source across hosts. Defaults to the filesystem identity of `dir`. */
   readonly volumeId?: string;
   /** Overrides the server's host name in the source fingerprint, for account-wide sources. */

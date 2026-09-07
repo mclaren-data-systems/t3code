@@ -1,3 +1,4 @@
+import { ProviderInstanceId } from "@t3tools/contracts";
 import type { ModelTotals } from "@t3tools/shared/usageMerge";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -16,6 +17,7 @@ const model = (
 ): ModelTotals => ({
   model: name,
   provider: "codex",
+  instanceId: ProviderInstanceId.make("codex"),
   costUsd,
   totalTokens,
   tokens: {
