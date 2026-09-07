@@ -1,3 +1,5 @@
+// @effect-diagnostics-next-line nodeBuiltinImport:off - Build bootstrap resolves the git commit before an Effect runtime exists.
+import * as NodeChildProcess from "node:child_process";
 import * as NodeZlib from "node:zlib";
 
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
@@ -40,6 +42,25 @@ const configuredRelayTracingDataset = repoEnv.VITE_RELAY_OTLP_TRACES_DATASET?.tr
 const configuredRelayTracingToken = repoEnv.VITE_RELAY_OTLP_TRACES_TOKEN?.trim() || "";
 const configuredHostedAppChannel = process.env.VITE_HOSTED_APP_CHANNEL?.trim() || "";
 const configuredAppVersion = process.env.APP_VERSION?.trim() || pkg.version;
+// Fork: build provenance for the sidebar GitHub link's tooltip. Resolved once
+// when this config loads (dev-server start or production build), which is the
+// moment the bundle is produced — exactly what "what build is this" means.
+// T3CODE_COMMIT_HASH matches the env the desktop build already passes around;
+// a checkout without git (npm tarball) just leaves the commit empty.
+const configuredBuildCommit = (() => {
+  const explicit = process.env.T3CODE_COMMIT_HASH?.trim();
+  if (explicit) return explicit;
+  try {
+    return NodeChildProcess.execSync("git rev-parse --short=12 HEAD", {
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+      .toString()
+      .trim();
+  } catch {
+    return "";
+  }
+})();
+const configuredBuildTimestamp = new Date().toISOString();
 const configuredHostedAppUrl = (() => {
   const explicitHostedAppUrl = process.env.VITE_HOSTED_APP_URL?.trim();
   if (explicitHostedAppUrl) {
@@ -206,6 +227,8 @@ export default defineConfig(() => {
       "import.meta.env.VITE_HOSTED_APP_URL": JSON.stringify(configuredHostedAppUrl ?? ""),
       "import.meta.env.VITE_HOSTED_APP_CHANNEL": JSON.stringify(configuredHostedAppChannel),
       "import.meta.env.APP_VERSION": JSON.stringify(configuredAppVersion),
+      "import.meta.env.BUILD_COMMIT": JSON.stringify(configuredBuildCommit),
+      "import.meta.env.BUILD_TIMESTAMP": JSON.stringify(configuredBuildTimestamp),
     },
     resolve: {
       tsconfigPaths: true,
