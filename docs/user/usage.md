@@ -9,6 +9,11 @@ cost. These estimates are not your subscription bill.
 Totals depend on the history available on each server. Grok turns without a saved completed-turn
 record are missing from the totals.
 
+Each configured provider instance gets its own line, row, and column. If you run more than one
+account of the same provider, a personal and a work Claude Code say, they are reported separately,
+under the names and accent colors you gave them in Settings. Turning a provider off does not remove
+what it already spent.
+
 On web and desktop, use the environment dropdown to filter costs, tokens, and limits. All
 environments are selected by default. The dropdown shows which environments are still scanning;
 results appear as each one responds.

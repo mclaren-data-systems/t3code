@@ -65,8 +65,11 @@ vi.mock("./usageProviders", async (importOriginal) => {
   return {
     ...actual,
     PROVIDER_PRESENTATION: {
-      codex: { color: "white", label: "Codex", mark: "span" },
-      claude: { color: "orange", label: "Claude Code", mark: "span" },
+      codex: { colors: ["white"], label: "Codex", mark: "span" },
+      claude: { colors: ["orange"], label: "Claude Code", mark: "span" },
+      // Must cover every UsageProviderKind: PROVIDER_ORDER is not mocked, so an
+      // empty report still stands a row in for each provider it lists.
+      grok: { colors: ["grey"], label: "Grok Build", mark: "span" },
     },
   };
 });
@@ -74,10 +77,10 @@ vi.mock("./usageProviders", async (importOriginal) => {
 import { UsagePage } from "./UsagePage";
 import { readUsagePagePreferences } from "./usagePagePreferences";
 
-const providerTotals = (codex: number, claude: number) =>
+const instanceTotals = (codex: number, claude: number) =>
   new Map([
     ["codex", { costUsd: codex, totalTokens: codex * 1_000 }],
-    ["claude", { costUsd: claude, totalTokens: claude * 1_000 }],
+    ["claudeAgent", { costUsd: claude, totalTokens: claude * 1_000 }],
   ] as const);
 
 const modelTotals = Object.freeze([
@@ -140,14 +143,14 @@ beforeEach(() => {
           hourStart: "2026-08-10T13:37:00.000Z",
           costUsd: 13,
           totalTokens: 13_000,
-          byProvider: providerTotals(7, 6),
+          byInstance: instanceTotals(7, 6),
         },
         {
           day: "2026-08-11",
           hourStart: "2026-08-11T11:37:00.000Z",
           costUsd: 11,
           totalTokens: 11_000,
-          byProvider: providerTotals(6, 5),
+          byInstance: instanceTotals(6, 5),
         },
       ],
     },

@@ -24,7 +24,6 @@ import {
   type UsageSummaryInput,
   UsageReadError,
 } from "@t3tools/contracts";
-import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -40,10 +39,7 @@ import * as Semaphore from "effect/Semaphore";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
 import { ServerConfig } from "../config.ts";
-import { expandHomePath } from "../pathExpansion.ts";
 import * as ServerSettings from "../serverSettings.ts";
-import { resolveClaudeHomePath } from "../provider/Drivers/ClaudeHome.ts";
-import { resolveCodexHomeLayout } from "../provider/Drivers/CodexHomeLayout.ts";
 import { UsageAggregator } from "./usageAggregation.ts";
 import { createOverrideRateTable, parseRateTable, type RateTable } from "./usagePricing.ts";
 import {
@@ -58,6 +54,10 @@ import {
   pruneScanCache,
   type ScanCache,
 } from "./usageScanCache.ts";
+import {
+  resolveUsageTranscriptSources,
+  type UsageTranscriptSource,
+} from "./usageTranscriptSources.ts";
 import type { UsageRecord } from "./usageTranscripts.ts";
 
 const LITELLM_RATES_URL =
@@ -138,7 +138,6 @@ export const make = Effect.gen(function* () {
   const config = yield* ServerConfig;
   const settingsService = yield* ServerSettings.ServerSettingsService;
   const httpClient = yield* HttpClient.HttpClient;
-  const hostEnvironment = yield* HostProcessEnvironment;
 
   const fileCache: ScanCache = new Map();
   let cacheDirty = false;
@@ -220,19 +219,6 @@ export const make = Effect.gen(function* () {
     Effect.withSpan("UsageService.refreshRates"),
   );
 
-  /**
-   * Claude's config dir is the home itself when overridden, but a default
-   * install nests transcripts under `~/.claude/projects`. Probe both.
-   */
-  const resolveClaudeTranscriptDir = (homePath: string) =>
-    Effect.gen(function* () {
-      const nested = path.join(homePath, ".claude", "projects");
-      const nestedExists = yield* fileSystem
-        .exists(nested)
-        .pipe(Effect.catchCause(() => Effect.succeed(false)));
-      return nestedExists ? nested : path.join(homePath, "projects");
-    });
-
   // A settings failure must not silently discard custom rates or transcript homes.
   const readSettings = settingsService.getSettings.pipe(
     Effect.catchCause(
@@ -245,30 +231,11 @@ export const make = Effect.gen(function* () {
     ),
   );
 
-  /** Resolves the transcript directory for each provider. */
+  /** Resolves the transcript directory for every configured provider instance. */
   const resolveTranscriptDirs = Effect.fn("UsageService.resolveTranscriptDirs")(function* (
     settings: ServerSettingsValue,
   ) {
-    const claudeHome = yield* resolveClaudeHomePath(settings.providers.claudeAgent);
-    const claudeDir = yield* resolveClaudeTranscriptDir(claudeHome);
-    const codexLayout = yield* resolveCodexHomeLayout(settings.providers.codex);
-    // Grok Settings only expose the binary path; home is `$GROK_HOME` or `~/.grok`.
-    // Empty/whitespace GROK_HOME must fall back: coalescing alone would scan cwd.
-    const grokHomeEnv = hostEnvironment["GROK_HOME"]?.trim() ?? "";
-    const grokHome =
-      grokHomeEnv.length > 0
-        ? path.resolve(expandHomePath(grokHomeEnv))
-        : path.join(NodeOS.homedir(), ".grok");
-
-    return [
-      { provider: "claude" as const, dir: claudeDir },
-      { provider: "codex" as const, dir: path.join(codexLayout.sharedHomePath, "sessions") },
-      {
-        provider: "grok" as const,
-        dir: path.join(grokHome, "sessions"),
-        fileName: "updates.jsonl",
-      },
-    ];
+    return yield* resolveUsageTranscriptSources(settings);
   });
 
   /**
@@ -368,7 +335,10 @@ export const make = Effect.gen(function* () {
     });
 
   /** One provider directory's walk and parse, before rates are involved. */
-  interface ScannedDir {
+  interface ScannedDir extends Pick<
+    UsageTranscriptSource,
+    "instanceId" | "displayName" | "accentColor"
+  > {
     readonly provider: UsageProviderKind;
     readonly dir: string;
     readonly volumeId: string;
@@ -382,19 +352,21 @@ export const make = Effect.gen(function* () {
     windowStartMs: number,
     settings: ServerSettingsValue,
   ) {
-    // The home resolvers ask for `Path` themselves; satisfy them from the
-    // instance we already hold so the scan stays context-free.
+    // The source resolver asks for `Path` and `FileSystem` itself; satisfy both
+    // from the instances we already hold so the scan stays context-free.
     const dirs = yield* resolveTranscriptDirs(settings).pipe(
       Effect.provideService(Path.Path, path),
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
     );
     const scanned: ScannedDir[] = [];
-    for (const { provider, dir, fileName } of dirs) {
+    for (const { provider, dir, fileName, instanceId, displayName, accentColor } of dirs) {
+      const instance = { instanceId, displayName, accentColor };
       const volumeId = yield* Effect.promise(() => readDirectoryVolumeId(dir));
       const exists = yield* fileSystem
         .exists(dir)
         .pipe(Effect.catchCause(() => Effect.succeed(false)));
       if (!exists) {
-        scanned.push({ provider, dir, volumeId, files: null });
+        scanned.push({ provider, dir, ...instance, volumeId, files: null });
         continue;
       }
       const files = yield* Effect.promise(() =>
@@ -405,7 +377,7 @@ export const make = Effect.gen(function* () {
         const records = yield* readFileRecords(file.path, file.size, file.mtimeMs, provider);
         parsedFiles.push({ path: file.path, records });
       }
-      scanned.push({ provider, dir, volumeId, files: parsedFiles });
+      scanned.push({ provider, dir, ...instance, volumeId, files: parsedFiles });
     }
     return scanned;
   });
@@ -481,10 +453,20 @@ export const make = Effect.gen(function* () {
     const livePaths = new Set<string>();
     const walkedRoots: string[] = [];
 
-    for (const { provider, dir, volumeId, files } of scannedDirs) {
+    for (const {
+      provider,
+      dir,
+      instanceId,
+      displayName,
+      accentColor,
+      volumeId,
+      files,
+    } of scannedDirs) {
+      const instance = { instanceId, displayName, accentColor };
       if (files === null) {
         sources.push({
           fingerprint: { hostId, provider, resolvedHomePath: dir, volumeId },
+          ...instance,
           status: "missing",
           scannedFiles: 0,
           skippedFiles: 0,
@@ -512,7 +494,7 @@ export const make = Effect.gen(function* () {
         for (const record of file.records) {
           // Only sessions that contributed in-window count: the mtime slack
           // admits boundary files whose records fall outside the range.
-          if (aggregator.add(record) && record.sessionId.length > 0) {
+          if (aggregator.add(record, instanceId) && record.sessionId.length > 0) {
             sessionIds.add(record.sessionId);
           }
         }
@@ -520,6 +502,7 @@ export const make = Effect.gen(function* () {
 
       sources.push({
         fingerprint: { hostId, provider, resolvedHomePath: dir, volumeId },
+        ...instance,
         status: "ok",
         scannedFiles,
         skippedFiles,

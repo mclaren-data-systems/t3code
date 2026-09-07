@@ -1,6 +1,6 @@
 // @effect-diagnostics globalDate:off
 /**
- * Folds parsed transcript records into `(day, hourStart?, provider, model)`
+ * Folds parsed transcript records into `(day, hourStart?, instanceId, model)`
  * buckets.
  *
  * `Intl.DateTimeFormat` is the only reliable way to resolve a wall-clock day in
@@ -12,7 +12,13 @@
  *
  * @module usageAggregation
  */
-import type { UsageBucket, UsageDay, UsageResolution, UsageTokenTotals } from "@t3tools/contracts";
+import type {
+  ProviderInstanceId,
+  UsageBucket,
+  UsageDay,
+  UsageResolution,
+  UsageTokenTotals,
+} from "@t3tools/contracts";
 
 import { addTotals, EMPTY_TOTALS, type UsageRecord } from "./usageTranscripts.ts";
 import { cacheSavingsUsd, priceUsage, type RateTable } from "./usagePricing.ts";
@@ -108,11 +114,16 @@ export class UsageAggregator {
   }
 
   /**
-   * Folds one record in. Returns whether it actually contributed, so callers
-   * can derive per-window facts (distinct sessions, for one) from the records
-   * that landed rather than everything the mtime prefilter happened to admit.
+   * Folds one record in under the provider instance whose transcripts it came
+   * from. Returns whether it actually contributed, so callers can derive
+   * per-window facts (distinct sessions, for one) from the records that landed
+   * rather than everything the mtime prefilter happened to admit.
+   *
+   * De-duplication stays global rather than per instance: a record copied
+   * between two accounts' transcripts is still one response, and it counts for
+   * whichever instance the scan reached first.
    */
-  add(record: UsageRecord): boolean {
+  add(record: UsageRecord, instanceId: ProviderInstanceId): boolean {
     if (record.dedupeKey !== null) {
       if (this.#seen.has(record.dedupeKey)) {
         this.#duplicatesDropped += 1;
@@ -146,7 +157,7 @@ export class UsageAggregator {
             this.#hourlyWindow.sinceTimeMs +
               Math.floor((record.timestampMs - this.#hourlyWindow.sinceTimeMs) / HOUR_MS) * HOUR_MS,
           ).toISOString();
-    const key = `${day}\u0000${hourStart}\u0000${record.provider}\u0000${record.model}`;
+    const key = `${day}\u0000${hourStart}\u0000${record.provider}\u0000${instanceId}\u0000${record.model}`;
     let bucket = this.#buckets.get(key);
     if (bucket === undefined) {
       bucket = {
@@ -187,11 +198,13 @@ export class UsageAggregator {
   finish(): AggregateResult {
     const buckets: UsageBucket[] = [];
     for (const [key, bucket] of this.#buckets) {
-      const [day = "", hourStart = "", provider = "", model = ""] = key.split("\u0000");
+      const [day = "", hourStart = "", provider = "", instanceId = "", model = ""] =
+        key.split("\u0000");
       buckets.push({
         day: day as UsageDay,
         ...(hourStart === "" ? {} : { hourStart }),
         provider: provider as UsageBucket["provider"],
+        instanceId: instanceId as ProviderInstanceId,
         model,
         totals: bucket.totals,
         costUsd: bucket.costUsd,
@@ -208,6 +221,7 @@ export class UsageAggregator {
         a.day.localeCompare(b.day) ||
         (a.hourStart ?? "").localeCompare(b.hourStart ?? "") ||
         a.provider.localeCompare(b.provider) ||
+        a.instanceId.localeCompare(b.instanceId) ||
         a.model.localeCompare(b.model),
     );
 
