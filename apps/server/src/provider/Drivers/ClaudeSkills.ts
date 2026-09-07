@@ -538,7 +538,11 @@ const discoverPluginSkillRoots = Effect.fn("discoverPluginSkillRoots")(function*
   return roots;
 });
 
-const resolveClaudeConfigDirPath = Effect.fn("resolveClaudeConfigDirPath")(function* (
+/**
+ * The config directory the spawned CLI reads: `homePath` (exported as `CLAUDE_CONFIG_DIR`), then an
+ * inherited `CLAUDE_CONFIG_DIR`, then `~/.claude`. Claude Code never expands `~`; T3 Code does.
+ */
+export const resolveClaudeConfigDirPath = Effect.fn("resolveClaudeConfigDirPath")(function* (
   config: Pick<ClaudeSettings, "homePath">,
   environment: NodeJS.ProcessEnv,
   cwd?: string,

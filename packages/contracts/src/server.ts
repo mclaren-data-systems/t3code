@@ -160,6 +160,16 @@ export function isProviderWorkspaceSnapshotPending(
 export const ServerProviderAvailability = Schema.Literals(["available", "unavailable"]);
 export type ServerProviderAvailability = typeof ServerProviderAvailability.Type;
 
+/**
+ * The expanded configuration directory a provider instance hands its CLI, and whether a credential
+ * store sits there. `credentialsFound: false` alone is not a logout: some platforms use an OS keystore.
+ */
+export const ServerProviderConfigDirectory = Schema.Struct({
+  path: TrimmedNonEmptyString,
+  credentialsFound: Schema.Boolean,
+});
+export type ServerProviderConfigDirectory = typeof ServerProviderConfigDirectory.Type;
+
 export const ServerProviderContinuation = Schema.Struct({
   groupKey: TrimmedNonEmptyString,
 });
@@ -266,6 +276,9 @@ export const ServerProvider = Schema.Struct({
   auth: ServerProviderAuth,
   checkedAt: IsoDateTime,
   message: Schema.optional(TrimmedNonEmptyString),
+  // Resolved config directory for this instance, when the driver reports one.
+  // Optional: drivers that have no per-instance config directory omit it.
+  configDirectory: Schema.optional(ServerProviderConfigDirectory),
   availability: Schema.optional(ServerProviderAvailability),
   unavailableReason: Schema.optional(TrimmedNonEmptyString),
   models: Schema.Array(ServerProviderModel),

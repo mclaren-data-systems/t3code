@@ -51,6 +51,7 @@ import {
   claudeSignedOutMessage,
   hasClaudeManagedMcpConfig,
   makeClaudeEnvironment,
+  resolveClaudeConfigDirectory,
 } from "./Drivers/ClaudeHome.ts";
 import {
   customClaudeApiEndpointHost,
@@ -298,6 +299,11 @@ export type ClaudeCapabilitiesProbe = {
   readonly email: string | undefined;
   readonly workspaceId?: string | undefined;
   readonly subscriptionType: string | undefined;
+  /**
+   * Where the CLI found its bearer credential. Claude Code reports the literal
+   * string `"none"` when it has none, which is the only positive signal we get
+   * that an instance is logged out.
+   */
   readonly tokenSource: string | undefined;
   readonly apiKeySource: string | undefined;
   /** OAuth applies only to firstParty; Bedrock uses external AWS credentials and omits subscription/token fields. */
@@ -780,6 +786,13 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
   const skills = yield* discoverClaudeSkills(claudeSettings, cwd, resolvedEnvironment);
   const slashCommands = [COMPACT_SLASH_COMMAND, ...(capabilities?.slashCommands ?? [])];
   const dedupedSlashCommands = dedupeSlashCommands(slashCommands);
+  // Reported from here on so every auth outcome names the directory the CLI
+  // reads, which is the value a mistyped home path gets wrong.
+  const configDirectory = yield* resolveClaudeConfigDirectory(
+    claudeSettings,
+    resolvedEnvironment,
+    cwd,
+  );
 
   if (!capabilities) {
     return buildServerProvider({
@@ -790,6 +803,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
       updateRequiredModels,
       slashCommands: dedupedSlashCommands,
       skills,
+      configDirectory,
       probe: {
         installed: true,
         version: parsedVersion,
@@ -822,6 +836,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
       updateRequiredModels,
       slashCommands: dedupedSlashCommands,
       skills,
+      configDirectory,
       probe: {
         installed: true,
         version: parsedVersion,
@@ -872,6 +887,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     updateRequiredModels,
     slashCommands: dedupedSlashCommands,
     skills,
+    configDirectory,
     probe: {
       installed: true,
       version: parsedVersion,

@@ -190,6 +190,9 @@ type TestClaudeCapabilities = {
   readonly models?: ReadonlyArray<ModelInfo>;
 };
 
+// Defaults describe a logged-in OAuth CLI: `tokenSource` names the credential
+// Claude Code found. A logged-out CLI reports the literal string "none", which
+// `claudeCapabilities({ tokenSource: "none" })` exercises.
 function claudeCapabilities(overrides: Partial<TestClaudeCapabilities> = {}) {
   return () =>
     Effect.succeed({
@@ -4239,6 +4242,63 @@ it.layer(
         assert.strictEqual(status.auth.status, "unauthenticated");
         assert.strictEqual(status.auth.type, undefined);
       }).pipe(
+        Effect.provide(
+          layerMockSpawner((args) => {
+            const joined = args.join(" ");
+            if (joined === "--version") return { stdout: "1.0.0\n", stderr: "", code: 0 };
+            throw new Error(`Unexpected args: ${joined}`);
+          }),
+        ),
+      ),
+    );
+
+    it.effect("reports the resolved config directory when Claude Code holds no credential", () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const configDir = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "t3code-claude-logged-out-",
+        });
+        // A mis-pointed home path is the usual reason an instance is logged
+        // out, so the snapshot carries the directory the CLI actually read.
+        const status = yield* checkClaudeProviderStatus(
+          { ...defaultClaudeSettings, homePath: configDir },
+          claudeCapabilities({ tokenSource: "none", apiKeySource: "none" }),
+          {},
+        );
+        assert.strictEqual(status.status, "error");
+        assert.strictEqual(status.auth.status, "unauthenticated");
+        assert.strictEqual(status.configDirectory?.path, configDir);
+        assert.strictEqual(status.configDirectory?.credentialsFound, false);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          layerMockSpawner((args) => {
+            const joined = args.join(" ");
+            if (joined === "--version") return { stdout: "1.0.0\n", stderr: "", code: 0 };
+            throw new Error(`Unexpected args: ${joined}`);
+          }),
+        ),
+      ),
+    );
+
+    it.effect("reports a credentials file in the resolved config directory", () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const configDir = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "t3code-claude-stale-",
+        });
+        yield* fileSystem.writeFileString(path.join(configDir, ".credentials.json"), "{}");
+
+        const status = yield* checkClaudeProviderStatus(
+          { ...defaultClaudeSettings, homePath: configDir },
+          claudeCapabilities({ tokenSource: "none", apiKeySource: "none" }),
+          {},
+        );
+        assert.strictEqual(status.auth.status, "unauthenticated");
+        assert.strictEqual(status.configDirectory?.credentialsFound, true);
+      }).pipe(
+        Effect.scoped,
         Effect.provide(
           layerMockSpawner((args) => {
             const joined = args.join(" ");
