@@ -1,13 +1,17 @@
-import type { UsageProviderKind } from "@t3tools/contracts";
 import type { DailyTotals } from "@t3tools/shared/usageMerge";
 
-import { PROVIDER_ORDER } from "./usageProviders";
+import type { UsageSeries } from "./usageProviders";
 
 export type UsageChartMetric = "cost" | "tokens";
 
 export interface UsageChartDay {
   readonly day: string;
-  readonly values: readonly { readonly provider: UsageProviderKind; readonly value: number }[];
+  /** In series order, i.e. bottom of the stack first. */
+  readonly values: readonly {
+    readonly instanceId: string;
+    readonly color: string;
+    readonly value: number;
+  }[];
   readonly total: number;
 }
 
@@ -15,14 +19,15 @@ export function buildChartDays(
   days: readonly string[],
   daily: readonly DailyTotals[],
   metric: UsageChartMetric,
+  series: readonly UsageSeries[],
 ): readonly UsageChartDay[] {
   const byDay = new Map(daily.map((totals) => [totals.day, totals]));
   return days.map((day) => {
     const totals = byDay.get(day);
-    const values = PROVIDER_ORDER.map((provider) => {
-      const entry = totals?.byProvider.get(provider);
-      const value = entry === undefined ? 0 : metric === "cost" ? entry.costUsd : entry.totalTokens;
-      return { provider, value };
+    const values = series.map((entry) => {
+      const cell = totals?.byInstance.get(entry.instanceId);
+      const value = cell === undefined ? 0 : metric === "cost" ? cell.costUsd : cell.totalTokens;
+      return { instanceId: entry.instanceId as string, color: entry.color, value };
     });
     return {
       day,

@@ -1,3 +1,4 @@
+import { ProviderInstanceId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import { page } from "vite-plus/test/browser";
 
@@ -11,6 +12,7 @@ describe("UsageModelDialog", () => {
         model={{
           model: "claude-sonnet-4-5",
           provider: "claude",
+          instanceId: ProviderInstanceId.make("claudeAgent"),
           costUsd: 2,
           totalTokens: 1_000_000,
           tokens: {

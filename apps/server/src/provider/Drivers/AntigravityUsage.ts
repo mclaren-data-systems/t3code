@@ -1,10 +1,12 @@
 import { type AntigravitySettings, UsageReadError } from "@t3tools/contracts";
 import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
-import type {
-  ProviderUsageInstance,
-  ProviderUsageReader,
-  ProviderUsageScan,
+import {
+  type ProviderUsageInstance,
+  type ProviderUsageReader,
+  type ProviderUsageScan,
+  type ProviderUsageSourceInstance,
+  usageSourceInstance,
 } from "@t3tools/provider-core/server/usage";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Context from "effect/Context";
@@ -66,9 +68,18 @@ const make = Effect.gen(function* () {
     instances,
     windowStartMs,
   }) {
+    // A root belongs to the instance whose environment named it; instances
+    // sharing a root collapse onto the first in scan order (default slot first).
     const roots: Array<string> = [];
-    for (const instance of instances) roots.push(...(yield* dataRoots(instance.environment)));
-    for (const { instanceId } of instances) {
+    const instanceByRoot = new Map<string, ProviderUsageSourceInstance>();
+    for (const instance of instances) {
+      for (const root of yield* dataRoots(instance.environment)) {
+        roots.push(root);
+        if (!instanceByRoot.has(root)) instanceByRoot.set(root, usageSourceInstance(instance));
+      }
+    }
+    for (const instance of instances) {
+      const { instanceId } = instance;
       const directories = yield* resolveAntigravityInstanceDirectories(
         host.paths.stateDir,
         instanceId,
@@ -84,7 +95,9 @@ const make = Effect.gen(function* () {
             }),
         ),
       );
-      roots.push(path.join(directories.profile, "antigravity-acp"));
+      const root = path.join(directories.profile, "antigravity-acp");
+      roots.push(root);
+      instanceByRoot.set(root, usageSourceInstance(instance));
     }
     // Profiles of removed or renamed instances keep their history on disk; keep counting it.
     const profilesDir = path.join(host.paths.stateDir, "providers", "antigravity");
@@ -95,6 +108,7 @@ const make = Effect.gen(function* () {
       roots.push(path.join(profilesDir, profile, "antigravity-acp"));
     }
     const conversationDirs = new Set<string>();
+    const instanceByDir = new Map<string, ProviderUsageSourceInstance>();
     for (const root of roots) {
       const resolvedRoot = yield* fileSystem.realPath(root).pipe(Effect.orElseSucceed(() => root));
       const nested = path.join(resolvedRoot, "conversations");
@@ -103,7 +117,11 @@ const make = Effect.gen(function* () {
         .pipe(Effect.catchCause(() => Effect.succeed(false))))
         ? nested
         : resolvedRoot;
-      conversationDirs.add(yield* fileSystem.realPath(dir).pipe(Effect.orElseSucceed(() => dir)));
+      const canonical = yield* fileSystem.realPath(dir).pipe(Effect.orElseSucceed(() => dir));
+      if (conversationDirs.has(canonical)) continue;
+      conversationDirs.add(canonical);
+      const instance = instanceByRoot.get(root);
+      if (instance) instanceByDir.set(canonical, instance);
     }
     const result = yield* readAntigravityUsage([...conversationDirs], windowStartMs, cache).pipe(
       Effect.provideService(FileSystem.FileSystem, fileSystem),
@@ -117,8 +135,10 @@ const make = Effect.gen(function* () {
       const failed = result.errors.some(
         (error) => error === dir || error.startsWith(`${dir}${path.sep}`),
       );
+      const instance = instanceByDir.get(dir);
       scanned.push({
         dir,
+        ...(instance ? { instance } : {}),
         files: !exists && !failed ? null : result.files.filter((file) => file.root === dir),
         status: failed ? "partial" : "ok",
         ...(failed ? { message: "Some Antigravity history could not be read." } : {}),
