@@ -17,7 +17,10 @@ import * as NodeOS from "node:os";
 import {
   ClaudeSettings,
   CodexSettings,
+  defaultInstanceIdForDriver,
+  ProviderDriverKind,
   type ProviderInstanceConfig,
+  ProviderInstanceId,
   USAGE_CONTRACT_VERSION,
   type ServerSettings as ServerSettingsValue,
   type UsageProviderKind,
@@ -83,6 +86,24 @@ const MAX_HOURLY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const CACHE_RETENTION_DAYS = 90;
 
 const decodeCodexSettings = Schema.decodeOption(CodexSettings);
+
+/**
+ * One transcript directory the scan walks, and the provider instance it
+ * reports under. Instances sharing a directory collapse onto the first one in
+ * scan order; the transcripts underneath carry nothing to tell them apart.
+ */
+interface UsageTranscriptSource {
+  readonly provider: UsageProviderKind;
+  /** Absolute transcript directory, exactly as the scan will walk it. */
+  readonly dir: string;
+  readonly volumeId: string;
+  readonly instanceId: ProviderInstanceId;
+  /** Configured name and accent color, passed through for the dashboard. */
+  readonly displayName: string | null;
+  readonly accentColor: string | null;
+  /** Set when the provider writes one fixed transcript file name per session. */
+  readonly fileName?: string;
+}
 const decodeClaudeSettings = Schema.decodeOption(ClaudeSettings);
 
 /** On-disk shape of the rate snapshot. */
@@ -248,25 +269,44 @@ export const make = Effect.gen(function* () {
     ),
   );
 
-  /** Resolves the transcript directory for each provider. */
+  /** Resolves the transcript directory for every configured provider instance. */
   const resolveTranscriptDirs = Effect.fn("UsageService.resolveTranscriptDirs")(function* (
     settings: ServerSettingsValue,
     retentionCutoffMs: number,
   ) {
-    const dirs: Array<{
-      provider: UsageProviderKind;
-      dir: string;
-      volumeId: string;
-      fileName?: string;
-    }> = [];
+    const dirs: Array<UsageTranscriptSource> = [];
     const seen = new Set<string>();
     for (const driver of ["claudeAgent", "codex", "grok"] as const) {
       // Disabled accounts still have history. Explicit default slots replace
-      // the legacy settings, just as they do in the provider registry.
-      const instances: Array<Pick<ProviderInstanceConfig, "config" | "environment">> =
-        Object.values(settings.providerInstances).filter((instance) => instance.driver === driver);
+      // the legacy settings, just as they do in the provider registry. The
+      // default slot scans first so a custom instance sharing its directory
+      // reports under the id a single-account setup already shows.
+      const instances: Array<{
+        readonly instanceId: ProviderInstanceId;
+        readonly displayName: string | null;
+        readonly accentColor: string | null;
+        readonly config: ProviderInstanceConfig["config"];
+        readonly environment: ProviderInstanceConfig["environment"] | undefined;
+      }> = Object.entries(settings.providerInstances)
+        .filter(([, instance]) => instance.driver === driver)
+        .sort(([left], [right]) =>
+          left === driver ? -1 : right === driver ? 1 : left.localeCompare(right),
+        )
+        .map(([instanceId, instance]) => ({
+          instanceId: ProviderInstanceId.make(instanceId),
+          displayName: instance.displayName ?? null,
+          accentColor: instance.accentColor ?? null,
+          config: instance.config,
+          environment: instance.environment,
+        }));
       if (!Object.hasOwn(settings.providerInstances, driver)) {
-        instances.push({ config: settings.providers[driver] });
+        instances.unshift({
+          instanceId: defaultInstanceIdForDriver(ProviderDriverKind.make(driver)),
+          displayName: null,
+          accentColor: null,
+          config: settings.providers[driver],
+          environment: undefined,
+        });
       }
       for (const instance of instances) {
         const environment = mergeProviderInstanceEnvironment(instance.environment, hostEnvironment);
@@ -329,6 +369,9 @@ export const make = Effect.gen(function* () {
           provider,
           dir,
           volumeId,
+          instanceId: instance.instanceId,
+          displayName: instance.displayName,
+          accentColor: instance.accentColor,
           ...(provider === "grok" ? { fileName: "updates.jsonl" } : {}),
         });
       }
@@ -442,7 +485,10 @@ export const make = Effect.gen(function* () {
     });
 
   /** One provider directory's walk and parse, before rates are involved. */
-  interface ScannedDir {
+  interface ScannedDir extends Pick<
+    UsageTranscriptSource,
+    "instanceId" | "displayName" | "accentColor"
+  > {
     readonly provider: UsageProviderKind;
     readonly dir: string;
     readonly volumeId: string;
@@ -463,12 +509,21 @@ export const make = Effect.gen(function* () {
       Effect.provideService(Path.Path, path),
     );
     const scanned: ScannedDir[] = [];
-    for (const { provider, dir, volumeId, fileName } of dirs) {
+    for (const {
+      provider,
+      dir,
+      volumeId,
+      fileName,
+      instanceId,
+      displayName,
+      accentColor,
+    } of dirs) {
+      const instance = { instanceId, displayName, accentColor };
       const exists = yield* fileSystem
         .exists(dir)
         .pipe(Effect.catchCause(() => Effect.succeed(false)));
       if (!exists) {
-        scanned.push({ provider, dir, volumeId, files: null });
+        scanned.push({ provider, dir, ...instance, volumeId, files: null });
         continue;
       }
       const files = yield* Effect.promise(() =>
@@ -479,7 +534,7 @@ export const make = Effect.gen(function* () {
         const records = yield* readFileRecords(file.path, file.size, file.mtimeMs, provider);
         parsedFiles.push({ path: file.path, records });
       }
-      scanned.push({ provider, dir, volumeId, files: parsedFiles });
+      scanned.push({ provider, dir, ...instance, volumeId, files: parsedFiles });
     }
     return scanned;
   });
@@ -555,7 +610,16 @@ export const make = Effect.gen(function* () {
 
     const sources: UsageSource[] = [];
 
-    for (const { provider, dir, volumeId, files } of scannedDirs) {
+    for (const {
+      provider,
+      dir,
+      instanceId,
+      displayName,
+      accentColor,
+      volumeId,
+      files,
+    } of scannedDirs) {
+      const instance = { instanceId, displayName, accentColor };
       const retainedFiles = [...(files ?? [])];
       const livePaths = new Set(retainedFiles.map((file) => file.path));
       // Cleanup may remove transcripts, but the usage we already saved still
@@ -601,7 +665,7 @@ export const make = Effect.gen(function* () {
           }
           // Only sessions contributing in-window count; the mtime slack can
           // admit boundary files whose records fall outside the range.
-          if (aggregator.add(usageRecord) && record.sessionId.length > 0) {
+          if (aggregator.add(usageRecord, instanceId) && record.sessionId.length > 0) {
             sessionIds.add(record.sessionId);
           }
         }
@@ -609,6 +673,7 @@ export const make = Effect.gen(function* () {
 
       sources.push({
         fingerprint: { hostId, provider, resolvedHomePath: dir, volumeId },
+        ...instance,
         // Clients exclude missing sources, so saved records remain an available source.
         status: files === null && scannedFiles === 0 ? "missing" : "ok",
         scannedFiles,

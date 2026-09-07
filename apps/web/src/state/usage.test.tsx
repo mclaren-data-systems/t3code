@@ -1,4 +1,9 @@
-import { EnvironmentId, UsageDay, USAGE_CONTRACT_VERSION } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ProviderInstanceId,
+  UsageDay,
+  USAGE_CONTRACT_VERSION,
+} from "@t3tools/contracts";
 import { act, useLayoutEffect } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -34,6 +39,7 @@ function environment(id: string, cost: number | null, hostId = id): EnvironmentU
               {
                 day: input.sinceDay,
                 provider: "codex",
+                instanceId: ProviderInstanceId.make("codex"),
                 model: id,
                 totals: {
                   uncachedInputTokens: 100,
@@ -58,6 +64,9 @@ function environment(id: string, cost: number | null, hostId = id): EnvironmentU
                   resolvedHomePath: "/sessions",
                   volumeId: hostId,
                 },
+                instanceId: ProviderInstanceId.make("codex"),
+                displayName: null,
+                accentColor: null,
                 status: "ok",
                 scannedFiles: 1,
                 skippedFiles: 0,
