@@ -77,14 +77,41 @@ export interface TranscriptUsageFormat<State> {
 
 export interface ProviderUsageInstance<Config> {
   readonly instanceId: ProviderInstanceId;
+  /** The name the user gave the instance in Settings, when any. */
+  readonly displayName?: string;
+  /** The accent colour the user gave the instance in Settings, when any. */
+  readonly accentColor?: string;
   /** Undefined for invalid stored config; config-independent readers should still read history. */
   readonly config: Config | undefined;
   readonly environment: NodeJS.ProcessEnv;
   readonly configured: boolean;
 }
 
+/**
+ * The provider instance a scanned source reports under. Instances sharing a
+ * directory collapse onto the first one in scan order; the transcripts
+ * underneath carry nothing to tell them apart.
+ */
+export type ProviderUsageSourceInstance = Pick<
+  UsageSource,
+  "instanceId" | "displayName" | "accentColor"
+> & {
+  readonly instanceId: ProviderInstanceId;
+};
+
+/** The identity a source scanned for `instance` reports under. */
+export const usageSourceInstance = (
+  instance: ProviderUsageInstance<unknown>,
+): ProviderUsageSourceInstance => ({
+  instanceId: instance.instanceId,
+  ...(instance.displayName ? { displayName: instance.displayName } : {}),
+  ...(instance.accentColor ? { accentColor: instance.accentColor } : {}),
+});
+
 export interface ProviderUsageScan {
   readonly dir: string;
+  /** The configured instance this source belongs to, when scanned for one. */
+  readonly instance?: ProviderUsageSourceInstance;
   readonly volumeId?: string;
   readonly hostId?: string;
   readonly status?: UsageSource["status"];

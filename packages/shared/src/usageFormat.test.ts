@@ -1,7 +1,42 @@
 // @effect-diagnostics globalDate:off -- A fixed instant keeps calendar-window assertions deterministic.
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { formatHourShort, makeWindow } from "./usageFormat.ts";
+import { formatHourShort, formatInstanceLabel, makeWindow } from "./usageFormat.ts";
+
+describe("formatInstanceLabel", () => {
+  it("shows the brand label for a provider's default instance", () => {
+    expect(
+      formatInstanceLabel({
+        instanceId: "claudeAgent",
+        displayName: null,
+        isDefaultInstance: true,
+        brandLabel: "Claude Code",
+      }),
+    ).toBe("Claude Code");
+  });
+
+  it("humanizes an added instance rather than repeating the brand label", () => {
+    expect(
+      formatInstanceLabel({
+        instanceId: "claudeAgent_work",
+        displayName: null,
+        isDefaultInstance: false,
+        brandLabel: "Claude Code",
+      }),
+    ).toBe("Claude Agent Work");
+  });
+
+  it("prefers the name the user configured", () => {
+    expect(
+      formatInstanceLabel({
+        instanceId: "claudeAgent_work",
+        displayName: "  Work account  ",
+        isDefaultInstance: false,
+        brandLabel: "Claude Code",
+      }),
+    ).toBe("Work account");
+  });
+});
 
 describe("hourly usage formatting", () => {
   it("keeps requested zones separate when formatting repeated calls", () => {

@@ -1,6 +1,7 @@
 import * as Schema from "effect/Schema";
 
 import { ForwardCompatibleArray, NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
 
 /** Bump for incompatible UsageSummary changes; skipped unknown array variants need no bump. */
 export const USAGE_CONTRACT_VERSION = 6 as const;
@@ -18,6 +19,21 @@ export const UsageProviderKind = Schema.Literals([
   "muse",
 ]);
 export type UsageProviderKind = typeof UsageProviderKind.Type;
+
+/**
+ * The driver kind behind each usage provider. Instance ids are minted from the driver, so this tells a
+ * default instance from an added one and attributes a source naming no instance to the default.
+ */
+export const USAGE_PROVIDER_DRIVERS = {
+  claude: ProviderDriverKind.make("claudeAgent"),
+  codex: ProviderDriverKind.make("codex"),
+  grok: ProviderDriverKind.make("grok"),
+  cursor: ProviderDriverKind.make("cursor"),
+  opencode: ProviderDriverKind.make("opencode"),
+  antigravity: ProviderDriverKind.make("antigravity"),
+  pi: ProviderDriverKind.make("pi"),
+  muse: ProviderDriverKind.make("muse"),
+} as const satisfies Record<UsageProviderKind, ProviderDriverKind>;
 
 const USAGE_DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -84,6 +100,14 @@ export type UsageSourceStatus = typeof UsageSourceStatus.Type;
 
 export const UsageSource = Schema.Struct({
   fingerprint: UsageSourceFingerprint,
+  /**
+   * The configured instance this directory was scanned for; buckets reach it through `sourcePath`.
+   * Absent from older servers and from sources not configured per instance (default instance applies).
+   */
+  instanceId: Schema.optional(ProviderInstanceId),
+  /** The instance's configured name and accent color, passed through verbatim. */
+  displayName: Schema.optional(TrimmedNonEmptyString),
+  accentColor: Schema.optional(TrimmedNonEmptyString),
   status: UsageSourceStatus,
   scannedFiles: NonNegativeInt,
   skippedFiles: NonNegativeInt,

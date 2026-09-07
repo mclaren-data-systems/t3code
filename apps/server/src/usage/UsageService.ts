@@ -35,10 +35,12 @@ import * as ServerSettings from "../serverSettings.ts";
 import { BUILT_IN_USAGE_DRIVERS, type BuiltInUsageReadersEnv } from "../provider/builtInDrivers.ts";
 import type { ProviderDriver } from "@t3tools/provider-core/server/driver";
 import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
-import type {
-  ProviderUsageInstance,
-  TranscriptUsageFormat,
-  UsageRecord,
+import {
+  type ProviderUsageInstance,
+  type TranscriptUsageFormat,
+  type UsageRecord,
+  type ProviderUsageSourceInstance,
+  usageSourceInstance,
 } from "@t3tools/provider-core/server/usage";
 import { resolveModelAliases, UsageAggregator } from "./usageAggregation.ts";
 import { createOverrideRateTable, parseRateTable, type RateTable } from "./usagePricing.ts";
@@ -93,6 +95,8 @@ interface TranscriptSource {
   readonly dir: string;
   readonly volumeId: string;
   readonly fileName?: string;
+  /** The configured instance this directory reports under. */
+  readonly instance: ProviderUsageSourceInstance;
 }
 
 const RatesCacheFile = Schema.Struct({
@@ -273,13 +277,26 @@ export const make = Effect.gen(function* () {
     driver: ProviderDriver<Config, unknown, unknown>,
     settings: ServerSettingsValue,
   ) {
+    // The default slot scans first so a custom instance sharing its directory
+    // reports usage under the id a single-account setup already shows.
     const entries: Array<
-      readonly [ProviderInstanceId, Pick<ProviderInstanceConfig, "config" | "environment">, boolean]
+      readonly [
+        ProviderInstanceId,
+        Pick<ProviderInstanceConfig, "config" | "environment" | "displayName" | "accentColor">,
+        boolean,
+      ]
     > = Object.entries(settings.providerInstances)
       .filter(([, instance]) => instance.driver === driver.driverKind)
+      .sort(([left], [right]) =>
+        left === driver.driverKind
+          ? -1
+          : right === driver.driverKind
+            ? 1
+            : left.localeCompare(right),
+      )
       .map(([id, instance]) => [ProviderInstanceId.make(id), instance, true] as const);
     if (!Object.hasOwn(settings.providerInstances, driver.driverKind)) {
-      entries.push([ProviderInstanceId.make(driver.driverKind), {}, false]);
+      entries.unshift([ProviderInstanceId.make(driver.driverKind), {}, false]);
     }
     const decodeConfig = Schema.decodeUnknownOption(driver.configSchema);
     return yield* Effect.forEach(
@@ -287,6 +304,8 @@ export const make = Effect.gen(function* () {
       Effect.fnUntraced(function* ([instanceId, instance, configured]) {
         const instanceConfig: ProviderUsageInstance<Config> = {
           instanceId,
+          ...(instance.displayName ? { displayName: instance.displayName } : {}),
+          ...(instance.accentColor ? { accentColor: instance.accentColor } : {}),
           config: Option.getOrUndefined(decodeConfig(instance.config ?? {})),
           environment: yield* mergeProviderInstanceEnvironment(
             instance.environment,
@@ -309,9 +328,12 @@ export const make = Effect.gen(function* () {
       const { provider, format } = reader;
       const directories = yield* Effect.forEach(
         yield* usageInstances(driver, settings),
-        (instance) => reader.directories(instance),
+        (instance) =>
+          Effect.map(reader.directories(instance), (entries) =>
+            entries.map((entry) => ({ ...entry, instance: usageSourceInstance(instance) })),
+          ),
       );
-      for (const { dir: directory, fileName } of directories.flat()) {
+      for (const { dir: directory, fileName, instance } of directories.flat()) {
         const sourceKey = provider + "\0" + directory;
         const previous = sourceCache.get(sourceKey);
         const dir = yield* fileSystem
@@ -343,6 +365,7 @@ export const make = Effect.gen(function* () {
           format,
           dir,
           volumeId,
+          instance,
           ...(fileName === undefined ? {} : { fileName }),
         });
       }
@@ -515,6 +538,8 @@ export const make = Effect.gen(function* () {
     readonly provider: UsageProviderKind;
     readonly dir: string;
     readonly volumeId: string;
+    /** The configured instance this source reports under, when scanned for one. */
+    readonly instance?: ProviderUsageSourceInstance;
     readonly hostId?: string;
     readonly status?: UsageSource["status"];
     readonly message?: string;
@@ -533,11 +558,11 @@ export const make = Effect.gen(function* () {
     source: TranscriptSource,
     windowStartMs: number,
   ) {
-    const { provider, format, dir, volumeId, fileName } = source;
+    const { provider, format, dir, volumeId, fileName, instance } = source;
     const exists = yield* fileSystem
       .exists(dir)
       .pipe(Effect.catchCause(() => Effect.succeed(false)));
-    if (!exists) return { provider, dir, volumeId, files: null } satisfies ScannedDir;
+    if (!exists) return { provider, dir, volumeId, instance, files: null } satisfies ScannedDir;
     const { files, failedPaths } = yield* Effect.promise(() =>
       listTranscriptFiles(dir, windowStartMs, fileName === undefined ? undefined : { fileName }),
     );
@@ -574,6 +599,7 @@ export const make = Effect.gen(function* () {
       provider,
       dir,
       volumeId,
+      instance,
       files: parsedFiles,
       ...(unread > 0
         ? {
@@ -770,7 +796,18 @@ export const make = Effect.gen(function* () {
 
     for (const [
       index,
-      { provider, dir, volumeId, files, status, message, action, refreshing, hostId: sourceHostId },
+      {
+        provider,
+        dir,
+        volumeId,
+        files,
+        status,
+        message,
+        action,
+        refreshing,
+        hostId: sourceHostId,
+        instance,
+      },
     ] of scannedDirs.entries()) {
       let scannedFiles = 0;
       let skippedFiles = 0;
@@ -816,6 +853,7 @@ export const make = Effect.gen(function* () {
         message ?? (files === null ? "No transcript directory on this environment." : null);
       sources.push({
         fingerprint: { hostId: sourceHostId ?? hostId, provider, resolvedHomePath: dir, volumeId },
+        ...instance,
         status:
           files === null && scannedFiles === 0
             ? "missing"
