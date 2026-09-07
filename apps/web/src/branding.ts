@@ -25,3 +25,7 @@ export const APP_DISPLAY_NAME =
   injectedDesktopAppBranding?.displayName ??
   formatAppDisplayName({ baseName: APP_BASE_NAME, stageLabel: APP_STAGE_LABEL });
 export const APP_VERSION = import.meta.env.APP_VERSION || "0.0.0";
+// Fork: stamped by vite.config.ts when the bundle is produced; either may be
+// empty when the build environment could not supply it.
+export const BUILD_COMMIT = import.meta.env.BUILD_COMMIT || "";
+export const BUILD_TIMESTAMP = import.meta.env.BUILD_TIMESTAMP || "";
