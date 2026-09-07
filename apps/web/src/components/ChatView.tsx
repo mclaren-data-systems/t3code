@@ -461,6 +461,7 @@ import {
   type PanelLayoutControlsProps,
   RightPanelMaximizeControl,
 } from "./chat/PanelLayoutControls";
+import { type GitCommitPreselection } from "./GitActionsControl";
 import { expandedImageKey, type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { ThreadDetailsPanel, type ThreadDetailsPanelProps } from "./chat/ThreadDetailsPanel";
 import { NoActiveThreadState } from "./NoActiveThreadState";
@@ -11066,6 +11067,31 @@ export default function ChatView(props: ChatViewProps) {
     },
     [onRollbackCheckpoint, paintOnlyDisplayedTimeline],
   );
+  // A turn's "Changed files" commit button routes to the thread details panel's
+  // git actions control, which opens the commit dialog with only these files
+  // checked. The control only mounts while the panel is open, so the request
+  // opens the panel too, and is dropped once the control has applied it so a
+  // later remount does not replay it.
+  const [commitPreselection, setCommitPreselection] = useState<GitCommitPreselection | null>(null);
+  const commitPreselectionRequestIdRef = useRef(0);
+  const onCommitTurnFiles = useCallback(
+    (_runId: RunId, filePaths: string[]) => {
+      commitPreselectionRequestIdRef.current += 1;
+      setCommitPreselection({
+        filePaths,
+        requestId: commitPreselectionRequestIdRef.current,
+      });
+      if (activeThreadRef) {
+        useRightPanelStore
+          .getState()
+          .setThreadPanelOpen(activeThreadRef, threadPanelPresentation, true);
+      }
+    },
+    [activeThreadRef, threadPanelPresentation],
+  );
+  const onCommitPreselectionConsumed = useCallback((requestId: number) => {
+    setCommitPreselection((current) => (current?.requestId === requestId ? null : current));
+  }, []);
   // The revert handler is read from a ref at call-time so the callback
   // reference is fully stable and never busts TimelineRowCtx identity.
   const onRevertToTurnCountRef = useRef(onRevertToTurnCount);
@@ -11314,6 +11340,8 @@ export default function ChatView(props: ChatViewProps) {
       : {}),
     onComposerFocusRequest: scheduleComposerFocus,
     ...(isServerThread && isGitRepo ? { onOpenChanges: openChangesFromThreadPanel } : {}),
+    commitPreselection,
+    onCommitPreselectionConsumed,
     onRunProjectScript: runProjectScript,
     onAddProjectScript: saveProjectScript,
     onUpdateProjectScript: updateProjectScript,
@@ -11597,6 +11625,9 @@ export default function ChatView(props: ChatViewProps) {
                 {...(!paintOnlyDisplayedTimeline
                   ? { onUseArtifactTemplate: useArtifactTemplate, onSendAppMessage: sendAppMessage }
                   : {})}
+                onCommitTurnFiles={
+                  paintOnlyDisplayedTimeline || !isServerThread ? undefined : onCommitTurnFiles
+                }
                 isRevertingCheckpoint={isRevertingCheckpoint}
                 onImageExpand={onExpandTimelineImage}
                 onFileOpen={paintOnlyDisplayedTimeline ? noopHeldAttachment : openFileAttachment}
