@@ -96,6 +96,7 @@ import { releaseComposerDraftUploads } from "../lib/composerDraftUploads";
 import { readLocalApi } from "../localApi";
 import { getProjectOrderKey, selectProjectGroupingSettings } from "../logicalProject";
 import {
+  buildSidebarProjectPickerEntries,
   buildSidebarProjectSnapshots,
   type SidebarProjectSnapshot,
 } from "../sidebarProjectGrouping";
@@ -107,7 +108,7 @@ import {
 import { useThreadActions } from "../hooks/useThreadActions";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
-import { startNewThreadFromContext } from "../lib/chatThreadActions";
+import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
 import { useClientSettings } from "../hooks/useSettings";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../hooks/useLocalStorage";
@@ -150,12 +151,12 @@ import {
   planSidebarThreadDrop,
   reduceSidebarProjectScopeMenuState,
   resolveAdjacentThreadId,
+  resolveNewThreadClickTarget,
   resolveSidebarDropTarget,
   resolveSidebarDropVerb,
   type SidebarDropVerb,
   resolveSidebarThreadStatus,
   searchSidebarThreadsByTitle,
-  shouldCreateNewThreadInCurrentProject,
   shouldRecedeSidebarThread,
   resolveWorkingStartedAt,
   sidebarListItemId,
@@ -207,6 +208,7 @@ import {
   ComboboxItem,
   ComboboxList,
   ComboboxPopup,
+  ComboboxSeparator,
   ComboboxTrigger,
   useComboboxFilter,
 } from "./ui/combobox";
@@ -2468,6 +2470,18 @@ export default function Sidebar() {
         override holds until all of them appear in canonical state. */
     readonly assignedKeys: ReadonlyMap<string, string>;
   } | null>(null);
+
+  // The scope popup owns its own open state, so the action has to close it
+  // before the command palette takes focus.
+  const handleNewProjectFromScopeMenu = useCallback(() => {
+    dispatchProjectScopeMenu({ type: "open-changed", open: false });
+    openAddProjectCommandPalette();
+  }, [openAddProjectCommandPalette]);
+
+  // Settled threads stay in the live shell stream (settled ≠ archived), so
+  // the partition works directly off live shells: no archived-snapshot
+  // merging, no optimistic holds. Archived threads remain hidden here —
+  // archive keeps its original "remove from sidebar" meaning.
   const {
     pinnedThreads,
     draggableThreadKeys,
@@ -4152,34 +4166,62 @@ export default function Sidebar() {
     updateThreadJumpHintsVisibility(shouldShowJumpHintsNow);
   }, [shouldShowJumpHintsNow, updateThreadJumpHintsVisibility]);
 
-  // New thread defaults to the project you're in (active thread's project,
-  // falling back to the top project) — same resolution the command palette
-  // uses. The command palette already offers a "New thread in..." submenu
-  // for multi-project setups.
+  // Scoping the sidebar to one project makes it the target: the button below
+  // the scope menu creates there instead of re-asking which project. Resolved
+  // through the picker's own entry builder so a grouped project (several
+  // checkouts of one repo) lands on the same member either way.
+  const scopedNewThreadProjectRef = useMemo(() => {
+    if (!scopedProjectGroup) return null;
+    const entry = buildSidebarProjectPickerEntries({
+      groups: [scopedProjectGroup],
+      preferredProjectRef: resolveThreadActionProjectRef({
+        activeDraftThread: newThreadContext.activeDraftThread,
+        activeThread: newThreadContext.activeThread ?? undefined,
+        defaultProjectRef: newThreadContext.defaultProjectRef,
+        handleNewThread: newThreadContext.handleNewThread,
+      }),
+    })[0];
+    if (!entry) return null;
+    return scopeProjectRef(entry.targetProject.environmentId, entry.targetProject.id);
+  }, [newThreadContext, scopedProjectGroup]);
+
+  // Unscoped, new thread defaults to the project you're in (active thread's
+  // project, falling back to the top project) — same resolution the command
+  // palette uses. The command palette already offers a "New thread in..."
+  // submenu for multi-project setups.
   const handleNewThreadClick = useCallback(
     (event?: ReactMouseEvent) => {
-      // One project: nothing to pick, create immediately. Shift+click creates
-      // directly in the current project even with several projects, skipping
-      // the palette picker.
-      if (shouldCreateNewThreadInCurrentProject(event?.shiftKey ?? false, projectGroups.length)) {
-        if (isMobile) setOpenMobile(false);
-        void startNewThreadFromContext({
-          activeDraftThread: newThreadContext.activeDraftThread,
-          activeThread: newThreadContext.activeThread ?? undefined,
-          defaultProjectRef: newThreadContext.defaultProjectRef,
-          handleNewThread: newThreadContext.handleNewThread,
-        });
+      // A selected scope wins — shift or not, it creates there. Unscoped, one
+      // project means nothing to pick so it creates immediately, and
+      // shift+click creates directly in the current project even with several
+      // projects, skipping the palette picker.
+      const target = resolveNewThreadClickTarget({
+        hasScopedProject: scopedNewThreadProjectRef !== null,
+        shiftKey: event?.shiftKey ?? false,
+        projectGroupCount: projectGroups.length,
+      });
+      if (isMobile) setOpenMobile(false);
+      if (target === "scoped-project" && scopedNewThreadProjectRef) {
+        void newThreadContext.handleNewThread(scopedNewThreadProjectRef);
         return;
       }
-      if (isMobile) setOpenMobile(false);
-      openCommandPalette({ open: "new-thread-in" });
+      if (target === "picker") {
+        openCommandPalette({ open: "new-thread-in" });
+        return;
+      }
+      void startNewThreadFromContext({
+        activeDraftThread: newThreadContext.activeDraftThread,
+        activeThread: newThreadContext.activeThread ?? undefined,
+        defaultProjectRef: newThreadContext.defaultProjectRef,
+        handleNewThread: newThreadContext.handleNewThread,
+      });
     },
-    [isMobile, newThreadContext, projectGroups.length, setOpenMobile],
+    [isMobile, newThreadContext, projectGroups.length, scopedNewThreadProjectRef, setOpenMobile],
   );
 
-  // The button mirrors chat.new: in multi-project setups both route through
-  // the command palette's "New thread in..." picker, and in single-project
-  // setups both create immediately. In multi-project setups the label is only
+  // Unscoped, the button mirrors chat.new: in multi-project setups both
+  // route through the command palette's "New thread in..." picker, and in
+  // single-project setups both create immediately. In multi-project setups the label is only
   // the picker's shortcut: falling back to chat.newLocal would advertise the
   // same shortcut for both the picker and direct create. In single-project
   // setups both commands create directly, so chat.newLocal is a valid
@@ -4189,6 +4231,12 @@ export default function Sidebar() {
     shortcutLabelForCommand(keybindings, "chat.new") ??
     (projectGroups.length <= 1 ? shortcutLabelForCommand(keybindings, "chat.newLocal") : undefined);
   const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
+  // Scoped, the button targets one project, so the label names it. No
+  // shortcut on that label on purpose: chat.new is not scope-aware, so
+  // advertising it next to a scoped button would promise the wrong target.
+  const newThreadLabel = scopedProjectGroup
+    ? `New thread in ${scopedProjectGroup.displayName}`
+    : "New thread";
   return (
     <>
       <SidebarChromeHeader isElectron={isElectron} />
@@ -4245,52 +4293,9 @@ export default function Sidebar() {
                   </Button>
                 ) : null}
               </div>
-              <div className="shrink-0">
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <SidebarMenuButton
-                        size="icon"
-                        type="button"
-                        className="relative focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
-                        onClick={handleNewThreadClick}
-                        disabled={projects.length === 0}
-                        aria-label="New thread"
-                      />
-                    }
-                  >
-                    <SquarePenIcon />
-                    <span
-                      className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
-                      aria-hidden="true"
-                    />
-                  </TooltipTrigger>
-                  <TooltipPopup side="right">
-                    {projectGroups.length > 1 ? (
-                      <span className="flex flex-col gap-0.5">
-                        <span>
-                          {newThreadShortcutLabel
-                            ? `New thread (${newThreadShortcutLabel})`
-                            : "New thread"}
-                        </span>
-                        <span className="text-muted-foreground">
-                          New thread in current project: Shift+click
-                          {newThreadInProjectShortcutLabel
-                            ? ` (${newThreadInProjectShortcutLabel})`
-                            : ""}
-                        </span>
-                      </span>
-                    ) : newThreadShortcutLabel ? (
-                      `New thread (${newThreadShortcutLabel})`
-                    ) : (
-                      "New thread"
-                    )}
-                  </TooltipPopup>
-                </Tooltip>
-              </div>
             </div>
             {projectGroups.length > 0 ? (
-              <div className="flex items-center gap-1">
+              <>
                 <Combobox
                   items={projectScopeItems}
                   filteredItems={filteredProjectScopeItems}
@@ -4319,7 +4324,7 @@ export default function Sidebar() {
                     render={
                       <SidebarMenuButton
                         aria-label="Filter threads by project"
-                        className="min-w-0 flex-1 ps-[calc(var(--sidebar-row-content-inset)-1px)] focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
+                        className="min-w-0 ps-[calc(var(--sidebar-row-content-inset)-1px)] focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
                       />
                     }
                   >
@@ -4436,29 +4441,58 @@ export default function Sidebar() {
                         );
                       }}
                     </ComboboxList>
+                    <ComboboxSeparator />
+                    <div className="shrink-0 px-1 pb-1">
+                      <button
+                        type="button"
+                        onClick={handleNewProjectFromScopeMenu}
+                        className="flex h-8 min-h-8 w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-0 text-sm font-medium outline-none hover:bg-accent focus-visible:bg-accent focus-visible:text-accent-foreground"
+                      >
+                        <FolderPlusIcon className="size-4 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 flex-1 truncate text-left">New project</span>
+                      </button>
+                    </div>
                   </ComboboxPopup>
                 </Combobox>
                 <Tooltip>
                   <TooltipTrigger
                     render={
                       <SidebarMenuButton
-                        size="icon"
-                        className="relative shrink-0 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
-                        onClick={openAddProjectCommandPalette}
                         type="button"
-                        aria-label="New project"
+                        className="justify-center focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
+                        onClick={handleNewThreadClick}
+                        aria-label={newThreadLabel}
                       />
                     }
                   >
-                    <FolderPlusIcon />
-                    <span
-                      className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
-                      aria-hidden="true"
-                    />
+                    <SquarePenIcon />
+                    <span>New thread</span>
                   </TooltipTrigger>
-                  <TooltipPopup side="right">New project</TooltipPopup>
+                  <TooltipPopup side="right">
+                    {scopedProjectGroup ? (
+                      newThreadLabel
+                    ) : projectGroups.length > 1 ? (
+                      <span className="flex flex-col gap-0.5">
+                        <span>
+                          {newThreadShortcutLabel
+                            ? `New thread (${newThreadShortcutLabel})`
+                            : "New thread"}
+                        </span>
+                        <span className="text-muted-foreground">
+                          New thread in current project: Shift+click
+                          {newThreadInProjectShortcutLabel
+                            ? ` (${newThreadInProjectShortcutLabel})`
+                            : ""}
+                        </span>
+                      </span>
+                    ) : newThreadShortcutLabel ? (
+                      `New thread (${newThreadShortcutLabel})`
+                    ) : (
+                      "New thread"
+                    )}
+                  </TooltipPopup>
                 </Tooltip>
-              </div>
+              </>
             ) : null}
           </SidebarGroup>
         }
