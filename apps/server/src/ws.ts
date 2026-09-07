@@ -81,6 +81,7 @@ import {
   type WorktreeSetupSnapshot,
 } from "@t3tools/contracts";
 import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgroundActivitySettings";
+import { applyWorktreeBranchPrefix } from "@t3tools/shared/git";
 import { HttpRouter, HttpServerRequest, HttpServerRespondable } from "effect/unstable/http";
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 
@@ -1454,13 +1455,23 @@ const makeWsRpcLayer = (
                 });
                 preparingSessionSet = true;
               }
+              // Clients mint the placeholder branch name, so the server is the
+              // one place that knows the configured prefix. Re-namespace it
+              // here; a branch the user named is passed through untouched.
+              const worktreeBranch =
+                prepareWorktree.branch === undefined
+                  ? undefined
+                  : applyWorktreeBranchPrefix(
+                      prepareWorktree.branch,
+                      (yield* serverSettings.getSettings).worktreeBranchPrefix,
+                    );
               yield* worktreeSetupTracker.stageStatus(threadId, "checkout", "running");
               let checkoutTotal: number | null = null;
               const worktree = yield* gitWorkflow.createWorktree(
                 {
                   cwd: prepareWorktree.projectCwd,
                   refName: worktreeBaseRef,
-                  newRefName: prepareWorktree.branch,
+                  newRefName: worktreeBranch,
                   baseRefName: prepareWorktree.baseBranch,
                   path: null,
                 },
