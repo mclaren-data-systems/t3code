@@ -2,7 +2,13 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { UsageSource } from "@t3tools/contracts";
 
-import { formatHourShort, formatTokens, makeWindow, usageSourceMessages } from "./usageFormat.ts";
+import {
+  formatHourShort,
+  formatInstanceLabel,
+  formatTokens,
+  makeWindow,
+  usageSourceMessages,
+} from "./usageFormat.ts";
 
 function malformedSource(count: number, overrides: Partial<UsageSource> = {}): UsageSource {
   return {
@@ -124,6 +130,41 @@ describe("usage source messages", () => {
       ]),
     ).toEqual([]);
     expect(usageSourceMessages([])).toEqual([]);
+  });
+});
+
+describe("formatInstanceLabel", () => {
+  it("shows the brand label for a provider's default instance", () => {
+    expect(
+      formatInstanceLabel({
+        instanceId: "claudeAgent",
+        displayName: null,
+        isDefaultInstance: true,
+        brandLabel: "Claude Code",
+      }),
+    ).toBe("Claude Code");
+  });
+
+  it("humanizes an added instance rather than repeating the brand label", () => {
+    expect(
+      formatInstanceLabel({
+        instanceId: "claudeAgent_work",
+        displayName: null,
+        isDefaultInstance: false,
+        brandLabel: "Claude Code",
+      }),
+    ).toBe("Claude Agent Work");
+  });
+
+  it("prefers the name the user configured", () => {
+    expect(
+      formatInstanceLabel({
+        instanceId: "claudeAgent_work",
+        displayName: "  Work account  ",
+        isDefaultInstance: false,
+        brandLabel: "Claude Code",
+      }),
+    ).toBe("Work account");
   });
 });
 
