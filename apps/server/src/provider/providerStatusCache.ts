@@ -91,6 +91,12 @@ export const hydrateCachedProvider = (input: {
     checkedAt: input.cachedProvider.checkedAt,
     slashCommands: input.cachedProvider.slashCommands,
     skills: input.cachedProvider.skills,
+    // Travels with `auth`: both describe the same cached probe, and a config
+    // directory reported without the auth state it explains reads as noise.
+    // Absent in caches written before the field existed, hence the guard.
+    ...(input.cachedProvider.configDirectory
+      ? { configDirectory: input.cachedProvider.configDirectory }
+      : {}),
   };
 
   return input.cachedProvider.message
