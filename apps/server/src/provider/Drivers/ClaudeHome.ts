@@ -1,7 +1,8 @@
 import * as NodeOS from "node:os";
 
-import type { ClaudeSettings } from "@t3tools/contracts";
+import type { ClaudeSettings, ServerProviderConfigDirectory } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
@@ -31,6 +32,32 @@ export const resolveClaudeHomePath = Effect.fn("resolveClaudeHomePath")(function
     return path.resolve(inherited);
   }
   return path.resolve(path.join(NodeOS.homedir(), ".claude"));
+});
+
+/**
+ * File Claude Code writes its OAuth credentials to inside the config
+ * directory. Not authoritative on every platform — macOS prefers the login
+ * keychain — so its absence only ever narrows a diagnosis, never proves one.
+ */
+const CLAUDE_CREDENTIALS_FILE_NAME = ".credentials.json";
+
+/**
+ * Snapshot detail describing where this instance's Claude Code state lives and
+ * whether a credential file is sitting there. Reported alongside auth status so
+ * a home path that resolved somewhere unexpected is visible before a turn
+ * fails, rather than only afterwards.
+ */
+export const resolveClaudeConfigDirectory = Effect.fn("resolveClaudeConfigDirectory")(function* (
+  config: Pick<ClaudeSettings, "homePath">,
+  environment: NodeJS.ProcessEnv,
+): Effect.fn.Return<ServerProviderConfigDirectory, never, FileSystem.FileSystem | Path.Path> {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const configDirPath = yield* resolveClaudeHomePath(config, environment);
+  const credentialsFound = yield* fileSystem
+    .exists(path.join(configDirPath, CLAUDE_CREDENTIALS_FILE_NAME))
+    .pipe(Effect.orElseSucceed(() => false));
+  return { path: configDirPath, credentialsFound };
 });
 
 export const makeClaudeEnvironment = Effect.fn("makeClaudeEnvironment")(function* (
