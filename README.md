@@ -1,3 +1,36 @@
+<!-- FORK-BANNER:START -->
+
+> ## About this fork
+>
+> This is a development fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3code),
+> maintained at [mclaren-data-systems/t3code](https://github.com/mclaren-data-systems/t3code).
+> Upstream (`pingdotgg`) is treated as the source of truth and `main` here is periodically
+> rebased onto it — most recently onto `dd14848153` on 2026-10-29.
+>
+> On top of upstream this fork carries a deliberately thin layer: a **workflow set a fork can
+> actually run** — standard GitHub-hosted runners instead of upstream's Blacksmith ones, no
+> workflow needing credentials a fork lacks, and unsigned desktop artifacts built on every
+> push to `main` and published as pruned development-build prereleases — plus two server
+> changes for **running more than one provider instance** (a logged-out Claude instance names
+> the config directory it actually resolved, and the usage report breaks totals down per instance),
+> the **subscription allowances upstream reports on its Limits view** surfaced in the model
+> picker so you can see which plan still has room at the moment of choosing, and three web UX
+> changes (the sidebar new-thread button creating directly in the one project the sidebar is
+> scoped to, a commit button on a turn's changed-files card that preselects just those files,
+> and the completed dot persisting until a thread is actually read). Fork builds also **never
+> check for updates**, and the sidebar carries a link back to this repository whose tooltip
+> names the running build, and a small workflow lands agent rebases without force-pushes from
+> the agent itself. `native/`, `apps/desktop/`, `pnpm-workspace.yaml` and
+> `pnpm-lock.yaml` are byte-identical to upstream.
+>
+> The authoritative, up-to-date list of everything that sets this fork apart from upstream —
+> including changes upstream has since implemented, and changes dropped by choice — lives in
+> **[FORK.md](FORK.md)**.
+>
+> Upstream README follows.
+
+<!-- FORK-BANNER:END -->
+
 <p align="center">
   <a href="https://t3.codes">
     <img src="./assets/prod/t3-black-web-icon-192x192.png" width="80" height="80" alt="T3 Code logo" />
