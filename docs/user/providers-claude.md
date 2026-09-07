@@ -16,6 +16,7 @@ Add a second Claude instance in **Settings → Providers** (or **Add Claude acco
 - Existing threads can only switch between Claude instances sharing the same config directory.
 - Put API keys and endpoint overrides in **Environment variables** (not **Launch arguments**).
 - Paths in `--settings` and `--append-system-prompt-file` expand `~` to the server's home directory; other relative paths resolve from the thread's workspace.
+- If an instance shows **Not authenticated**, expand it and check **Resolved config directory**: that is the exact path T3 Code hands to Claude Code, and the one to log in against. On Windows, write it out in full when logging in (`$env:CLAUDE_CONFIG_DIR = "$HOME\.claude_personal"`): PowerShell does not expand `~` inside a quoted string, so the login lands in a folder literally named `~`.
 
 ## Compact long conversations
 
