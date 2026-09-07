@@ -17,6 +17,8 @@ interface ImportMetaEnv {
   readonly T3CODE_DESKTOP_UPDATE_REPOSITORY: string;
   readonly T3CODE_FEATURE_SECRETS: string;
   readonly APP_VERSION: string;
+  readonly BUILD_COMMIT: string;
+  readonly BUILD_TIMESTAMP: string;
 }
 
 interface ImportMeta {
