@@ -68,6 +68,7 @@ import {
   ProviderInstanceId,
   type ServerProvider,
   type ScopedThreadRef,
+  type RunId,
   type ThreadId,
   ProviderInteractionMode,
   resolveIdleCompaction,
@@ -283,6 +284,7 @@ import {
   ThreadPanelHeaderControl,
   WorkspaceTitlebarControls,
 } from "./chat/PanelLayoutControls";
+import { type GitCommitPreselection } from "./GitActionsControl";
 import type { ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { ThreadDetailsPanel } from "./chat/ThreadDetailsPanel";
 import { NoActiveThreadState } from "./NoActiveThreadState";
@@ -3051,6 +3053,28 @@ export default function ChatView(props: ChatViewProps) {
         {hasQueuedTurns ? queuedRunsControl : null}
       </>
     );
+  // A turn's "Changed files" commit button routes to the thread details panel's git actions control,
+  // which opens the commit dialog with only these files checked. The control mounts with the panel, so
+  // the request opens it too, and is dropped once applied so a later remount does not replay it.
+  const [commitPreselection, setCommitPreselection] = useState<GitCommitPreselection | null>(null);
+  const commitPreselectionRequestIdRef = useRef(0);
+  const onCommitTurnFiles = (_runId: RunId, filePaths: string[]) => {
+    commitPreselectionRequestIdRef.current += 1;
+    setCommitPreselection({
+      filePaths,
+      requestId: commitPreselectionRequestIdRef.current,
+    });
+    if (activeThreadRef) {
+      useRightPanelStore
+        .getState()
+        .setThreadPanelOpen(activeThreadRef, threadPanelPresentation, true);
+    }
+  };
+  const onCommitTurnFilesStable = useStableCallback(onCommitTurnFiles);
+  const onCommitPreselectionConsumed = (requestId: number) => {
+    setCommitPreselection((current) => (current?.requestId === requestId ? null : current));
+  };
+  const onCommitPreselectionConsumedStable = useStableCallback(onCommitPreselectionConsumed);
 
   const pendingSidebarFileDrops = useSidebarPendingFileDropStore((state) => state.pending);
   const consumePendingFileDrop = useSidebarPendingFileDropStore(
@@ -3362,6 +3386,7 @@ export default function ChatView(props: ChatViewProps) {
                 onRevertToTurnCount={onRevertTimelineTurnStable}
                 onUseArtifactTemplate={insertArtifactTemplateStable}
                 onSendAppMessage={sendAppMessageStable}
+                onCommitTurnFiles={isServerThread ? onCommitTurnFilesStable : undefined}
                 isRevertingCheckpoint={isRevertingCheckpoint}
                 onImageExpand={onExpandTimelineImageStable}
                 onFileOpen={openFileAttachmentStable}
@@ -3778,6 +3803,8 @@ export default function ChatView(props: ChatViewProps) {
               {...(isServerThread && isGitRepo
                 ? { onOpenChanges: openChangesFromThreadPanelStable }
                 : {})}
+              commitPreselection={commitPreselection}
+              onCommitPreselectionConsumed={onCommitPreselectionConsumedStable}
               onRunProjectScript={runProjectScriptStable}
               onAddProjectScript={saveProjectScriptStable}
               onUpdateProjectScript={updateProjectScriptStable}

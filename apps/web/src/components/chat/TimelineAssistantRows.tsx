@@ -60,6 +60,7 @@ export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind
             routeThreadKey={ctx.routeThreadKey}
             resolvedTheme={ctx.resolvedTheme}
             onOpenTurnDiff={ctx.onOpenTurnDiff}
+            onCommitTurnFiles={ctx.onCommitTurnFiles}
           />
         ) : null}
         {row.showAssistantMeta ? (
@@ -293,12 +294,14 @@ const AssistantChangedFilesSection = memo(function AssistantChangedFilesSection(
   routeThreadKey,
   resolvedTheme,
   onOpenTurnDiff,
+  onCommitTurnFiles,
 }: {
   turnSummary: TurnDiffSummary | undefined;
   routeThreadKey: string;
   resolvedTheme: "light" | "dark";
   displayThreadKey?: string;
   onOpenTurnDiff: (runId: RunId, filePath?: string) => void;
+  onCommitTurnFiles: ((runId: RunId, filePaths: string[]) => void) | undefined;
 }) {
   if (!turnSummary) return null;
   const checkpointFiles = turnSummary.files;
@@ -311,6 +314,7 @@ const AssistantChangedFilesSection = memo(function AssistantChangedFilesSection(
       routeThreadKey={routeThreadKey}
       resolvedTheme={resolvedTheme}
       onOpenTurnDiff={onOpenTurnDiff}
+      onCommitTurnFiles={onCommitTurnFiles}
     />
   );
 });
@@ -321,6 +325,7 @@ function AssistantChangedFilesSectionInner({
   routeThreadKey,
   resolvedTheme,
   onOpenTurnDiff,
+  onCommitTurnFiles,
 }: {
   turnSummary: TurnDiffSummary;
   checkpointFiles: TurnDiffSummary["files"];
@@ -328,6 +333,7 @@ function AssistantChangedFilesSectionInner({
   resolvedTheme: "light" | "dark";
   displayThreadKey?: string;
   onOpenTurnDiff: (runId: RunId, filePath?: string) => void;
+  onCommitTurnFiles: ((runId: RunId, filePaths: string[]) => void) | undefined;
 }) {
   const ctx = use(TimelineRowCtx);
   const persistedExpanded = useUiStateStore(
@@ -369,6 +375,7 @@ function AssistantChangedFilesSectionInner({
           event,
         )
       }
+      onCommitTurnFiles={onCommitTurnFiles}
     />
   );
 }

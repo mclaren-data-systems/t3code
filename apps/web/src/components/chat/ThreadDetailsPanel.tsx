@@ -11,7 +11,7 @@ import type { DraftId } from "../../composerDraftStore";
 import { useT3ProjectFileScripts } from "../../hooks/useT3ProjectFileScripts";
 import { type EnvMode, type EnvironmentOption } from "../BranchToolbar.logic";
 import { BranchToolbar } from "../BranchToolbar";
-import BaseGitActionsControl from "../GitActionsControl";
+import BaseGitActionsControl, { type GitCommitPreselection } from "../GitActionsControl";
 import ProjectScriptsControl, {
   type NewProjectScriptInput,
   type ProjectScriptActionResult,
@@ -72,6 +72,9 @@ interface ThreadDetailsPanelProps extends Pick<
   onCheckoutPullRequestRequest?: (reference: string) => void;
   onComposerFocusRequest: () => void;
   onOpenChanges?: () => void;
+  /** Forwarded to the git actions control's commit dialog. */
+  commitPreselection?: GitCommitPreselection | null | undefined;
+  onCommitPreselectionConsumed?: ((requestId: number) => void) | undefined;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<ProjectScriptActionResult>;
   onUpdateProjectScript: (
@@ -153,7 +156,10 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
           git:
             props.gitCwd !== null &&
             props.activeProjectName !== undefined &&
-            (visible.gitActions || (visible.changes && props.isGitRepo)),
+            (visible.gitActions ||
+              (visible.changes && props.isGitRepo) ||
+              // A turn's Commit button must reach the dialog even when both rows are hidden.
+              props.commitPreselection != null),
         };
         return (
           <>
@@ -228,6 +234,8 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                         activeThreadRef={activeThreadRef}
                         {...(props.draftId ? { draftId: props.draftId } : {})}
                         {...(props.onOpenChanges ? { onOpenChanges: props.onOpenChanges } : {})}
+                        commitPreselection={props.commitPreselection}
+                        onCommitPreselectionConsumed={props.onCommitPreselectionConsumed}
                       />
                     ) : null}
                   </div>

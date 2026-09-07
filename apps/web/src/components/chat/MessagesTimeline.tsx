@@ -267,6 +267,8 @@ interface MessagesTimelineProps {
   threadStartCheckpointReady?: boolean;
   availableRevertTurnCounts?: ReadonlySet<number> | undefined;
   onRevertToTurnCount: (targetTurnCount: number, messageId: MessageId) => void;
+  /** When present, a turn's "Changed files" box offers committing just those files. */
+  onCommitTurnFiles?: ((runId: RunId, filePaths: string[]) => void) | undefined;
   onUseArtifactTemplate?: (template: CodexArtifactTemplate) => void;
   onSendAppMessage?: (text: string) => Promise<void>;
   onRunShellCommand?: (command: string) => void;
@@ -366,6 +368,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   threadStartCheckpointReady = false,
   availableRevertTurnCounts,
   onRevertToTurnCount,
+  onCommitTurnFiles,
   onUseArtifactTemplate = NOOP_USE_ARTIFACT_TEMPLATE,
   onSendAppMessage,
   onRunShellCommand,
@@ -1033,6 +1036,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     turnItemSource,
     workflowOpening,
     onForkFromRun,
+    onCommitTurnFiles,
     onToggleTurnFold,
     onToggleAttemptFold,
     onToggleWorkGroup,

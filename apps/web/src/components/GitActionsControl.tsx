@@ -62,6 +62,7 @@ import {
   resolveThreadBranchUpdate,
 } from "./GitActionsControl.logic";
 import { WizardPopup, WizardHeader, WizardSteps, WizardPanel, WizardFooter } from "./ui/wizard";
+import { deriveCommitExcludedFilePaths } from "../session-logic";
 import { StartTruncatedPath } from "./StartTruncatedPath";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
@@ -112,6 +113,16 @@ import { sourceControlClients } from "@t3tools/client-runtime/source-control-cli
 import { formatDiffCount } from "@t3tools/client-runtime/diff-count";
 import { useOpenLink } from "~/browser/useOpenLink";
 
+/**
+ * A request to open the commit dialog with only these files checked (the rest
+ * of the working tree excluded, checkboxes shown). `requestId` distinguishes
+ * repeat requests for the same file set.
+ */
+export interface GitCommitPreselection {
+  readonly filePaths: ReadonlyArray<string>;
+  readonly requestId: number;
+}
+
 interface GitActionsControlProps {
   gitCwd: string | null;
   activeThreadRef: ScopedThreadRef | null;
@@ -120,6 +131,10 @@ interface GitActionsControlProps {
   showActions?: boolean;
   showChanges?: boolean;
   onOpenChanges?: () => void;
+  /** Opens the commit dialog with only these files checked; see {@link GitCommitPreselection}. */
+  commitPreselection?: GitCommitPreselection | null | undefined;
+  /** Called once a preselection request has been applied, so the owner can drop it. */
+  onCommitPreselectionConsumed?: ((requestId: number) => void) | undefined;
 }
 
 interface PendingDefaultBranchAction {
@@ -931,6 +946,8 @@ export default function GitActionsControl({
   showActions = true,
   showChanges = true,
   onOpenChanges,
+  commitPreselection,
+  onCommitPreselectionConsumed,
 }: GitActionsControlProps) {
   const panelAnchorRef = useRef<HTMLDivElement | null>(null);
   const updateThreadMetadata = useAtomCommand(
@@ -1057,6 +1074,27 @@ export default function GitActionsControl({
   const selectedFiles = allFiles.filter((f) => !excludedFiles.has(f.path));
   const allSelected = excludedFiles.size === 0;
   const noneSelected = selectedFiles.length === 0;
+
+  // A turn's "Changed files" commit button opens the dialog with only that turn's files checked.
+  // The request can arrive before git status is known; wait for it or the exclusion set is empty.
+  const lastHandledCommitPreselectionRef = useRef(0);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- applies a commit request raised in ChatView before this control mounted (the panel opens on the click), once git status can resolve it, then reports it consumed
+  useEffect(() => {
+    if (!commitPreselection || !gitStatusForActions) return;
+    if (commitPreselection.requestId === lastHandledCommitPreselectionRef.current) return;
+    lastHandledCommitPreselectionRef.current = commitPreselection.requestId;
+    setExcludedFiles(
+      new Set(
+        deriveCommitExcludedFilePaths(
+          allFiles.map((f) => f.path),
+          commitPreselection.filePaths,
+        ),
+      ),
+    );
+    setIsEditingFiles(true);
+    setIsCommitDialogOpen(true);
+    onCommitPreselectionConsumed?.(commitPreselection.requestId);
+  }, [allFiles, commitPreselection, gitStatusForActions, onCommitPreselectionConsumed]);
 
   const initAction = useVcsInitAction(sourceControlScope);
   const runImmediateGitAction = useGitStackedAction(sourceControlScope);

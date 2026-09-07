@@ -1145,3 +1145,33 @@ export function deriveCanInterruptRunningThread(
 }
 
 export type { TurnDiffSummary };
+
+/**
+ * Normalizes a workspace-relative path for comparing git status against a turn's checkpoint diff:
+ * forward slashes, no leading `./` or `/`, case-insensitive (Windows separators and drive casing differ).
+ */
+function normalizeWorkspaceRelativeFilePath(filePath: string): string {
+  let normalized = filePath.replaceAll("\\", "/");
+  while (normalized.startsWith("./")) {
+    normalized = normalized.slice(2);
+  }
+  if (normalized.startsWith("/")) {
+    normalized = normalized.slice(1);
+  }
+  return normalized.toLowerCase();
+}
+
+/**
+ * Working-tree paths to exclude so the commit dialog opens with exactly the
+ * given preselected files checked. Returns the working-tree spellings, since
+ * the dialog's exclusion set is keyed by them.
+ */
+export function deriveCommitExcludedFilePaths(
+  workingTreePaths: ReadonlyArray<string>,
+  preselectedPaths: ReadonlyArray<string>,
+): string[] {
+  const preselected = new Set(preselectedPaths.map(normalizeWorkspaceRelativeFilePath));
+  return workingTreePaths.filter(
+    (workingTreePath) => !preselected.has(normalizeWorkspaceRelativeFilePath(workingTreePath)),
+  );
+}
