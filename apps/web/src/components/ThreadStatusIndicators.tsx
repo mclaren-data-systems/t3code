@@ -876,6 +876,9 @@ export function ThreadRowLeadingStatus({ thread }: { thread: SidebarThreadSummar
   const threadProject = useProject(scopeProjectRef(thread.environmentId, thread.projectId));
   const threadProjectCwd = threadProject?.workspaceRoot ?? null;
   const gitCwd = thread.worktreePath ?? threadProjectCwd;
+  const completionAcknowledgedAt = useUiStateStore(
+    (state) => state.threadLastCompletionAcknowledgedAtById[scopedThreadKey(threadRef)],
+  );
   const linkedPullRequest = useLinkedThreadPullRequest(
     thread.environmentId,
     thread.linkedPullRequest,
@@ -914,6 +917,7 @@ export function ThreadRowLeadingStatus({ thread }: { thread: SidebarThreadSummar
     thread: {
       ...thread,
       lastVisitedAt,
+      completionAcknowledgedAt,
     },
   });
 
