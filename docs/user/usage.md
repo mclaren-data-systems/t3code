@@ -15,6 +15,11 @@ variable. Use absolute paths or `~/` paths in the account's environment settings
 environment paths depend on each project's working directory and cannot be reliably discovered
 by Usage. Accounts sharing a history directory count once.
 
+Each configured provider instance gets its own line, row, and column. If you run more than one
+account of the same provider, a personal and a work Claude Code say, they are reported separately,
+under the names and accent colors you gave them in Settings. Turning a provider off does not remove
+what it already spent.
+
 On web and desktop, use the environment dropdown to filter costs, tokens, and limits. All
 environments are selected by default. The dropdown shows which environments are still scanning;
 results appear as each one responds.
