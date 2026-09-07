@@ -22,7 +22,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import GitActionsControl from "../GitActionsControl";
+import GitActionsControl, { type GitCommitPreselection } from "../GitActionsControl";
 import { isTrailingDoubleClick } from "../Sidebar.logic";
 import { type DraftId } from "~/composerDraftStore";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -64,6 +64,8 @@ interface ChatHeaderProps {
   rightPanelOpen: boolean;
   gitCwd: string | null;
   readonly onOpenPullRequest?: ((number: number) => void) | undefined;
+  /** Forwarded to the git actions control's commit dialog. */
+  commitPreselection?: GitCommitPreselection | null | undefined;
   onNewThreadInProject: () => void;
   onOpenProjectSettings?: (() => void) | undefined;
   onRunProjectScript: (script: ProjectScript) => void;
@@ -133,6 +135,7 @@ export const ChatHeader = memo(function ChatHeader({
   rightPanelOpen,
   gitCwd,
   onOpenPullRequest,
+  commitPreselection,
   onNewThreadInProject,
   onOpenProjectSettings,
   onRunProjectScript,
@@ -434,6 +437,7 @@ export const ChatHeader = memo(function ChatHeader({
             gitCwd={gitCwd}
             activeThreadRef={scopeThreadRef(activeThreadEnvironmentId, activeThreadId)}
             onOpenPullRequest={onOpenPullRequest}
+            commitPreselection={commitPreselection}
             {...(draftId ? { draftId } : {})}
           />
         )}
