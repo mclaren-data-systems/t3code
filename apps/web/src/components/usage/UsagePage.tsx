@@ -94,7 +94,12 @@ import {
   type UsageMetric,
 } from "./usageShortcuts";
 import { useEscapeToGoBack } from "../../hooks/useNavigateBack";
-import { PROVIDER_ORDER, PROVIDER_PRESENTATION, providersWithUsage } from "./usageProviders";
+import {
+  buildUsageSeries,
+  PROVIDER_ORDER,
+  PROVIDER_PRESENTATION,
+  type UsageSeries,
+} from "./usageProviders";
 import {
   readUsagePagePreferences,
   saveUsagePagePreferences,
@@ -191,27 +196,47 @@ export function UsagePage() {
         : merged.models,
     [breakdown, merged.models, metric],
   );
-  const activeProviders = useMemo(() => providersWithUsage(merged.providers), [merged.providers]);
+  // One series per configured provider instance, so two Claude accounts read
+  // as two rows rather than one merged line.
+  const series = useMemo(() => buildUsageSeries(merged.instances), [merged.instances]);
+  const seriesColorByInstance = useMemo(
+    () => new Map(series.map((entry) => [entry.instanceId, entry.color] as const)),
+    [series],
+  );
+  // A model row names its instance only when the provider it belongs to has
+  // more than one; otherwise the brand mark beside it already says everything.
+  const ambiguousInstanceLabels = useMemo(() => {
+    const counts = new Map<UsageProviderKind, number>();
+    for (const instance of merged.instances) {
+      counts.set(instance.provider, (counts.get(instance.provider) ?? 0) + 1);
+    }
+    const labels = new Map<string, string>();
+    for (const entry of series) {
+      if ((counts.get(entry.provider) ?? 0) > 1) labels.set(entry.instanceId, entry.label);
+    }
+    return labels;
+  }, [merged.instances, series]);
+  // Models are one row per instance, so the key carries the instance too.
   const selectedModel =
     selectedModelKey === null
       ? undefined
-      : merged.models.find((model) => `${model.provider}:${model.model}` === selectedModelKey);
+      : merged.models.find((model) => `${model.instanceId}:${model.model}` === selectedModelKey);
   const breakdownPeak = breakdownModels.reduce(
     (peak, model) => Math.max(peak, metric === "tokens" ? model.totalTokens : model.costUsd),
     0,
   );
   const summaryRows: Array<
-    | { readonly kind: "usage"; readonly provider: UsageProviderKind }
+    | { readonly kind: "usage"; readonly series: UsageSeries }
     | { readonly kind: "enable"; readonly environment: EnvironmentUsageStatus }
-  > = activeProviders.map((provider) => ({ kind: "usage", provider }));
+  > = series.map((entry) => ({ kind: "usage", series: entry }));
   const cursorInsertAt =
-    Math.max(activeProviders.indexOf("codex"), activeProviders.indexOf("claude")) + 1;
+    series.findLastIndex((entry) => entry.provider === "codex" || entry.provider === "claude") + 1;
   summaryRows.splice(
     cursorInsertAt,
     0,
     ...cursorAccessEnvironments.map((environment) => ({ kind: "enable" as const, environment })),
   );
-  const timeValueColumnWidth = `${60 / (activeProviders.length + 2)}%`;
+  const timeValueColumnWidth = `${60 / (series.length + 2)}%`;
 
   const selectWindow = (days: number) => {
     if (!isUsageWindowDays(days)) return;
@@ -563,30 +588,26 @@ export function UsagePage() {
                           />
                         );
                       }
-                      const provider = row.provider;
-                      const totals = merged.providers.find((entry) => entry.provider === provider);
+                      const entry = row.series;
+                      const totals = entry.totals;
                       const share =
                         metric === "cost" ? (totals?.costShare ?? 0) : (totals?.tokenShare ?? 0);
-                      const providerSessions = totals?.sessions ?? 0;
-                      const sessionLabel = `${formatCount(providerSessions)} ${
-                        providerSessions === 1 ? "session" : "sessions"
+                      const instanceSessions = totals?.sessions ?? 0;
+                      const sessionLabel = `${formatCount(instanceSessions)} ${
+                        instanceSessions === 1 ? "session" : "sessions"
                       }`;
                       return (
-                        <div key={provider} className="flex flex-col gap-1">
+                        <div key={entry.instanceId} className="flex flex-col gap-1">
                           <div className="flex items-baseline justify-between gap-4">
                             <span className="flex min-w-0 items-center gap-2 text-sm text-foreground">
                               <span
                                 aria-hidden
                                 className="size-2 shrink-0 rounded-full"
-                                style={{
-                                  backgroundColor: PROVIDER_PRESENTATION[provider].color,
-                                }}
+                                style={{ backgroundColor: entry.color }}
                               />
-                              <ProviderMark provider={provider} className="size-4" />
+                              <ProviderMark provider={entry.provider} className="size-4" />
                               <span className="flex min-w-0 items-baseline gap-1.5">
-                                <span className="truncate">
-                                  {PROVIDER_PRESENTATION[provider].label}
-                                </span>
+                                <span className="truncate">{entry.label}</span>
                                 <span className="shrink-0 whitespace-nowrap text-2xs text-muted-foreground tabular-nums">
                                   {sessionLabel}
                                 </span>
@@ -614,7 +635,6 @@ export function UsagePage() {
                       {metric === "tokens" ? "processed tokens" : "cost"}
                     </h2>
                     <UsageProviderChart
-                      providers={activeProviders}
                       days={days}
                       daily={merged.daily}
                       hours={hours}
@@ -622,6 +642,7 @@ export function UsagePage() {
                       metric={metric}
                       referenceTime={window.untilTime}
                       resolution={isPast24Hours ? "hour" : "day"}
+                      series={series}
                       timeZone={window.timeZone}
                     />
                   </div>
@@ -717,7 +738,7 @@ export function UsagePage() {
                           </tr>
                         ) : (
                           breakdownModels.map((model, index) => {
-                            const key = `${model.provider}:${model.model}`;
+                            const key = `${model.instanceId}:${model.model}`;
                             const value = metric === "tokens" ? model.totalTokens : model.costUsd;
                             const share = modelShare(
                               model,
@@ -739,6 +760,11 @@ export function UsagePage() {
                                   >
                                     <ProviderMark provider={model.provider} className="size-3.5" />
                                     {model.model}
+                                    {ambiguousInstanceLabels.has(model.instanceId) ? (
+                                      <span className="text-xs text-muted-foreground">
+                                        {ambiguousInstanceLabels.get(model.instanceId)}
+                                      </span>
+                                    ) : null}
                                   </button>
                                   <div aria-hidden className="mt-1.5 h-0.5 max-w-48">
                                     <div
@@ -750,6 +776,7 @@ export function UsagePage() {
                                             ? `max(0.5rem, ${(value / breakdownPeak) * 100}%)`
                                             : 0,
                                         backgroundColor:
+                                          seriesColorByInstance.get(model.instanceId) ??
                                           PROVIDER_PRESENTATION[model.provider].color,
                                       }}
                                     />
@@ -776,8 +803,8 @@ export function UsagePage() {
                     <table className="w-full table-fixed text-sm">
                       <colgroup>
                         <col className="w-2/5" />
-                        {activeProviders.map((provider) => (
-                          <col key={provider} style={{ width: timeValueColumnWidth }} />
+                        {series.map((entry) => (
+                          <col key={entry.instanceId} style={{ width: timeValueColumnWidth }} />
                         ))}
                         <col style={{ width: timeValueColumnWidth }} />
                         <col style={{ width: timeValueColumnWidth }} />
@@ -785,9 +812,9 @@ export function UsagePage() {
                       <thead>
                         <tr className="border-b border-border text-left text-xs text-muted-foreground">
                           <th className="py-2 font-normal">{isPast24Hours ? "Hour" : "Day"}</th>
-                          {activeProviders.map((provider) => (
-                            <th key={provider} className="py-2 text-right font-normal">
-                              {PROVIDER_PRESENTATION[provider].label}
+                          {series.map((entry) => (
+                            <th key={entry.instanceId} className="py-2 text-right font-normal">
+                              {entry.label}
                             </th>
                           ))}
                           <th className="py-2 text-right font-normal">Total</th>
@@ -798,7 +825,7 @@ export function UsagePage() {
                         {breakdownPeriods.length === 0 ? (
                           <tr>
                             <td
-                              colSpan={activeProviders.length + 3}
+                              colSpan={series.length + 3}
                               className="py-6 text-center text-muted-foreground"
                             >
                               No activity in this window.
@@ -815,12 +842,12 @@ export function UsagePage() {
                                   ? formatHourShort(period.hourStart, window.timeZone)
                                   : formatDayShort(period.day)}
                               </td>
-                              {activeProviders.map((provider) => (
+                              {series.map((entry) => (
                                 <td
-                                  key={provider}
+                                  key={entry.instanceId}
                                   className="py-2 text-right text-muted-foreground tabular-nums"
                                 >
-                                  {formatUsd(period.byProvider.get(provider)?.costUsd ?? 0)}
+                                  {formatUsd(period.byInstance.get(entry.instanceId)?.costUsd ?? 0)}
                                 </td>
                               ))}
                               <td className="py-2 text-right text-foreground tabular-nums">
