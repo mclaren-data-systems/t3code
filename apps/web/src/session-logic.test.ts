@@ -25,6 +25,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   deriveActivePlanState,
   deriveCanInterruptRunningThread,
+  deriveCommitExcludedFilePaths,
   deriveTimelineEntriesFromVisibleTurnItems,
   deriveTimelineEntriesFromVisibleTurnItemsWithState,
   deriveRevertTurnCountByUserMessageId,
@@ -1810,4 +1811,25 @@ it("renders automatic completion as a work entry instead of a user bubble", () =
       ],
     })[0]?.kind,
   ).toBe("message");
+});
+
+describe("deriveCommitExcludedFilePaths", () => {
+  it("excludes only the working-tree files outside the preselected set", () => {
+    expect(
+      deriveCommitExcludedFilePaths(["src/a.ts", "src/b.ts", "docs/readme.md"], ["src/b.ts"]),
+    ).toEqual(["src/a.ts", "docs/readme.md"]);
+  });
+
+  it("matches across separators, ./ prefixes, and case", () => {
+    expect(
+      deriveCommitExcludedFilePaths(
+        ["src\\Nested\\File.ts", "src/other.ts"],
+        ["./src/nested/file.ts"],
+      ),
+    ).toEqual(["src/other.ts"]);
+  });
+
+  it("excludes everything when nothing is preselected", () => {
+    expect(deriveCommitExcludedFilePaths(["src/a.ts"], [])).toEqual(["src/a.ts"]);
+  });
 });

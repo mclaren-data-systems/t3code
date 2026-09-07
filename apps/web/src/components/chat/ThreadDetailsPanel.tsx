@@ -16,7 +16,7 @@ import {
 } from "../BranchToolbar.logic";
 import { BranchToolbar } from "../BranchToolbar";
 import { BranchToolbarEnvironmentSelector } from "../BranchToolbarEnvironmentSelector";
-import GitActionsControl from "../GitActionsControl";
+import GitActionsControl, { type GitCommitPreselection } from "../GitActionsControl";
 import ProjectScriptsControl, {
   type NewProjectScriptInput,
   type ProjectScriptActionResult,
@@ -66,6 +66,9 @@ export interface ThreadDetailsPanelProps extends Pick<
   onCheckoutPullRequestRequest?: (reference: string) => void;
   onComposerFocusRequest: () => void;
   onOpenChanges?: () => void;
+  /** Forwarded to the git actions control's commit dialog. */
+  commitPreselection?: GitCommitPreselection | null | undefined;
+  onCommitPreselectionConsumed?: ((requestId: number) => void) | undefined;
   versionMismatch: VersionMismatchIssue | null;
   onDismissVersionMismatch: () => void;
   onRunProjectScript: (script: ProjectScript) => void;
@@ -216,6 +219,8 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                     }}
                     {...(props.draftId ? { draftId: props.draftId } : {})}
                     {...(props.onOpenChanges ? { onOpenChanges: props.onOpenChanges } : {})}
+                    commitPreselection={props.commitPreselection}
+                    onCommitPreselectionConsumed={props.onCommitPreselectionConsumed}
                   />
                 ) : null}
               </div>
