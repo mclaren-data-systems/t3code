@@ -6,7 +6,7 @@ import {
   summarizeTurnDiffStats,
   type TurnDiffTreeNode,
 } from "../../lib/turnDiffTree";
-import { ChevronRightIcon, FileDiffIcon } from "lucide-react";
+import { ChevronRightIcon, FileDiffIcon, GitCommitIcon } from "lucide-react";
 import { ChevronsDownUp, ChevronsUpDown, Folder, FolderClosed } from "lucide";
 import { cn } from "~/lib/utils";
 import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
@@ -29,6 +29,8 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
   onToggleAllDirectories: () => void;
   onOpenTurnDiff: (runId: RunId, filePath?: string) => void;
   onFileContextMenu?: ChangedFileContextMenuHandler | undefined;
+  /** When present, offers committing exactly this turn's files. */
+  onCommitTurnFiles?: ((runId: RunId, filePaths: string[]) => void) | undefined;
 }) {
   const {
     runId,
@@ -38,6 +40,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
     onToggleAllDirectories,
     onOpenTurnDiff,
     onFileContextMenu,
+    onCommitTurnFiles,
   } = props;
   const summaryStat = useMemo(() => summarizeTurnDiffStats(files), [files]);
   const hasDirectories = files.some((file) => /[/\\]/.test(file.path));
@@ -108,6 +111,30 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
             </TooltipTrigger>
             <TooltipPopup side="top">Open the full diff</TooltipPopup>
           </Tooltip>
+          {onCommitTurnFiles ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="ghost-muted"
+                    aria-label="Commit these files"
+                    onClick={() =>
+                      onCommitTurnFiles(
+                        runId,
+                        files.map((file) => file.path),
+                      )
+                    }
+                  />
+                }
+              >
+                <GitCommitIcon className="size-3" />
+                <span className="hidden @[24rem]/changed-files:inline">Commit</span>
+              </TooltipTrigger>
+              <TooltipPopup side="top">Commit with only these files selected</TooltipPopup>
+            </Tooltip>
+          ) : null}
         </div>
       </div>
       <ChangedFilesTree

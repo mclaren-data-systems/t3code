@@ -10,7 +10,7 @@ import type { DraftId } from "../../composerDraftStore";
 import { useT3ProjectFileScripts } from "../../hooks/useT3ProjectFileScripts";
 import { type EnvMode, type EnvironmentOption } from "../BranchToolbar.logic";
 import { BranchToolbar } from "../BranchToolbar";
-import GitActionsControl from "../GitActionsControl";
+import GitActionsControl, { type GitCommitPreselection } from "../GitActionsControl";
 import ProjectScriptsControl, {
   type NewProjectScriptInput,
   type ProjectScriptActionResult,
@@ -53,6 +53,9 @@ export interface ThreadDetailsPanelProps extends Pick<
   onCheckoutPullRequestRequest?: (reference: string) => void;
   onComposerFocusRequest: () => void;
   onOpenChanges?: () => void;
+  /** Forwarded to the git actions control's commit dialog. */
+  commitPreselection?: GitCommitPreselection | null | undefined;
+  onCommitPreselectionConsumed?: ((requestId: number) => void) | undefined;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<ProjectScriptActionResult>;
   onUpdateProjectScript: (
@@ -166,6 +169,8 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                     }}
                     {...(props.draftId ? { draftId: props.draftId } : {})}
                     {...(props.onOpenChanges ? { onOpenChanges: props.onOpenChanges } : {})}
+                    commitPreselection={props.commitPreselection}
+                    onCommitPreselectionConsumed={props.onCommitPreselectionConsumed}
                   />
                 ) : null}
               </div>
