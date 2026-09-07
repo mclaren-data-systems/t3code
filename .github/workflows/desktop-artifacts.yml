@@ -1,0 +1,332 @@
+# Fork workflow: build the desktop binaries for every platform this repo already
+# supports, on every push to `main`, and publish them as a development-build
+# prerelease (`desktop-dev-<run number>`), pruning older dev releases so only
+# the current one plus two remain.
+#
+# Upstream produces these from `release.yml`, which also reads the production
+# T3 Connect relay config, signs, publishes to npm, and cuts a GitHub Release —
+# all of which need Cloudflare / Apple / Azure / npm / GitHub App credentials
+# this fork does not have. That workflow was removed; this one keeps the part a
+# fork can actually run.
+#
+# Constraints this file deliberately respects:
+#   - no secrets beyond the automatic GITHUB_TOKEN (only the release job uses
+#     it, with job-scoped contents: write, to publish and prune dev releases)
+#   - standard GitHub-hosted runners only (upstream's `blacksmith-*` labels do
+#     not resolve here, so those jobs sat queued for 24h and were cancelled)
+#   - builds are unsigned: passing `--signed` is what pulls in signing
+#     credentials, so it is never passed. `build-desktop-artifact.ts` then sets
+#     CSC_IDENTITY_AUTO_DISCOVERY=false and skips notarization.
+name: Desktop Artifacts
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-artifacts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wsl_node_pty:
+    name: Build WSL node-pty (linux-x64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+
+      - name: Build node-pty linux-x64 prebuild
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Resolve node-pty from apps/server (where it's a dependency) and build
+          # its native binary from source for Linux. node-addon-api resolves from
+          # node-pty's own dependency tree, so node-gyp has everything it needs.
+          pty_pkg="$(node -e "console.log(require.resolve('node-pty/package.json', { paths: ['$GITHUB_WORKSPACE/apps/server'] }))")"
+          pty_dir="$(dirname "$pty_pkg")"
+          ( cd "$pty_dir" && npx --yes node-gyp rebuild )
+          mkdir -p wsl-prebuild
+          cp "$pty_dir/build/Release/pty.node" wsl-prebuild/pty.node
+          file wsl-prebuild/pty.node
+
+      - name: Upload node-pty linux-x64 prebuild
+        uses: actions/upload-artifact@v7
+        with:
+          name: wsl-node-pty-x64
+          path: wsl-prebuild/pty.node
+          if-no-files-found: error
+          retention-days: 7
+
+  build:
+    name: ${{ matrix.label }}
+    # Only the Windows entry consumes the prebuild, and it degrades to a warning
+    # when the file is absent, so `!cancelled()` (not `!failure()`) keeps every
+    # platform building even when the prebuild job fails.
+    needs: [wsl_node_pty]
+    if: ${{ !cancelled() }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS x64 cross-builds from the arm64 runner the same way upstream
+          # does: the staged workspace pins pnpm `supportedArchitectures`, so the
+          # native deps are fetched for the target arch, not the host's.
+          - label: macOS arm64
+            runner: macos-latest
+            platform: mac
+            target: dmg
+            arch: arm64
+            rust_target: aarch64-apple-darwin
+          - label: macOS x64
+            runner: macos-latest
+            platform: mac
+            target: dmg
+            arch: x64
+            rust_target: x86_64-apple-darwin
+          - label: Linux x64
+            runner: ubuntu-24.04
+            platform: linux
+            target: AppImage
+            arch: x64
+            rust_target: x86_64-unknown-linux-gnu
+          - label: Windows x64
+            runner: windows-2025
+            platform: win
+            target: nsis
+            arch: x64
+            rust_target: x86_64-pc-windows-msvc
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+
+      # `dist:desktop:artifact` cargo-builds the native resource monitor into the
+      # staged app resources, so the target triple's Rust toolchain must be present.
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Install Linux desktop build libraries
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsecret-1-dev pkg-config
+          if ! command -v magick >/dev/null 2>&1 && ! command -v convert >/dev/null 2>&1; then
+              sudo apt-get install -y imagemagick
+          fi
+
+          if command -v magick >/dev/null 2>&1; then
+              magick -version
+          else
+              convert -version
+          fi
+
+      - name: Install Spectre-mitigated MSVC libs
+        if: matrix.platform == 'win'
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $installPath = & $vswhere -products * -latest -property installationPath
+          $setupExe = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+          $proc = Start-Process -FilePath $setupExe `
+            -ArgumentList "modify", "--installPath", "`"$installPath`"", "--add", `
+            "Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre", "--quiet", "--norestart" `
+            -Wait -PassThru -NoNewWindow
+          if ($null -eq $proc -or $proc.ExitCode -ne 0) {
+            $code = if ($null -ne $proc) { $proc.ExitCode } else { 1 }
+            Write-Error "Visual Studio Installer failed with exit code $code"
+            exit $code
+          }
+
+      # Bundles the Linux node-pty binary so the packaged WSL backend ships a
+      # ready binary. Non-fatal: without it the Windows artifact still builds,
+      # and its WSL backend compiles pty.node on first launch instead.
+      - name: Download WSL node-pty prebuild
+        id: wsl_prebuild
+        if: matrix.platform == 'win'
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: wsl-node-pty-x64
+          path: wsl-prebuild
+
+      - name: Build desktop artifact
+        shell: bash
+        env:
+          # Fork: ship with no update feed so the app never checks for updates.
+          # resolveGitHubPublishConfig requires an owner/repo value, so this
+          # single-segment value makes it resolve no publish config (instead of
+          # falling back to GITHUB_REPOSITORY), which means electron-builder
+          # writes no app-update.yml and the desktop updater disables itself
+          # ("no update feed is configured") — no startup check, no 4-minute
+          # poll, no manual check.
+          T3CODE_DESKTOP_UPDATE_REPOSITORY: fork-updates-disabled
+        run: |
+          set -euo pipefail
+
+          args=(
+            --platform "${{ matrix.platform }}"
+            --target "${{ matrix.target }}"
+            --arch "${{ matrix.arch }}"
+            --verbose
+          )
+
+          if [[ "${{ matrix.platform }}" == "win" ]]; then
+            if [[ -f "$GITHUB_WORKSPACE/wsl-prebuild/pty.node" ]]; then
+              args+=(--wsl-prebuild "$GITHUB_WORKSPACE/wsl-prebuild/pty.node")
+            else
+              echo "::warning::WSL node-pty prebuild unavailable; the packaged WSL backend will compile pty.node on first launch."
+            fi
+          fi
+
+          vp run dist:desktop:artifact "${args[@]}"
+
+      # build-desktop-artifact.ts copies only files (never the unpacked app
+      # directories) into release/, so the whole directory is safe to upload.
+      - name: Summarize artifacts
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### ${{ matrix.label }} (unsigned)"
+            echo
+            if [[ -d release ]]; then
+              echo '```'
+              ls -lh release
+              echo '```'
+            else
+              echo "No artifacts were produced."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload desktop artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
+          path: release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish dev release
+    # Publish whatever platforms built — a development build with one platform
+    # missing is still useful, and the build job is what turns the run red.
+    # The publish step fails only when no platform produced anything at all.
+    needs: [build]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG_PREFIX: desktop-dev-
+      KEEP_RELEASES: "3"
+    steps:
+      - name: Download desktop artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: desktop-*
+          path: assets
+
+      # Each artifact lands in its own directory; flatten them for upload. The
+      # installer names carry the arch (T3-Code-<version>-<arch>.<ext>), but
+      # electron-builder's update metadata does not — both macOS legs emit a
+      # latest-mac.yml — so a colliding name gets its artifact name prefixed.
+      - name: Collect release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          mkdir -p dist
+          for dir in assets/*/; do
+            artifact="$(basename "$dir")"
+            for file in "$dir"*; do
+              base="$(basename "$file")"
+              if [[ -e "dist/$base" ]]; then
+                base="${artifact}-${base}"
+              fi
+              mv "$file" "dist/$base"
+            done
+          done
+          ls -lh dist
+
+      - name: Create development release
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(dist/*)
+          if (( ${#files[@]} == 0 )); then
+            echo "::error::No desktop artifacts were produced; nothing to release."
+            exit 1
+          fi
+
+          tag="${TAG_PREFIX}${GITHUB_RUN_NUMBER}"
+          # A re-run reuses the run number, so drop any release this same run
+          # already published before recreating it.
+          gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+
+          {
+            echo "Unsigned development build from \`${GITHUB_SHA}\`."
+            echo
+            echo "Published automatically by the Desktop Artifacts workflow"
+            echo "([run ${GITHUB_RUN_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}))."
+            echo "Older development releases are pruned; only the newest ${KEEP_RELEASES} are kept."
+          } > notes.md
+
+          gh release create "$tag" "${files[@]}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Desktop dev build ${GITHUB_SHA::7}" \
+            --prerelease \
+            --notes-file notes.md
+
+      - name: Prune older development releases
+        shell: bash
+        run: |
+          set -euo pipefail
+          current="${TAG_PREFIX}${GITHUB_RUN_NUMBER}"
+          gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate \
+            --jq ".[] | select(.tag_name | startswith(\"${TAG_PREFIX}\")) | [.created_at, .tag_name] | @tsv" |
+            sort -r | tail -n +"$((KEEP_RELEASES + 1))" | cut -f2 |
+            while IFS= read -r tag; do
+              if [[ "$tag" == "$current" ]]; then
+                continue
+              fi
+              echo "Pruning $tag"
+              gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+            done

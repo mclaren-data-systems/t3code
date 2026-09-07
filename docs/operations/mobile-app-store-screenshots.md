@@ -101,6 +101,10 @@ appearance settings can never drift apart.
 
 ## Capture in GitHub Actions
 
+> **Fork note:** the `Mobile Showcase Screenshots` workflow is not present in this fork — it runs
+> only on Blacksmith macOS/Linux runners this fork cannot schedule. Capture locally with
+> `pnpm screenshots:mobile` (above); the rest of this section is upstream reference.
+
 Run the `Mobile Showcase Screenshots` workflow from GitHub's Actions tab, choose `all`, `ios`, or
 `android`, select `light`, `dark`, or `both`, and pick a palette (or `all`, which raises each job's
 timeout from 60 to 300 minutes). The default dispatch captures both appearances of the `t3-code`

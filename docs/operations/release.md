@@ -2,6 +2,15 @@
 
 > For maintainers. Using T3 Code? See [docs/user](../user/).
 
+> **Fork note:** the workflows this document describes (`.github/workflows/release.yml`,
+> `.github/workflows/deploy-relay.yml`) are **not present in this fork** — they require
+> Cloudflare, PlanetScale, Axiom, Clerk, Apple, Azure, npm, and GitHub App credentials a
+> fork does not have. Kept as upstream reference for rebases. This fork builds unsigned
+> desktop binaries from `.github/workflows/desktop-artifacts.yml` on every push to `main`
+> and publishes them as pruned `desktop-dev-*` prereleases (development builds, keeping the
+> current one plus two); it cuts no stable releases. See
+> [CI quality gates](../internals/ci.md).
+
 This document covers the unified release workflow for stable and nightly desktop releases.
 
 ## What the workflow does
