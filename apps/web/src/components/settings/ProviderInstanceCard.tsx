@@ -824,6 +824,21 @@ export function ProviderInstanceCard({
     enabled && liveProvider?.auth.status === "authenticated"
       ? (providerAuthLabel(liveProvider.auth, m) ?? null)
       : null;
+  const configDirectory = liveProvider?.configDirectory;
+  // A home path that resolves somewhere unexpected is the usual cause of a
+  // provider that is installed but cannot authenticate, so the hint only turns
+  // into a warning once auth has actually failed. An absent credentials file is
+  // not proof on its own: some platforms keep credentials in an OS keystore.
+  const configDirectoryFailedAuth = liveProvider?.auth.status === "unauthenticated";
+  const configDirectoryHint = !configDirectoryFailedAuth
+    ? gt(
+        "The path this instance hands to its CLI. A leading ~ is expanded here; your shell may not expand it the same way.",
+      )
+    : configDirectory?.credentialsFound
+      ? gt("This instance is not logged in, even though this directory holds a credentials file.")
+      : gt(
+          "This instance is not logged in and no credentials file was found here. Point your shell at this exact path and log in.",
+        );
   const versionLabel = getProviderVersionLabel(liveProvider?.version);
   const versionAdvisory = getProviderVersionAdvisoryPresentation(
     liveProvider?.versionAdvisory,
@@ -1329,31 +1344,51 @@ export function ProviderInstanceCard({
     </>
   );
 
-  const runtimeFields = driverOption ? (
-    <ProviderSettingsForm
-      definition={driverOption}
-      value={instance.config}
-      idPrefix={`provider-instance-${instanceId}`}
-      variant="settings"
-      onChange={updateConfig}
-      managed={instanceLocks && { keys: instanceLocks.configKeys, reason: instanceLocks.reason }}
-      environmentId={environmentId}
-    />
-  ) : (
-    <SettingsRow
-      title={gt("Driver")}
-      description={
-        <span>
-          <T>
-            This instance uses{" "}
-            <code className="text-foreground">
-              <Var>{String(instance.driver)}</Var>
-            </code>
-            , which is not available in this build. Its configuration is preserved.
-          </T>
-        </span>
-      }
-    />
+  const runtimeFields = (
+    <>
+      {driverOption ? (
+        <ProviderSettingsForm
+          definition={driverOption}
+          value={instance.config}
+          idPrefix={`provider-instance-${instanceId}`}
+          variant="settings"
+          onChange={updateConfig}
+          managed={
+            instanceLocks && { keys: instanceLocks.configKeys, reason: instanceLocks.reason }
+          }
+          environmentId={environmentId}
+        />
+      ) : (
+        <SettingsRow
+          title={gt("Driver")}
+          description={
+            <span>
+              <T>
+                This instance uses{" "}
+                <code className="text-foreground">
+                  <Var>{String(instance.driver)}</Var>
+                </code>
+                , which is not available in this build. Its configuration is preserved.
+              </T>
+            </span>
+          }
+        />
+      )}
+      {configDirectory ? (
+        <SettingsRow
+          title={gt("Resolved config directory")}
+          description={
+            <span className={configDirectoryFailedAuth ? "text-warning" : undefined}>
+              {configDirectoryHint}
+            </span>
+          }
+        >
+          <code className="block rounded-md bg-muted/40 px-2 py-1.5 font-mono text-2xs break-all text-foreground">
+            {configDirectory.path}
+          </code>
+        </SettingsRow>
+      ) : null}
+    </>
   );
 
   return (
