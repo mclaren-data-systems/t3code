@@ -75,6 +75,10 @@ Mobile keeps local copies of draft attachments so you can preview them and queue
 }
 ```
 
+## Subscription usage
+
+The bottom of the model picker shows how much of each plan window is left for the provider selected in the rail, and when it resets, so you can see which account has room before you pick one. Providers that report no plan limits (API keys, Amazon Bedrock, Google Vertex) show nothing, and a figure too old to trust disappears rather than going stale. **Usage → Limits** pools the same windows across accounts.
+
 ## Quote an assistant response
 
 - **Web and desktop**: Select text in an assistant message and click **Cite in composer**. Click the pencil on the chip to add or edit a comment; click the chip to jump back to the source.

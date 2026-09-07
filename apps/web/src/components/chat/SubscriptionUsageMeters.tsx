@@ -1,0 +1,58 @@
+import type { ServerProviderUsageLimits } from "@t3tools/contracts";
+import { formatResetsIn } from "@t3tools/shared/usageLimitsCopy";
+import { useGT, useMessages } from "gt-react";
+
+import { cn } from "~/lib/utils";
+import { formatRemainingPercent, remainingPercent, usageBarColor } from "./SubscriptionUsage.logic";
+
+/**
+ * One row per subscription window, shared by the context bubble and the model picker. `nowMs` is
+ * passed in so the meter stays pure: a self-ticking countdown in the composer is a repaint this app avoids.
+ */
+export function SubscriptionUsageMeters(props: {
+  usage: ServerProviderUsageLimits;
+  nowMs: number;
+  className?: string;
+}) {
+  const { usage, nowMs } = props;
+  const gt = useGT();
+  const m = useMessages();
+
+  return (
+    <div className={cn("flex flex-col gap-2", props.className)}>
+      {usage.windows.map((window) => {
+        const remaining = remainingPercent(window);
+        const countdown = formatResetsIn(window, nowMs, m);
+        return (
+          <div key={window.id} className="flex flex-col gap-1">
+            <div className="flex items-baseline justify-between gap-3 text-2xs leading-4">
+              <span className="truncate text-secondary-label">{window.label}</span>
+              <span className="shrink-0 font-medium tabular-nums text-secondary-label">
+                {formatRemainingPercent(window, m)}
+              </span>
+            </div>
+            <div
+              className="h-1 w-full overflow-hidden rounded-full bg-muted/60"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(remaining)}
+              aria-label={gt("{label} allowance remaining", { label: window.label })}
+            >
+              <div
+                className="h-full rounded-full transition-[width,background-color] duration-500 ease-out motion-reduce:transition-none"
+                style={{
+                  width: `${Math.max(0, Math.min(100, window.usedPercent))}%`,
+                  backgroundColor: usageBarColor(window),
+                }}
+              />
+            </div>
+            {countdown ? (
+              <div className="text-3xs leading-3 text-muted-foreground/70">{countdown}</div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
