@@ -1,6 +1,7 @@
 import {
   DEFAULT_SERVER_SETTINGS,
   EnvironmentId,
+  ProviderInstanceId,
   UsageDay,
   USAGE_CONTRACT_VERSION,
   WS_METHODS,
@@ -76,6 +77,7 @@ const makeHarness = Effect.fn("ServerUsageTest.makeHarness")(function* (
             {
               day: input.sinceDay,
               provider: "codex",
+              instanceId: ProviderInstanceId.make("codex"),
               model: "custom-model",
               totals: {
                 uncachedInputTokens: 1_000_000,
