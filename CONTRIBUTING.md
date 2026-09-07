@@ -106,8 +106,8 @@ again.
 A PR that conflicts with its base branch gets a `needs-rebase` label. If it still conflicts after 7
 days with no activity, it is closed.
 
-Vouched contributors in [.github/VOUCHED.td](.github/VOUCHED.td) are exempt from this rule and from
-the open PR limit.
+Vouched contributors (upstream's `.github/VOUCHED.td`, which this fork does not carry) are exempt
+from this rule and from the open PR limit.
 
 ## Bans
 
