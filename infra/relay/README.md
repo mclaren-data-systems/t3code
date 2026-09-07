@@ -117,6 +117,11 @@ one of those outputs changed, and `T3CODE_RELAY_CLIENT_CONFIG_ENV` redirects it 
 
 ### Deployment CI
 
+> **Fork note:** `.github/workflows/deploy-relay.yml` is not present in this fork — it needs
+> Cloudflare, PlanetScale, Axiom, Clerk, and APNs credentials a fork does not have, so it
+> failed on every push to `main`. The rest of this section is upstream reference; local
+> `deploy` runs against a personal stage still work with your own credentials.
+
 The relay is versioned separately from client releases. `.github/workflows/deploy-relay.yml` deploys
 the shared Alchemy `prod` stage on every push to `main`. Stable and nightly release builds both
 resolve their static public config from the same
