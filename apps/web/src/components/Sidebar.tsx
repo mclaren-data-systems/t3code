@@ -1037,6 +1037,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   const { leaseLiveStatus, rowRef } = useSidebarRowSubscriptionLease(props.isActive);
   const isRegeneratingTitle = thread.titleRegeneration != null;
   const lastVisitedAt = useUiStateStore((state) => state.threadLastVisitedAtById[threadKey]);
+  const completionAcknowledgedAt = useUiStateStore(
+    (state) => state.threadLastCompletionAcknowledgedAtById[threadKey],
+  );
   const isSelected = useThreadSelectionStore((state) => state.selectedThreadKeys.has(threadKey));
   const openPrLink = useOpenPrLink();
   const runningTerminalIds = useThreadRunningTerminalIds({
@@ -1087,7 +1090,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
 
   // Same semantics as the legacy sidebar (never-visited counts as read):
   // switching sidebars must not light up every historical thread as unread.
-  const isUnread = hasUnseenCompletion({ ...thread, lastVisitedAt });
+  const isUnread = hasUnseenCompletion({ ...thread, lastVisitedAt, completionAcknowledgedAt });
   const status = resolveSidebarThreadStatus(thread);
   const isInFlight =
     status === "working" || status === "monitoring" || status === "approval" || status === "input";
