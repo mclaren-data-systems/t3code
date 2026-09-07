@@ -58,6 +58,7 @@ import {
 } from "../Icons";
 import { RedactedSensitiveText } from "./RedactedSensitiveText";
 import { SourceControlWritingSettingsSection } from "./SourceControlWritingSettings";
+import { WorktreeBranchSettingsSection } from "./WorktreeBranchSettings";
 import {
   PolicyTooltip,
   SettingResetButton,
@@ -599,6 +600,8 @@ export function SourceControlSettingsPanel() {
           onScan={handleScan}
         />
       )}
+
+      <WorktreeBranchSettingsSection />
 
       <SourceControlWritingSettingsSection />
     </SettingsPageContainer>
