@@ -68,7 +68,7 @@ A maintainer can ask you to open a PR that is not a bug fix. Link the request.
 
 <a id="vouched-features"></a>
 
-Vouched contributors in [.github/VOUCHED.td](.github/VOUCHED.td) can also open a small, focused
+Vouched contributors in upstream's `.github/VOUCHED.td` can also open a small, focused
 feature PR without a request. Everything else on the list above is still closed: UI overhauls, new
 providers, architecture overhauls, source control, auth, and platforms.
 
@@ -116,8 +116,9 @@ again.
 A PR that conflicts with its base branch gets a `needs-rebase` label. If it still conflicts after 7
 days with no activity, it is closed.
 
-Vouched contributors in [.github/VOUCHED.td](.github/VOUCHED.td) are exempt from this rule and from
-the open PR limit. The [feature PR limit](#vouched-features) still applies to them.
+Vouched contributors (upstream's `.github/VOUCHED.td`, which this fork does not carry) are exempt
+from this rule and from the open PR limit. The [feature PR limit](#vouched-features) still applies
+to them.
 
 ## Bans
 
@@ -125,7 +126,7 @@ the open PR limit. The [feature PR limit](#vouched-features) still applies to th
 - If you make our lives harder as reviewers and maintainers, you will be banned. Examples are repeated
   pings, a fight over a closure, and a second account to get around a limit.
 
-A banned account is denounced in [.github/VOUCHED.td](.github/VOUCHED.td). Any issue or PR it opens
+A banned account is denounced in upstream's `.github/VOUCHED.td`. Any issue or PR it opens
 is closed when it is opened.
 
 <a id="closure-and-reconsideration"></a>
