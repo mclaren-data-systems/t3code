@@ -1,10 +1,11 @@
 import { ArrowLeftIcon, ArrowRightIcon, ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
 import type { ReactNode } from "react";
-import { T, useGT } from "gt-react";
+import { T, useGT, Var } from "gt-react";
 import { memo } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 
 import { useAtomValue } from "@effect/atom-react";
+import { BUILD_COMMIT, BUILD_TIMESTAMP } from "../../branding";
 import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
 import { shortcutLabelForCommand } from "../../keybindings";
 import {
@@ -35,6 +36,7 @@ import {
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
 import { readIssueListPreferences } from "../issue/issueListPreferences";
 import { IssueGlyph } from "../issue/issuePresentation";
+import { getSourceControlPresentationForKind } from "~/sourceControlPresentation";
 import { isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
@@ -201,6 +203,58 @@ function SidebarBrandMark({ onBackdrop }: { onBackdrop: boolean }) {
   );
 }
 
+// Fork (mclaren-data-systems/t3code): the sidebar links to the fork's repo, and
+// the tooltip carries the running build's provenance.
+const FORK_REPOSITORY_URL = "https://github.com/mclaren-data-systems/t3code";
+// The forge mark upstream draws from GitHub's definition; it paints in currentColor.
+const GitHubIcon = getSourceControlPresentationForKind("github").Icon;
+
+function formatBuildTimestamp(isoTimestamp: string): string | null {
+  const parsed = new Date(isoTimestamp);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+function SidebarGitHubItem() {
+  const buildDetail = [
+    BUILD_COMMIT || null,
+    BUILD_TIMESTAMP ? formatBuildTimestamp(BUILD_TIMESTAMP) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <SidebarMenuItem className="shrink-0">
+      <SharedTooltipTrigger
+        render={
+          <SidebarMenuButton
+            aria-label="GitHub"
+            render={<a href={FORK_REPOSITORY_URL} rel="noopener noreferrer" target="_blank" />}
+            size="icon"
+          >
+            <GitHubIcon className="text-destructive!" />
+          </SidebarMenuButton>
+        }
+        label={
+          buildDetail ? (
+            <div className="text-center">
+              <div>GitHub</div>
+              <div className="text-popover-foreground/70">
+                <T>
+                  Build <Var>{buildDetail}</Var>
+                </T>
+              </div>
+            </div>
+          ) : (
+            "GitHub"
+          )
+        }
+      />
+    </SidebarMenuItem>
+  );
+}
+
 function SidebarUtilityItem({
   icon,
   label,
@@ -304,6 +358,7 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             label={gt("Usage")}
             onClick={handleUsageClick}
           />
+          <SidebarGitHubItem />
         </>
       )}
       <SidebarThreadUndoNotice />
