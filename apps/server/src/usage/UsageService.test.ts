@@ -229,6 +229,80 @@ describe("UsageService", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.live("reports each account under its own instance, shared homes under the default", () =>
+    Effect.gen(function* () {
+      const { transcript, settings, home } = yield* setup;
+      const workHome = NodePath.join(home, "claude-work");
+      yield* Effect.promise(async () => {
+        await NodeFSP.writeFile(transcript, claudeLine(1, 5));
+        await NodeFSP.mkdir(NodePath.join(workHome, "projects"), { recursive: true });
+        await NodeFSP.writeFile(
+          NodePath.join(workHome, "projects", "session.jsonl"),
+          claudeLine(2, 7),
+        );
+      });
+      const service = yield* UsageService.make.pipe(
+        Effect.provide(
+          serviceLayers({
+            prefix: "usage-service-instances-test",
+            home,
+            settings: {
+              ...settings,
+              providerInstances: {
+                // A custom instance pointing at the default home collapses
+                // onto the default slot, whichever order the settings list them.
+                [ProviderInstanceId.make("claude-mirror")]: {
+                  driver: ProviderDriverKind.make("claudeAgent"),
+                  config: { homePath: NodePath.join(home, "claude") },
+                  displayName: "Mirror",
+                },
+                [ProviderInstanceId.make("claudeAgent")]: {
+                  driver: ProviderDriverKind.make("claudeAgent"),
+                  config: { homePath: NodePath.join(home, "claude") },
+                  displayName: "Personal",
+                  accentColor: "#123456",
+                },
+                [ProviderInstanceId.make("claude-work")]: {
+                  driver: ProviderDriverKind.make("claudeAgent"),
+                  config: { homePath: workHome },
+                  displayName: "Work",
+                },
+              },
+            },
+          }),
+        ),
+      );
+      const summary = yield* service.readSummary(WINDOW);
+      assert.strictEqual(totalOutputTokens(summary), 12);
+      const claudeSources = summary.sources
+        .filter((source) => source.fingerprint.provider === "claude")
+        .map((source) => ({
+          instanceId: source.instanceId,
+          displayName: source.displayName,
+          accentColor: source.accentColor,
+          dir: source.fingerprint.resolvedHomePath,
+        }));
+      assert.deepStrictEqual(claudeSources, [
+        {
+          instanceId: ProviderInstanceId.make("claudeAgent"),
+          displayName: "Personal",
+          accentColor: "#123456",
+          dir: NodePath.join(home, "claude", "projects"),
+        },
+        {
+          instanceId: ProviderInstanceId.make("claude-work"),
+          displayName: "Work",
+          accentColor: null,
+          dir: NodePath.join(workHome, "projects"),
+        },
+      ]);
+      assert.deepStrictEqual(
+        [...new Set(summary.buckets.map((bucket) => bucket.instanceId))].sort(),
+        [ProviderInstanceId.make("claude-work"), ProviderInstanceId.make("claudeAgent")],
+      );
+    }).pipe(Effect.scoped),
+  );
+
   it.live(
     "uses explicit account settings before environment and legacy homes, then refreshes them",
     () =>
