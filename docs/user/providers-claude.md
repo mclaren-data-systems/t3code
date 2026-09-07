@@ -34,6 +34,18 @@ threads can switch only between Claude instances with the same config directory.
 Separate account directories stay isolated, including their local conversation
 state. Claude does not have Codex's shared-home and shadow-home arrangement.
 
+If an instance shows **Not authenticated**, Claude Code found no login in the directory that
+instance points at. Expand the instance and check **Resolved config directory**: that is the exact
+path T3 Code hands to Claude Code, and the path to log in against.
+
+On Windows, write the path out in full when logging in. PowerShell does not expand `~` inside a
+quoted string and neither does Claude Code, so `$env:CLAUDE_CONFIG_DIR = "~\.claude_personal"`
+writes the login into a folder literally named `~` beside wherever you ran the command. A new
+terminal still shows you logged in, because it opens in the same place, but T3 Code, which does
+expand `~`, never sees that folder and the instance reports **Not authenticated**. Use
+`$env:CLAUDE_CONFIG_DIR = "$HOME\.claude_personal"` instead. In T3 Code's settings either form
+works, and the resolved path is shown under **Resolved config directory**.
+
 For presets that differ only in API keys or endpoints, use the instance's
 **Environment variables**. Variable assignments do not belong in **Launch arguments**.
 

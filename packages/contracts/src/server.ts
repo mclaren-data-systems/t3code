@@ -143,6 +143,25 @@ export type ServerProviderWorkspaceSnapshot = typeof ServerProviderWorkspaceSnap
 export const ServerProviderAvailability = Schema.Literals(["available", "unavailable"]);
 export type ServerProviderAvailability = typeof ServerProviderAvailability.Type;
 
+/**
+ * Resolved configuration directory a provider instance will hand to its CLI,
+ * plus whether that directory currently holds a credential store.
+ *
+ * Surfaced so a home path that resolves somewhere unexpected is visible in the
+ * UI instead of showing up only as a mysterious "please log in" once a turn
+ * starts. `path` is absolute and already expanded — it is the literal value the
+ * spawned CLI sees, not the value the user typed.
+ *
+ * `credentialsFound: false` is not by itself proof of a logged-out CLI: some
+ * platforms keep credentials in an OS keystore rather than in the directory.
+ * Consumers should treat it as detail for an already-failing auth state.
+ */
+export const ServerProviderConfigDirectory = Schema.Struct({
+  path: TrimmedNonEmptyString,
+  credentialsFound: Schema.Boolean,
+});
+export type ServerProviderConfigDirectory = typeof ServerProviderConfigDirectory.Type;
+
 export const ServerProviderContinuation = Schema.Struct({
   groupKey: TrimmedNonEmptyString,
 });
@@ -213,6 +232,9 @@ export const ServerProvider = Schema.Struct({
   auth: ServerProviderAuth,
   checkedAt: IsoDateTime,
   message: Schema.optional(TrimmedNonEmptyString),
+  // Resolved config directory for this instance, when the driver reports one.
+  // Optional: drivers that have no per-instance config directory omit it.
+  configDirectory: Schema.optional(ServerProviderConfigDirectory),
   // Optional for back-compat: every legacy producer omits this field and
   // an absent value is interpreted as `"available"` by consumers (see
   // `isProviderAvailable`). New `ProviderInstanceRegistry` outputs set it
