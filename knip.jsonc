@@ -24,12 +24,16 @@
       // agent-device's CLI by path, and mobile-behavior.ts spawns its runner by path.
       // release-desktop.yml runs the desktop launch check through xvfb-run, which knip
       // does not trace.
+      // Fork: build-cli-archive.ts and resolve-nightly-release.ts are run only by
+      // upstream's release workflows, which this fork deletes (FORK.md entry 14).
       "entry": [
         // These fixture scripts are injected into a browser page by path.
         "fixtures/*/*.js",
+        "build-cli-archive.ts",
         "knip-schemas.ts",
         "mobile-behavior/run.ts",
         "mobile-native-client.ts",
+        "resolve-nightly-release.ts",
         "setup-worktree.ts",
         "sign-macos.ts",
         "smoke-desktop-app.ts",
