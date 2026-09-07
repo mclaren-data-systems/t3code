@@ -58,6 +58,7 @@ import {
   resolveQuickAction,
   resolveThreadBranchUpdate,
 } from "./GitActionsControl.logic";
+import { deriveCommitExcludedFilePaths } from "../session-logic";
 import { AnimatedHeight } from "./AnimatedHeight";
 import { StartTruncatedPath } from "./StartTruncatedPath";
 import { Button } from "~/components/ui/button";
@@ -101,6 +102,16 @@ import { getSourceControlPresentation } from "~/sourceControlPresentation";
 import { useOpenLink } from "~/browser/useOpenLink";
 import { useOpenPrLink } from "~/lib/openPullRequestLink";
 
+/**
+ * A request to open the commit dialog with only these files checked (the rest
+ * of the working tree excluded, checkboxes shown). `requestId` distinguishes
+ * repeat requests for the same file set.
+ */
+export interface GitCommitPreselection {
+  readonly filePaths: ReadonlyArray<string>;
+  readonly requestId: number;
+}
+
 interface GitActionsControlProps {
   gitCwd: string | null;
   activeThreadRef: ScopedThreadRef | null;
@@ -110,6 +121,7 @@ interface GitActionsControlProps {
    * place it against, in which case it still opens in the browser.
    */
   onOpenPullRequest?: ((number: number) => void) | undefined;
+  commitPreselection?: GitCommitPreselection | null | undefined;
 }
 
 interface PendingDefaultBranchAction {
@@ -985,6 +997,7 @@ export default function GitActionsControl({
   activeThreadRef,
   draftId,
   onOpenPullRequest,
+  commitPreselection,
 }: GitActionsControlProps) {
   const updateThreadMetadata = useAtomCommand(
     threadEnvironment.updateMetadata,
@@ -1125,6 +1138,25 @@ export default function GitActionsControl({
   const selectedFiles = allFiles.filter((f) => !excludedFiles.has(f.path));
   const allSelected = excludedFiles.size === 0;
   const noneSelected = selectedFiles.length === 0;
+
+  // A turn's "Changed files" commit button opens the dialog with only that
+  // turn's files checked; the regular commit entry still selects everything.
+  const lastHandledCommitPreselectionRef = useRef(0);
+  useEffect(() => {
+    if (!commitPreselection) return;
+    if (commitPreselection.requestId === lastHandledCommitPreselectionRef.current) return;
+    lastHandledCommitPreselectionRef.current = commitPreselection.requestId;
+    setExcludedFiles(
+      new Set(
+        deriveCommitExcludedFilePaths(
+          allFiles.map((f) => f.path),
+          commitPreselection.filePaths,
+        ),
+      ),
+    );
+    setIsEditingFiles(true);
+    setIsCommitDialogOpen(true);
+  }, [allFiles, commitPreselection]);
 
   const initAction = useVcsInitAction(sourceControlScope);
   const runImmediateGitAction = useGitStackedAction(sourceControlScope);
