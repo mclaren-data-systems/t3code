@@ -1,3 +1,5 @@
+// @effect-diagnostics-next-line nodeBuiltinImport:off -- Build bootstrap resolves the git commit before an Effect runtime exists.
+import * as NodeChildProcess from "node:child_process";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- Vite config runs before any Effect runtime.
 import * as NodeFSP from "node:fs/promises";
 import * as NodeZlib from "node:zlib";
@@ -49,6 +51,22 @@ const configuredDesktopUpdateRepository =
   process.env.T3CODE_DESKTOP_UPDATE_REPOSITORY?.trim() ||
   process.env.GITHUB_REPOSITORY?.trim() ||
   "";
+// Fork: build provenance for the sidebar GitHub link's tooltip, resolved once when this config loads.
+// T3CODE_COMMIT_HASH matches the env the desktop build passes; a checkout without git leaves it empty.
+const configuredBuildCommit = (() => {
+  const explicit = process.env.T3CODE_COMMIT_HASH?.trim();
+  if (explicit) return explicit;
+  try {
+    return NodeChildProcess.execSync("git rev-parse --short=12 HEAD", {
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+      .toString()
+      .trim();
+  } catch {
+    return "";
+  }
+})();
+const configuredBuildTimestamp = new Date().toISOString();
 const configuredHostedAppUrl = (() => {
   const explicitHostedAppUrl = process.env.VITE_HOSTED_APP_URL?.trim();
   if (explicitHostedAppUrl) {
@@ -318,6 +336,8 @@ export default defineConfig(() => {
       ),
       "import.meta.env.VITE_RELEASE_CHANNEL": JSON.stringify(configuredReleaseChannel),
       "import.meta.env.APP_VERSION": JSON.stringify(configuredAppVersion),
+      "import.meta.env.BUILD_COMMIT": JSON.stringify(configuredBuildCommit),
+      "import.meta.env.BUILD_TIMESTAMP": JSON.stringify(configuredBuildTimestamp),
     },
     resolve: {
       tsconfigPaths: true,
