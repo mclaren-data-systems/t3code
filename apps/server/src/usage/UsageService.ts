@@ -89,6 +89,15 @@ const MAX_HOURLY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const CACHE_RETENTION_DAYS = 90;
 
 const decodeCodexSettings = Schema.decodeOption(CodexSettings);
+
+/**
+ * The provider instance a scanned directory reports under. Instances sharing a
+ * directory collapse onto the first one in scan order; the transcripts
+ * underneath carry nothing to tell them apart.
+ */
+type UsageSourceInstance = Pick<UsageSource, "instanceId" | "displayName" | "accentColor"> & {
+  readonly instanceId: ProviderInstanceId;
+};
 const decodeClaudeSettings = Schema.decodeOption(ClaudeSettings);
 
 /** On-disk shape of the rate snapshot. */
@@ -266,18 +275,26 @@ export const make = Effect.gen(function* () {
       dir: string;
       volumeId: string;
       fileName?: string;
+      instance: UsageSourceInstance;
     }> = [];
     const seen = new Set<string>();
     for (const driver of ["claudeAgent", "codex", "grok"] as const) {
       // Disabled accounts still have history. Explicit default slots replace
-      // the legacy settings, just as they do in the provider registry.
+      // the legacy settings, just as they do in the provider registry. The
+      // default slot scans first so a custom instance sharing its directory
+      // reports under the id a single-account setup already shows.
       const instances: Array<
-        Pick<ProviderInstanceConfig, "config" | "environment"> & { instanceId: ProviderInstanceId }
+        Pick<ProviderInstanceConfig, "config" | "environment" | "displayName" | "accentColor"> & {
+          instanceId: ProviderInstanceId;
+        }
       > = Object.entries(settings.providerInstances)
         .filter(([, instance]) => instance.driver === driver)
+        .sort(([left], [right]) =>
+          left === driver ? -1 : right === driver ? 1 : left.localeCompare(right),
+        )
         .map(([id, instance]) => ({ ...instance, instanceId: ProviderInstanceId.make(id) }));
       if (!Object.hasOwn(settings.providerInstances, driver)) {
-        instances.push({
+        instances.unshift({
           config: settings.providers[driver],
           instanceId: ProviderInstanceId.make(driver),
         });
@@ -346,6 +363,11 @@ export const make = Effect.gen(function* () {
           provider,
           dir,
           volumeId,
+          instance: {
+            instanceId: instance.instanceId,
+            ...(instance.displayName ? { displayName: instance.displayName } : {}),
+            ...(instance.accentColor ? { accentColor: instance.accentColor } : {}),
+          },
           ...(provider === "grok" ? { fileName: "updates.jsonl" } : {}),
         });
       }
@@ -463,6 +485,8 @@ export const make = Effect.gen(function* () {
     readonly provider: UsageProviderKind;
     readonly dir: string;
     readonly volumeId: string;
+    /** The configured instance this directory reports under, when scanned for one. */
+    readonly instance?: UsageSourceInstance;
     readonly hostId?: string;
     readonly status?: UsageSource["status"];
     readonly message?: string;
@@ -484,12 +508,12 @@ export const make = Effect.gen(function* () {
       Effect.provideService(Path.Path, path),
     );
     const scanned: ScannedDir[] = [];
-    for (const { provider, dir, volumeId, fileName } of dirs) {
+    for (const { provider, dir, volumeId, fileName, instance } of dirs) {
       const exists = yield* fileSystem
         .exists(dir)
         .pipe(Effect.catchCause(() => Effect.succeed(false)));
       if (!exists) {
-        scanned.push({ provider, dir, volumeId, files: null });
+        scanned.push({ provider, dir, volumeId, instance, files: null });
         continue;
       }
       const files = yield* Effect.promise(() =>
@@ -500,7 +524,7 @@ export const make = Effect.gen(function* () {
         const records = yield* readFileRecords(file.path, file.size, file.mtimeMs, provider);
         parsedFiles.push({ path: file.path, records });
       }
-      scanned.push({ provider, dir, volumeId, files: parsedFiles });
+      scanned.push({ provider, dir, volumeId, instance, files: parsedFiles });
     }
 
     const home = NodeOS.homedir();
@@ -541,6 +565,7 @@ export const make = Effect.gen(function* () {
       ),
       path.join(home, ".config", "antigravity"),
     ]);
+    const antigravityInstanceByRoot = new Map<string, UsageSourceInstance>();
     for (const [instanceId, instance] of Object.entries(settings.providerInstances)) {
       if (instance.driver === "antigravity") {
         const directories = yield* resolveAntigravityInstanceDirectories(
@@ -558,10 +583,19 @@ export const make = Effect.gen(function* () {
               }),
           ),
         );
-        antigravityRoots.push(path.join(directories.profile, "antigravity-acp"));
+        const root = path.join(directories.profile, "antigravity-acp");
+        antigravityRoots.push(root);
+        antigravityInstanceByRoot.set(root, {
+          instanceId: ProviderInstanceId.make(instanceId),
+          ...(instance.displayName ? { displayName: instance.displayName } : {}),
+          ...(instance.accentColor ? { accentColor: instance.accentColor } : {}),
+        });
       }
     }
     const antigravityDirs = new Set<string>();
+    // Only a profile directory belongs to one instance; the shared roots above
+    // report under the provider's default instance on the client.
+    const antigravityInstanceByDir = new Map<string, UsageSourceInstance>();
     for (const root of antigravityRoots) {
       const resolvedRoot = yield* fileSystem.realPath(root).pipe(Effect.orElseSucceed(() => root));
       const nested = path.join(resolvedRoot, "conversations");
@@ -570,11 +604,19 @@ export const make = Effect.gen(function* () {
         .pipe(Effect.catchCause(() => Effect.succeed(false))))
         ? nested
         : resolvedRoot;
-      antigravityDirs.add(yield* fileSystem.realPath(dir).pipe(Effect.orElseSucceed(() => dir)));
+      const canonical = yield* fileSystem.realPath(dir).pipe(Effect.orElseSucceed(() => dir));
+      if (antigravityDirs.has(canonical)) continue;
+      antigravityDirs.add(canonical);
+      const instance = antigravityInstanceByRoot.get(root);
+      if (instance) antigravityInstanceByDir.set(canonical, instance);
     }
     const antigravity = yield* Effect.promise(() =>
       readAntigravityUsage([...antigravityDirs], windowStartMs),
     );
+    const antigravityInstance = (dir: string): Pick<ScannedDir, "instance"> => {
+      const instance = antigravityInstanceByDir.get(dir);
+      return instance === undefined ? {} : { instance };
+    };
     for (const dir of antigravityDirs) {
       const exists = yield* fileSystem
         .exists(dir)
@@ -585,6 +627,7 @@ export const make = Effect.gen(function* () {
       scanned.push({
         provider: "antigravity",
         dir,
+        ...antigravityInstance(dir),
         volumeId: yield* Effect.promise(() => readDirectoryVolumeId(dir)),
         files: !exists && !failed ? null : antigravity.files.filter((file) => file.root === dir),
         status: failed ? "partial" : "ok",
@@ -752,6 +795,7 @@ export const make = Effect.gen(function* () {
       message,
       action,
       hostId: sourceHostId,
+      instance,
     } of scannedDirs) {
       const retainedFiles = [...(files ?? [])];
       const livePaths = new Set(retainedFiles.map((file) => file.path));
@@ -806,6 +850,7 @@ export const make = Effect.gen(function* () {
 
       sources.push({
         fingerprint: { hostId: sourceHostId ?? hostId, provider, resolvedHomePath: dir, volumeId },
+        ...instance,
         // Clients exclude missing sources, so saved records remain an available source.
         status: files === null && scannedFiles === 0 ? "missing" : (status ?? "ok"),
         scannedFiles,

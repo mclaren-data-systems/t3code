@@ -1,4 +1,5 @@
 import {
+  ProviderInstanceId,
   USAGE_CONTRACT_VERSION,
   USAGE_MERGE_COMPATIBLE_SINCE,
   type EnvironmentId,
@@ -45,6 +46,9 @@ function summary(
     homePath: string;
     volumeId?: string;
     distinctSessions?: number;
+    instanceId?: string;
+    displayName?: string;
+    accentColor?: string;
   }[],
   contractVersion: number = USAGE_CONTRACT_VERSION,
 ): UsageSummary {
@@ -62,6 +66,11 @@ function summary(
         resolvedHomePath: source.homePath,
         volumeId: source.volumeId ?? `vol-${source.hostId}`,
       },
+      ...(source.instanceId === undefined
+        ? {}
+        : { instanceId: ProviderInstanceId.make(source.instanceId) }),
+      ...(source.displayName === undefined ? {} : { displayName: source.displayName }),
+      ...(source.accentColor === undefined ? {} : { accentColor: source.accentColor }),
       status: "ok" as const,
       scannedFiles: 1,
       skippedFiles: 0,
@@ -685,5 +694,151 @@ describe("mergeUsage", () => {
     ]);
     expect(merged.daily).toHaveLength(1);
     expect(merged.daily[0]?.costUsd).toBe(10);
+  });
+});
+
+describe("mergeUsage by instance", () => {
+  const personal = { provider: "claude" as const, hostId: "mac", homePath: "/a/.claude" };
+  const work = {
+    provider: "claude" as const,
+    hostId: "mac",
+    homePath: "/a/.claude-work",
+    instanceId: "claudeAgent_work",
+    displayName: "Claude Work",
+    accentColor: "#123456",
+  };
+
+  it("reports two instances of one provider separately", () => {
+    const merged = mergeUsage(
+      [
+        environment(
+          "env-a",
+          summary(
+            [
+              bucket({ costUsd: 30, sourcePath: personal.homePath }),
+              bucket({ costUsd: 70, sourcePath: work.homePath }),
+            ],
+            [{ ...personal, instanceId: "claudeAgent" }, work],
+          ),
+        ),
+      ],
+      USAGE_CONTRACT_VERSION,
+    );
+
+    // Upstream's provider rollup is untouched: one Claude row.
+    expect(merged.providers.map((provider) => [provider.provider, provider.costUsd])).toEqual([
+      ["claude", 100],
+    ]);
+    expect(merged.instances.map((instance) => [instance.instanceId, instance.costUsd])).toEqual([
+      ["claudeAgent_work", 70],
+      ["claudeAgent", 30],
+    ]);
+    expect(merged.instances.map((instance) => instance.displayName)).toEqual(["Claude Work", null]);
+    expect(merged.instances.map((instance) => instance.accentColor)).toEqual(["#123456", null]);
+    expect(merged.instances.map((instance) => instance.sessions)).toEqual([1, 1]);
+    // The default instance keeps the brand color slot whichever spends more.
+    expect(
+      Object.fromEntries(
+        merged.instances.map((instance) => [instance.instanceId, instance.shadeIndex]),
+      ),
+    ).toEqual({ claudeAgent: 0, claudeAgent_work: 1 });
+    expect(merged.instances.map((instance) => instance.isDefaultInstance)).toEqual([false, true]);
+    expect([...(merged.daily[0]?.byInstance.entries() ?? [])]).toEqual([
+      ["claudeAgent", { costUsd: 30, totalTokens: 1160 }],
+      ["claudeAgent_work", { costUsd: 70, totalTokens: 1160 }],
+    ]);
+  });
+
+  it("keeps the same model under two instances in separate rows", () => {
+    const merged = mergeUsage(
+      [
+        environment(
+          "env-a",
+          summary(
+            [
+              bucket({ costUsd: 30, sourcePath: personal.homePath }),
+              bucket({ costUsd: 70, sourcePath: work.homePath }),
+            ],
+            [personal, work],
+          ),
+        ),
+      ],
+      USAGE_CONTRACT_VERSION,
+    );
+
+    expect(merged.models.map((model) => [model.instanceId, model.model, model.costUsd])).toEqual([
+      ["claudeAgent_work", "claude-fable-5", 70],
+      ["claudeAgent", "claude-fable-5", 30],
+    ]);
+  });
+
+  it("attributes a source with no instance to the provider's default instance", () => {
+    // An older server names no instance on its sources and no path on its
+    // buckets; a single-account setup still reads as the default instance.
+    const merged = mergeUsage(
+      [
+        environment(
+          "env-a",
+          summary(
+            [bucket({ costUsd: 10 }), bucket({ provider: "codex", model: "gpt-5.6", costUsd: 4 })],
+            [personal, { provider: "codex", hostId: "mac", homePath: "/a/.codex" }],
+          ),
+        ),
+      ],
+      USAGE_CONTRACT_VERSION,
+    );
+
+    expect(merged.instances.map((instance) => [instance.instanceId, instance.costUsd])).toEqual([
+      ["claudeAgent", 10],
+      ["codex", 4],
+    ]);
+    expect(merged.instances.every((instance) => instance.isDefaultInstance)).toBe(true);
+    expect(merged.daily[0]?.byInstance.get(ProviderInstanceId.make("codex"))).toEqual({
+      costUsd: 4,
+      totalTokens: 1160,
+    });
+  });
+
+  it("keeps one instance across environments sharing its id", () => {
+    // Every environment's default Claude instance is `claudeAgent`: a laptop
+    // and a desktop are one row, not two.
+    const merged = mergeUsage(
+      [
+        environment(
+          "laptop",
+          summary(
+            [bucket({ costUsd: 10, sourcePath: "/l/.claude" })],
+            [
+              {
+                provider: "claude",
+                hostId: "laptop",
+                homePath: "/l/.claude",
+                instanceId: "claudeAgent",
+              },
+            ],
+          ),
+        ),
+        environment(
+          "desktop",
+          summary(
+            [bucket({ costUsd: 5, sourcePath: "/d/.claude" })],
+            [
+              {
+                provider: "claude",
+                hostId: "desktop",
+                homePath: "/d/.claude",
+                instanceId: "claudeAgent",
+              },
+            ],
+          ),
+        ),
+      ],
+      USAGE_CONTRACT_VERSION,
+    );
+
+    expect(merged.instances.map((instance) => [instance.instanceId, instance.costUsd])).toEqual([
+      ["claudeAgent", 15],
+    ]);
+    expect(merged.instances[0]?.sessions).toBe(2);
   });
 });

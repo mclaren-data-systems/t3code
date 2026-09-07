@@ -7,8 +7,11 @@
  * @module usageMerge
  */
 import {
+  defaultInstanceIdForDriver,
   USAGE_MERGE_COMPATIBLE_SINCE,
+  USAGE_PROVIDER_DRIVERS,
   type EnvironmentId,
+  type ProviderInstanceId,
   type UsageBucket,
   type UsageProviderKind,
   type UsageSource,
@@ -32,9 +35,40 @@ export interface ProviderTotals {
   readonly tokenShare: number;
 }
 
+/**
+ * One configured provider instance's totals.
+ *
+ * `displayName` and `accentColor` are whatever the user configured, passed
+ * through verbatim; resolving them into a label and a color is the client's
+ * job, since only the client knows the brand names and the theme.
+ */
+export interface InstanceTotals {
+  readonly instanceId: ProviderInstanceId;
+  readonly provider: UsageProviderKind;
+  readonly displayName: string | null;
+  readonly accentColor: string | null;
+  /** True when this is the provider's default instance rather than an added one. */
+  readonly isDefaultInstance: boolean;
+  /**
+   * Position among the reported instances of this provider kind, in a stable
+   * order that does not move when spending does. Clients use it to pick a
+   * distinguishable shade; index 0 always keeps the provider's brand color, so
+   * a single-instance setup looks untouched.
+   */
+  readonly shadeIndex: number;
+  readonly costUsd: number;
+  readonly totalTokens: number;
+  readonly records: number;
+  readonly sessions: number;
+  readonly costShare: number;
+  readonly tokenShare: number;
+}
+
 export interface ModelTotals {
   readonly model: string;
   readonly provider: UsageProviderKind;
+  /** The instance the tokens came from; one model row per instance that used it. */
+  readonly instanceId: ProviderInstanceId;
   readonly costUsd: number;
   readonly totalTokens: number;
   readonly records: number;
@@ -54,11 +88,17 @@ export function isModelCostUnknown(model: ModelTotals): boolean {
   return model.records > 0 && model.unpricedRecords >= model.records;
 }
 
+export interface PeriodInstanceTotals {
+  readonly costUsd: number;
+  readonly totalTokens: number;
+}
+
 export interface DailyTotals {
   readonly day: string;
   readonly costUsd: number;
   readonly totalTokens: number;
   readonly byProvider: ReadonlyMap<UsageProviderKind, { costUsd: number; totalTokens: number }>;
+  readonly byInstance: ReadonlyMap<ProviderInstanceId, PeriodInstanceTotals>;
 }
 
 export interface HourlyTotals {
@@ -67,6 +107,7 @@ export interface HourlyTotals {
   readonly costUsd: number;
   readonly totalTokens: number;
   readonly byProvider: ReadonlyMap<UsageProviderKind, { costUsd: number; totalTokens: number }>;
+  readonly byInstance: ReadonlyMap<ProviderInstanceId, PeriodInstanceTotals>;
 }
 
 export interface CostQuality {
@@ -93,6 +134,8 @@ export interface MergedUsage {
   readonly records: number;
   readonly sessions: number;
   readonly providers: readonly ProviderTotals[];
+  /** One entry per provider instance that spent anything, richest first. */
+  readonly instances: readonly InstanceTotals[];
   readonly models: readonly ModelTotals[];
   readonly daily: readonly DailyTotals[];
   readonly hourly: readonly HourlyTotals[];
@@ -241,10 +284,14 @@ function ownedContribution(
 ): {
   readonly buckets: readonly UsageBucket[];
   readonly sessionsByProvider: ReadonlyMap<UsageProviderKind, number>;
+  readonly sessionsByInstance: ReadonlyMap<ProviderInstanceId, number>;
+  readonly identities: ReadonlyMap<ProviderInstanceId, InstanceIdentity>;
 } {
   const ownedProviders = new Set<UsageProviderKind>();
   const ownedSources = new Set<string>();
   const sessionsByProvider = new Map<UsageProviderKind, number>();
+  const sessionsByInstance = new Map<ProviderInstanceId, number>();
+  const identities = new Map<ProviderInstanceId, InstanceIdentity>();
   for (const source of environment.summary.sources) {
     if (source.status === "missing") continue;
     const key = fingerprintKey(source.fingerprint);
@@ -254,11 +301,17 @@ function ownedContribution(
       ownedSources.add(`${provider}\u0000${source.fingerprint.resolvedHomePath}`);
       // Distinct within a directory. Summing per-bucket session counts instead
       // would count a session once per day and model it spans.
-      sessionsByProvider.set(
-        provider,
-        (sessionsByProvider.get(provider) ?? 0) +
-          (sessionsByFingerprint.get(key) ?? source.distinctSessions),
-      );
+      const sessions = sessionsByFingerprint.get(key) ?? source.distinctSessions;
+      sessionsByProvider.set(provider, (sessionsByProvider.get(provider) ?? 0) + sessions);
+      const instanceId = sourceInstanceId(source);
+      sessionsByInstance.set(instanceId, (sessionsByInstance.get(instanceId) ?? 0) + sessions);
+      if (!identities.has(instanceId)) {
+        identities.set(instanceId, {
+          provider,
+          displayName: source.displayName ?? null,
+          accentColor: source.accentColor ?? null,
+        });
+      }
     }
   }
   return {
@@ -270,7 +323,84 @@ function ownedContribution(
           : ownedSources.has(`${bucket.provider}\u0000${bucket.sourcePath}`)),
     ),
     sessionsByProvider,
+    sessionsByInstance,
+    identities,
   };
+}
+
+interface InstanceIdentity {
+  readonly provider: UsageProviderKind;
+  readonly displayName: string | null;
+  readonly accentColor: string | null;
+}
+
+function isDefaultInstance(instanceId: ProviderInstanceId, provider: UsageProviderKind): boolean {
+  return instanceId === defaultInstanceIdForDriver(USAGE_PROVIDER_DRIVERS[provider]);
+}
+
+/**
+ * The instance a source reports under. A source that names none — an older
+ * server, or a directory not configured per instance — is the provider's
+ * default instance, which is what a single-account setup has always shown.
+ */
+function sourceInstanceId(source: UsageSource): ProviderInstanceId {
+  return (
+    source.instanceId ??
+    defaultInstanceIdForDriver(USAGE_PROVIDER_DRIVERS[source.fingerprint.provider])
+  );
+}
+
+/**
+ * Resolves each bucket of one summary to the instance of the source it came
+ * from, through the `sourcePath` the server stamps on it. A bucket with no
+ * path (an older server) belongs to the provider's only source, or failing
+ * that to the provider's default instance.
+ */
+function bucketInstanceResolver(
+  summary: UsageSummary,
+): (bucket: UsageBucket) => ProviderInstanceId {
+  const byPath = new Map<string, ProviderInstanceId>();
+  const soleByProvider = new Map<UsageProviderKind, ProviderInstanceId | null>();
+  for (const source of summary.sources) {
+    const provider = source.fingerprint.provider;
+    const instanceId = sourceInstanceId(source);
+    byPath.set(`${provider}\u0000${source.fingerprint.resolvedHomePath}`, instanceId);
+    soleByProvider.set(provider, soleByProvider.has(provider) ? null : instanceId);
+  }
+  return (bucket) =>
+    (bucket.sourcePath === undefined
+      ? soleByProvider.get(bucket.provider)
+      : byPath.get(`${bucket.provider}\u0000${bucket.sourcePath}`)) ??
+    defaultInstanceIdForDriver(USAGE_PROVIDER_DRIVERS[bucket.provider]);
+}
+
+/**
+ * Assigns each instance a shade slot within its provider kind: the default
+ * instance first, then the rest by id. Deliberately independent of spending, so
+ * a quiet week does not repaint the chart.
+ */
+function shadeIndexes(
+  identities: ReadonlyMap<ProviderInstanceId, InstanceIdentity>,
+): ReadonlyMap<ProviderInstanceId, number> {
+  const byProvider = new Map<UsageProviderKind, ProviderInstanceId[]>();
+  for (const [instanceId, identity] of identities) {
+    const siblings = byProvider.get(identity.provider);
+    if (siblings === undefined) byProvider.set(identity.provider, [instanceId]);
+    else siblings.push(instanceId);
+  }
+
+  const indexes = new Map<ProviderInstanceId, number>();
+  for (const [provider, instanceIds] of byProvider) {
+    // .sort() on the array we just built, not .toSorted(): Hermes, which runs
+    // the mobile client, does not ship the ES2023 method.
+    const ordered = instanceIds.sort((a, b) => {
+      const defaultDelta =
+        Number(isDefaultInstance(b, provider)) - Number(isDefaultInstance(a, provider));
+      return defaultDelta || a.localeCompare(b);
+    });
+    ordered.forEach((instanceId, index) => indexes.set(instanceId, index));
+  }
+  return indexes;
 }
 
 function bucketTokens(bucket: UsageBucket): number {
@@ -298,6 +428,7 @@ const EMPTY_MERGED: MergedUsage = {
   records: 0,
   sessions: 0,
   providers: [],
+  instances: [],
   models: [],
   daily: [],
   hourly: [],
@@ -369,10 +500,17 @@ export function mergeUsage(
     UsageProviderKind,
     { costUsd: number; totalTokens: number; records: number; sessions: number }
   >();
+  const instanceAccumulator = new Map<
+    ProviderInstanceId,
+    { costUsd: number; totalTokens: number; records: number; sessions: number }
+  >();
+  const identities = new Map<ProviderInstanceId, InstanceIdentity>();
   const modelAccumulator = new Map<
     string,
     {
+      model: string;
       provider: UsageProviderKind;
+      instanceId: ProviderInstanceId;
       costUsd: number;
       totalTokens: number;
       records: number;
@@ -385,6 +523,7 @@ export function mergeUsage(
       costUsd: number;
       totalTokens: number;
       byProvider: Map<UsageProviderKind, { costUsd: number; totalTokens: number }>;
+      byInstance: Map<ProviderInstanceId, { costUsd: number; totalTokens: number }>;
     }
   >();
   const hourlyAccumulator = new Map<
@@ -395,18 +534,40 @@ export function mergeUsage(
       costUsd: number;
       totalTokens: number;
       byProvider: Map<UsageProviderKind, { costUsd: number; totalTokens: number }>;
+      byInstance: Map<ProviderInstanceId, { costUsd: number; totalTokens: number }>;
     }
   >();
   const contributingEnvironments: EnvironmentId[] = [];
 
   for (const environment of current) {
-    const { buckets, sessionsByProvider } = ownedContribution(
+    const {
+      buckets,
+      sessionsByProvider,
+      sessionsByInstance,
+      identities: ownedIdentities,
+    } = ownedContribution(
       environment,
       ownerByFingerprint,
       supplementalBucketsByEnvironment.get(environment.environmentId) ?? new Set(),
       sessionsByFingerprint,
     );
     if (buckets.length > 0) contributingEnvironments.push(environment.environmentId);
+    const resolveInstance = bucketInstanceResolver(environment.summary);
+
+    for (const [instanceId, identity] of ownedIdentities) {
+      if (!identities.has(instanceId)) identities.set(instanceId, identity);
+    }
+    for (const [instanceId, instanceSessions] of sessionsByInstance) {
+      if (instanceSessions === 0) continue;
+      const instance = instanceAccumulator.get(instanceId) ?? {
+        costUsd: 0,
+        totalTokens: 0,
+        records: 0,
+        sessions: 0,
+      };
+      instance.sessions += instanceSessions;
+      instanceAccumulator.set(instanceId, instance);
+    }
 
     for (const [providerKind, providerSessions] of sessionsByProvider) {
       sessions += providerSessions;
@@ -446,9 +607,32 @@ export function mergeUsage(
       provider.records += bucket.records;
       providerAccumulator.set(bucket.provider, provider);
 
-      const modelKey = `${bucket.provider} ${bucket.model}`;
+      const instanceId = resolveInstance(bucket);
+      const instance = instanceAccumulator.get(instanceId) ?? {
+        costUsd: 0,
+        totalTokens: 0,
+        records: 0,
+        sessions: 0,
+      };
+      instance.costUsd += bucket.costUsd;
+      instance.totalTokens += tokens;
+      instance.records += bucket.records;
+      instanceAccumulator.set(instanceId, instance);
+      if (!identities.has(instanceId)) {
+        // A bucket whose source went unowned (or an older server with no
+        // instance on its sources) still needs a row: name it by provider.
+        identities.set(instanceId, {
+          provider: bucket.provider,
+          displayName: null,
+          accentColor: null,
+        });
+      }
+
+      const modelKey = `${instanceId}\u0000${bucket.model}`;
       const model = modelAccumulator.get(modelKey) ?? {
+        model: bucket.model,
         provider: bucket.provider,
+        instanceId,
         costUsd: 0,
         totalTokens: 0,
         records: 0,
@@ -464,6 +648,7 @@ export function mergeUsage(
         costUsd: 0,
         totalTokens: 0,
         byProvider: new Map<UsageProviderKind, { costUsd: number; totalTokens: number }>(),
+        byInstance: new Map<ProviderInstanceId, { costUsd: number; totalTokens: number }>(),
       };
       day.costUsd += bucket.costUsd;
       day.totalTokens += tokens;
@@ -471,6 +656,10 @@ export function mergeUsage(
       dayProvider.costUsd += bucket.costUsd;
       dayProvider.totalTokens += tokens;
       day.byProvider.set(bucket.provider, dayProvider);
+      const dayInstance = day.byInstance.get(instanceId) ?? { costUsd: 0, totalTokens: 0 };
+      dayInstance.costUsd += bucket.costUsd;
+      dayInstance.totalTokens += tokens;
+      day.byInstance.set(instanceId, dayInstance);
       dailyAccumulator.set(bucket.day, day);
 
       if (bucket.hourStart !== undefined) {
@@ -480,6 +669,7 @@ export function mergeUsage(
           costUsd: 0,
           totalTokens: 0,
           byProvider: new Map<UsageProviderKind, { costUsd: number; totalTokens: number }>(),
+          byInstance: new Map<ProviderInstanceId, { costUsd: number; totalTokens: number }>(),
         };
         hour.costUsd += bucket.costUsd;
         hour.totalTokens += tokens;
@@ -490,6 +680,10 @@ export function mergeUsage(
         hourProvider.costUsd += bucket.costUsd;
         hourProvider.totalTokens += tokens;
         hour.byProvider.set(bucket.provider, hourProvider);
+        const hourInstance = hour.byInstance.get(instanceId) ?? { costUsd: 0, totalTokens: 0 };
+        hourInstance.costUsd += bucket.costUsd;
+        hourInstance.totalTokens += tokens;
+        hour.byInstance.set(instanceId, hourInstance);
         hourlyAccumulator.set(bucket.hourStart, hour);
       }
     }
@@ -509,10 +703,43 @@ export function mergeUsage(
     }))
     .sort((a, b) => b.costUsd - a.costUsd);
 
-  const models: ModelTotals[] = [...modelAccumulator.entries()]
-    .map(([key, totals]) => ({
-      model: key.slice(key.indexOf(" ") + 1),
+  // Shades are assigned over the instances the report will actually draw, so
+  // the numbering has no gaps a legend would have to explain.
+  const reportedIdentities = new Map<ProviderInstanceId, InstanceIdentity>();
+  for (const instanceId of instanceAccumulator.keys()) {
+    const identity = identities.get(instanceId);
+    if (identity !== undefined) reportedIdentities.set(instanceId, identity);
+  }
+  const shades = shadeIndexes(reportedIdentities);
+
+  const instances: InstanceTotals[] = [...instanceAccumulator.entries()]
+    .flatMap(([instanceId, totals]) => {
+      const identity = reportedIdentities.get(instanceId);
+      if (identity === undefined) return [];
+      return [
+        {
+          instanceId,
+          provider: identity.provider,
+          displayName: identity.displayName,
+          accentColor: identity.accentColor,
+          isDefaultInstance: isDefaultInstance(instanceId, identity.provider),
+          shadeIndex: shades.get(instanceId) ?? 0,
+          costUsd: totals.costUsd,
+          totalTokens: totals.totalTokens,
+          records: totals.records,
+          sessions: totals.sessions,
+          costShare: costUsd === 0 ? 0 : totals.costUsd / costUsd,
+          tokenShare: totalTokens === 0 ? 0 : totals.totalTokens / totalTokens,
+        } satisfies InstanceTotals,
+      ];
+    })
+    .sort((a, b) => b.costUsd - a.costUsd || a.instanceId.localeCompare(b.instanceId));
+
+  const models: ModelTotals[] = [...modelAccumulator.values()]
+    .map((totals) => ({
+      model: totals.model,
       provider: totals.provider,
+      instanceId: totals.instanceId,
       costUsd: totals.costUsd,
       totalTokens: totals.totalTokens,
       records: totals.records,
@@ -527,6 +754,7 @@ export function mergeUsage(
       costUsd: totals.costUsd,
       totalTokens: totals.totalTokens,
       byProvider: totals.byProvider,
+      byInstance: totals.byInstance,
     }))
     .sort((a, b) => a.day.localeCompare(b.day));
 
@@ -545,6 +773,7 @@ export function mergeUsage(
     records,
     sessions,
     providers,
+    instances,
     models,
     daily,
     hourly,

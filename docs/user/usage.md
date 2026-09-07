@@ -31,6 +31,11 @@ variable. Use absolute paths or `~/` paths in the account's environment settings
 environment paths depend on each project's working directory and cannot be reliably discovered
 by Usage. Accounts sharing a history directory count once.
 
+Each configured provider instance gets its own line, row, and column. If you run more than one
+account of the same provider, a personal and a work Claude Code say, they are reported separately,
+under the names and accent colors you gave them in Settings. Turning a provider off does not remove
+what it already spent.
+
 When your app and server support different providers, usage totals may cover only the providers
 your app understands. Update the app to include newly supported providers.
 
