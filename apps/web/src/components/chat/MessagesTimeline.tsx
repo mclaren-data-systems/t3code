@@ -266,6 +266,7 @@ interface TimelineRowSharedState {
   onFileDownload: (attachment: ChatFileAttachment) => void;
   openPullRequest: (event: MouseEvent<HTMLElement>, url: string) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  onCommitTurnFiles: ((turnId: TurnId, filePaths: string[]) => void) | undefined;
   onToggleTurnFold: (turnId: TurnId) => void;
   onToggleWorkGroup: (groupId: string, anchorKey: string) => void;
   onToggleWorkEntry: (anchorKey: string, collapsed: boolean) => void;
@@ -381,6 +382,8 @@ interface MessagesTimelineProps {
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   supportsConversationRollback: boolean;
   onRevertToTurnCount: (targetTurnCount: number, messageId: MessageId) => void;
+  /** When present, a turn's "Changed files" box offers committing just those files. */
+  onCommitTurnFiles?: ((turnId: TurnId, filePaths: string[]) => void) | undefined;
   onUseArtifactTemplate?: (template: CodexArtifactTemplate) => void;
   isRevertingCheckpoint: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;
@@ -440,6 +443,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onOpenTurnDiff,
   supportsConversationRollback,
   onRevertToTurnCount,
+  onCommitTurnFiles,
   onUseArtifactTemplate = NOOP_USE_ARTIFACT_TEMPLATE,
   isRevertingCheckpoint,
   onImageExpand,
@@ -869,6 +873,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onFileDownload,
       openPullRequest,
       onOpenTurnDiff,
+      onCommitTurnFiles,
       onToggleTurnFold,
       onToggleWorkGroup,
       onToggleWorkEntry: suspendEndScrollMaintenanceForDisclosure,
@@ -896,6 +901,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onFileDownload,
       openPullRequest,
       onOpenTurnDiff,
+      onCommitTurnFiles,
       onToggleTurnFold,
       onToggleWorkGroup,
       suspendEndScrollMaintenanceForDisclosure,
@@ -1868,6 +1874,7 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
           routeThreadKey={ctx.routeThreadKey}
           resolvedTheme={ctx.resolvedTheme}
           onOpenTurnDiff={ctx.onOpenTurnDiff}
+          onCommitTurnFiles={ctx.onCommitTurnFiles}
         />
         {row.showAssistantMeta ? (
           <AssistantMessageMeta
@@ -2509,11 +2516,13 @@ const AssistantChangedFilesSection = memo(function AssistantChangedFilesSection(
   routeThreadKey,
   resolvedTheme,
   onOpenTurnDiff,
+  onCommitTurnFiles,
 }: {
   turnSummary: TurnDiffSummary | undefined;
   routeThreadKey: string;
   resolvedTheme: "light" | "dark";
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  onCommitTurnFiles: ((turnId: TurnId, filePaths: string[]) => void) | undefined;
 }) {
   if (!turnSummary) return null;
   const checkpointFiles = turnSummary.files;
@@ -2526,6 +2535,7 @@ const AssistantChangedFilesSection = memo(function AssistantChangedFilesSection(
       routeThreadKey={routeThreadKey}
       resolvedTheme={resolvedTheme}
       onOpenTurnDiff={onOpenTurnDiff}
+      onCommitTurnFiles={onCommitTurnFiles}
     />
   );
 });
@@ -2538,12 +2548,14 @@ function AssistantChangedFilesSectionInner({
   routeThreadKey,
   resolvedTheme,
   onOpenTurnDiff,
+  onCommitTurnFiles,
 }: {
   turnSummary: TurnDiffSummary;
   checkpointFiles: TurnDiffSummary["files"];
   routeThreadKey: string;
   resolvedTheme: "light" | "dark";
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  onCommitTurnFiles: ((turnId: TurnId, filePaths: string[]) => void) | undefined;
 }) {
   const persistedExpanded = useUiStateStore(
     (store) => store.threadChangedFilesExpandedById[routeThreadKey]?.[turnSummary.turnId],
@@ -2561,6 +2573,7 @@ function AssistantChangedFilesSectionInner({
         setExpanded(routeThreadKey, turnSummary.turnId, !allDirectoriesExpanded)
       }
       onOpenTurnDiff={onOpenTurnDiff}
+      onCommitTurnFiles={onCommitTurnFiles}
     />
   );
 }
