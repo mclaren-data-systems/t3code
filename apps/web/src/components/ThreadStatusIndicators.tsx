@@ -489,6 +489,9 @@ export function ThreadRowLeadingStatus({ thread }: { thread: SidebarThreadSummar
   const lastVisitedAt = useUiStateStore(
     (state) => state.threadLastVisitedAtById[scopedThreadKey(threadRef)],
   );
+  const completionAcknowledgedAt = useUiStateStore(
+    (state) => state.threadLastCompletionAcknowledgedAtById[scopedThreadKey(threadRef)],
+  );
   const pullRequest = useLinkedThreadPullRequest(
     thread.environmentId,
     thread.linkedPullRequest,
@@ -502,6 +505,7 @@ export function ThreadRowLeadingStatus({ thread }: { thread: SidebarThreadSummar
     thread: {
       ...thread,
       lastVisitedAt,
+      completionAcknowledgedAt,
     },
   });
 
