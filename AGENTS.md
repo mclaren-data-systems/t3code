@@ -4,6 +4,23 @@ T3 Code is a minimal GUI for coding agents. A Node WebSocket server wraps provid
 
 You can think of T3 Code as an open source "bring-your-own-subscription" alternative to apps like Claude Desktop, Codex App, Cursor Glass and Conductor.
 
+## Git & GitHub Policy (CRITICAL — DO NOT VIOLATE)
+
+- This repository is a FORK. `origin` is the fork (`mclaren-data-systems/t3code`);
+  `upstream` (`pingdotgg/t3code`) is READ-ONLY for us.
+- **NEVER create PRs, push branches, post comments, or perform ANY write operation
+  against upstream or any other third-party repo. All `gh` write commands (`pr create`,
+  `issue create`, `pr comment`, `pr close`, `pr merge`) MUST explicitly target the fork.**
+- The ONLY interaction with upstream is `git fetch upstream` to pull changes. Everything
+  else targets `origin` (the fork).
+
+## Fork-First Policy
+
+- The fork's `README.md` (its "About this fork" banner) and `FORK.md` take priority over
+  upstream's. On merge conflicts in those files, keep ours.
+- Do NOT commit scratch/analysis markdown files (e.g. `CONFLICT_ANALYSIS.md`, plan dumps)
+  into the repo. The authoritative list of fork changes lives in `FORK.md`.
+
 ## What makes T3 Code special?
 
 We have over 200,000 users who love T3 Code. It's important we maintain the things they love as we continue to iterate on the product. Here's a brief list of the things we can never compromise on.

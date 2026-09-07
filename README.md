@@ -1,3 +1,36 @@
+<!-- FORK-BANNER:START -->
+
+> ## About this fork
+>
+> This is a development fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3code),
+> maintained at [mclaren-data-systems/t3code](https://github.com/mclaren-data-systems/t3code).
+> Upstream (`pingdotgg`) is treated as the source of truth and `main` here is periodically
+> rebased onto it — most recently onto `5b0c923e` on 2026-09-07.
+>
+> On top of upstream this fork carries a deliberately thin layer: a **workflow set a fork can
+> actually run** — standard GitHub-hosted runners instead of upstream's Blacksmith ones, no
+> workflow needing credentials a fork lacks, and unsigned desktop artifacts built on every
+> push to `main` and published as pruned development-build prereleases — plus three server
+> changes for **running more than one provider instance** (a logged-out Claude instance reports
+> as unauthenticated instead of ready, usage scans every configured instance, and the usage
+> report breaks totals down per instance), the **Claude and Codex subscription allowances**
+> upstream reports on its Limits view surfaced in the model picker and the context bubble so
+> you can see which plan still has room at the moment of choosing, a
+> **configurable worktree branch prefix**, and four web UX changes (the sidebar new-thread
+> button under the project selector, "New project" moved into the project scope menu, a commit
+> button on a turn's changed-files card that preselects just those files, and the completed dot
+> persisting until a thread is actually read). Fork builds also **never check for updates**, and
+> the sidebar carries a link back to this repository whose tooltip names the running build.
+> `native/`, `scripts/`, `apps/desktop/` and `pnpm-lock.yaml` are byte-identical to upstream.
+>
+> The authoritative, up-to-date list of everything that sets this fork apart from upstream —
+> including changes upstream has since implemented, and changes dropped by choice — lives in
+> **[FORK.md](FORK.md)**.
+>
+> Upstream README follows.
+
+<!-- FORK-BANNER:END -->
+
 # T3 Code
 
 T3 Code is an "agent harness control surface". It enables control of the agents on your machine with a best-in-class mobile app ([iOS](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824), [Android](https://play.google.com/store/apps/details?id=com.t3tools.t3code)), [web app](https://app.t3.codes) and [Electron-based desktop app](https://t3.codes).
