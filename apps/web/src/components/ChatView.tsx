@@ -469,6 +469,7 @@ import {
   type PanelLayoutControlsProps,
   RightPanelMaximizeControl,
 } from "./chat/PanelLayoutControls";
+import { type GitCommitPreselection } from "./GitActionsControl";
 import { expandedImageKey, type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { ThreadDetailsPanel, type ThreadDetailsPanelProps } from "./chat/ThreadDetailsPanel";
 import { NoActiveThreadState } from "./NoActiveThreadState";
@@ -10807,6 +10808,30 @@ export default function ChatView(props: ChatViewProps) {
     if (!paintOnlyDisplayedTimeline) void onRollbackCheckpoint(input);
   };
   const onTimelineRollbackCheckpointStable = useStableCallback(onTimelineRollbackCheckpoint);
+  // A turn's "Changed files" commit button routes to the thread details panel's
+  // git actions control, which opens the commit dialog with only these files
+  // checked. The control only mounts while the panel is open, so the request
+  // opens the panel too, and is dropped once the control has applied it so a
+  // later remount does not replay it.
+  const [commitPreselection, setCommitPreselection] = useState<GitCommitPreselection | null>(null);
+  const commitPreselectionRequestIdRef = useRef(0);
+  const onCommitTurnFiles = (_runId: RunId, filePaths: string[]) => {
+    commitPreselectionRequestIdRef.current += 1;
+    setCommitPreselection({
+      filePaths,
+      requestId: commitPreselectionRequestIdRef.current,
+    });
+    if (activeThreadRef) {
+      useRightPanelStore
+        .getState()
+        .setThreadPanelOpen(activeThreadRef, threadPanelPresentation, true);
+    }
+  };
+  const onCommitTurnFilesStable = useStableCallback(onCommitTurnFiles);
+  const onCommitPreselectionConsumed = (requestId: number) => {
+    setCommitPreselection((current) => (current?.requestId === requestId ? null : current));
+  };
+  const onCommitPreselectionConsumedStable = useStableCallback(onCommitPreselectionConsumed);
   // The revert handler is read from a ref at call-time so the callback
   // reference is fully stable and never busts TimelineRowCtx identity.
   const onRevertToTurnCountRef = useRef(onRevertToTurnCountStable);
@@ -11056,6 +11081,8 @@ export default function ChatView(props: ChatViewProps) {
       : {}),
     onComposerFocusRequest: scheduleComposerFocusStable,
     ...(isServerThread && isGitRepo ? { onOpenChanges: openChangesFromThreadPanelStable } : {}),
+    commitPreselection,
+    onCommitPreselectionConsumed: onCommitPreselectionConsumedStable,
     onRunProjectScript: runProjectScriptStable,
     onAddProjectScript: saveProjectScriptStable,
     onUpdateProjectScript: updateProjectScriptStable,
@@ -11364,6 +11391,11 @@ export default function ChatView(props: ChatViewProps) {
                       onSendAppMessage: sendAppMessageStable,
                     }
                   : {})}
+                onCommitTurnFiles={
+                  paintOnlyDisplayedTimeline || !isServerThread
+                    ? undefined
+                    : onCommitTurnFilesStable
+                }
                 isRevertingCheckpoint={isRevertingCheckpoint}
                 onImageExpand={onExpandTimelineImageStable}
                 onFileOpen={
