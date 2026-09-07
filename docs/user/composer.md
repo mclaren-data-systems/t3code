@@ -44,6 +44,24 @@ returns to the remembered selection.
 
 Leaving reasoning level or service tier unset uses the provider's own configuration.
 
+## Subscription usage
+
+When the selected provider runs on a subscription rather than an API key, the composer shows how
+much of each plan window is still available. Claude reports a 5-hour window, a weekly window, and
+separate weekly windows for individual models; Codex reports its own two windows. Each row shows
+the share left and, where the provider reports one, how long until that window resets.
+
+The same rows appear in two places: at the bottom of the model picker, for whichever provider is
+selected in the rail, so you can see which account still has room before you pick one; and under
+**Subscription** in the popover of the round meter beside the send button, for the provider the
+current thread is running on.
+
+Providers that do not report plan limits show nothing. That includes sessions authenticated with
+an API key, Amazon Bedrock, and Google Vertex. Usage refreshes when T3 Code checks provider status
+and while a turn runs, and disappears rather than going stale if a figure gets too old to trust.
+**Usage → Limits** shows the same windows pooled across accounts with exact reset times, and
+`/usage-limits` opens the current model's limits above the composer on demand.
+
 ## Quote an assistant response
 
 On web and desktop, select text within one assistant response and choose

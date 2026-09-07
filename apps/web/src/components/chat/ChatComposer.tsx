@@ -11,6 +11,7 @@ import type {
   ResolvedKeybindingsConfig,
   RuntimeMode,
   ScopedThreadRef,
+  ServerProviderUsageLimits,
   ServerProvider,
   ThreadId,
 } from "@t3tools/contracts";
@@ -1045,6 +1046,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
 const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(props: {
   compact: boolean;
   activeContextWindow: ContextWindowSnapshot | null;
+  activeSubscriptionUsage: ServerProviderUsageLimits | undefined;
   activeThreadModelDisplayName: string | null;
   isPreparingWorktree: boolean;
   pendingAction: {
@@ -1080,6 +1082,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
           onCompact={props.onCompactContext}
           compactDisabled={props.compactDisabled}
           compactDisabledReason={props.compactDisabledReason}
+          subscriptionUsage={props.activeSubscriptionUsage}
         />
       ) : null}
       <ComposerPrimaryActions
@@ -1784,6 +1787,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     () => resolveContextWindowModelDisplayName(activeThreadModelSelection, modelOptionsByInstance),
     [activeThreadModelSelection, modelOptionsByInstance],
   );
+  // Handed over raw. The meter ages it and reads the clock when its popover
+  // opens: deciding staleness here would memoise it against a snapshot that
+  // stops changing exactly when provider refreshes stop, so an expired
+  // allowance would never age out.
+  const activeSubscriptionUsage = selectedProviderEntry?.snapshot.usageLimits;
 
   // ------------------------------------------------------------------
   // Composer-local state
@@ -5631,6 +5639,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       settings.contextWindowMeterEnabled ? activeContextWindow : null
                     }
                     activeThreadModelDisplayName={activeThreadModelDisplayName}
+                    activeSubscriptionUsage={activeSubscriptionUsage}
                     pendingAction={pendingPrimaryAction}
                     isRunning={phase === "running"}
                     showPlanFollowUpPrompt={
