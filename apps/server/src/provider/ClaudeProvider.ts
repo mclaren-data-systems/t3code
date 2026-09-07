@@ -2,6 +2,7 @@ import {
   type ClaudeSettings,
   type ModelCapabilities,
   type ServerProvider,
+  type ServerProviderConfigDirectory,
   type ServerProviderSlashCommand,
   type ServerProviderResetCredits,
 } from "@t3tools/contracts";
@@ -36,7 +37,11 @@ import {
   type ServerProviderDraft,
 } from "@t3tools/provider-core/server/snapshotProbe";
 import { resolveClaudeSdkExecutablePath } from "./Drivers/ClaudeExecutable.ts";
-import { hasClaudeManagedMcpConfig, makeClaudeEnvironment } from "./Drivers/ClaudeHome.ts";
+import {
+  hasClaudeManagedMcpConfig,
+  makeClaudeEnvironment,
+  resolveClaudeConfigDirectory,
+} from "./Drivers/ClaudeHome.ts";
 import { discoverClaudeSkills } from "./Drivers/ClaudeSkills.ts";
 import type { ProviderWorkspaceSnapshot } from "@t3tools/provider-core/server/driver";
 import { makeUnavailableUsageLimits } from "@t3tools/provider-core/server/usageLimits";
@@ -186,6 +191,14 @@ function claudeAuthStatus(
     : "unauthenticated";
 }
 
+/** Login guidance that names the directory the CLI will actually read. */
+function claudeUnauthenticatedMessage(configDirectory: ServerProviderConfigDirectory): string {
+  const missingCredentials = configDirectory.credentialsFound
+    ? ""
+    : " No credentials file was found there.";
+  return `Claude Code is not logged in for ${configDirectory.path}.${missingCredentials} Set CLAUDE_CONFIG_DIR to that exact path in a terminal and log in, then refresh.`;
+}
+
 // Bedrock initialization includes backend startup and awsAuthRefresh, taking longer than first-party auth.
 const CAPABILITIES_PROBE_TIMEOUT_MS = 25_000;
 // Native CLI startup on Windows can exceed the shared probe deadline.
@@ -238,6 +251,11 @@ export type ClaudeCapabilitiesProbe = {
   readonly email: string | undefined;
   readonly workspaceId?: string | undefined;
   readonly subscriptionType: string | undefined;
+  /**
+   * Where the CLI found its bearer credential. Claude Code reports the literal
+   * string `"none"` when it has none, which is the only positive signal we get
+   * that an instance is logged out.
+   */
   readonly tokenSource: string | undefined;
   readonly apiKeySource: string | undefined;
   /** OAuth applies only to firstParty; Bedrock uses external AWS credentials and omits subscription/token fields. */
@@ -577,6 +595,13 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
   const skills = yield* discoverClaudeSkills(claudeSettings, cwd, resolvedEnvironment);
   const slashCommands = [COMPACT_SLASH_COMMAND, ...(capabilities?.slashCommands ?? [])];
   const dedupedSlashCommands = dedupeSlashCommands(slashCommands);
+  // Reported from here on so every auth outcome names the directory the CLI
+  // reads, which is the value a mistyped home path gets wrong.
+  const configDirectory = yield* resolveClaudeConfigDirectory(
+    claudeSettings,
+    resolvedEnvironment,
+    cwd,
+  );
 
   if (!capabilities) {
     return buildServerProvider({
@@ -587,6 +612,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
       updateRequiredModels,
       slashCommands: dedupedSlashCommands,
       skills,
+      configDirectory,
       probe: {
         installed: true,
         version: parsedVersion,
@@ -616,12 +642,13 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
       models,
       slashCommands: dedupedSlashCommands,
       skills,
+      configDirectory,
       probe: {
         installed: true,
         version: parsedVersion,
         status: "error",
         auth: { status: "unauthenticated" },
-        message: "Claude Code is not authenticated. Run `claude auth login` and try again.",
+        message: claudeUnauthenticatedMessage(configDirectory),
       },
     });
   }
@@ -660,6 +687,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     updateRequiredModels,
     slashCommands: dedupedSlashCommands,
     skills,
+    configDirectory,
     probe: {
       installed: true,
       version: parsedVersion,

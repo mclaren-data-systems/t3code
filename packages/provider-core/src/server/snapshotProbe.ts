@@ -5,6 +5,7 @@ import type {
   RuntimeMode,
   ServerProvider,
   ServerProviderAuth,
+  ServerProviderConfigDirectory,
   ServerProviderSkill,
   ServerProviderSlashCommand,
   ServerProviderModel,
@@ -230,6 +231,7 @@ export function buildServerProvider(input: {
   updateRequiredModels?: ReadonlyArray<ServerProviderUpdateRequiredModel>;
   slashCommands?: ReadonlyArray<ServerProviderSlashCommand>;
   skills?: ReadonlyArray<ServerProviderSkill>;
+  configDirectory?: ServerProviderConfigDirectory | undefined;
   probe: ProviderProbeResult;
 }): ServerProviderDraft {
   const versionAdvisory = input.driver
@@ -263,6 +265,7 @@ export function buildServerProvider(input: {
     setup: { canAuthenticate: false, canInstall: false },
     checkedAt: input.checkedAt,
     ...(input.probe.message ? { message: input.probe.message } : {}),
+    ...(input.configDirectory ? { configDirectory: input.configDirectory } : {}),
     models: input.models,
     ...(input.updateRequiredModels?.length
       ? { updateRequiredModels: input.updateRequiredModels }

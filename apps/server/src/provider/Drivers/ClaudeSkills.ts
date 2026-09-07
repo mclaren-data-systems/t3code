@@ -11,6 +11,7 @@ import { SKILL_MENTION_PATTERN } from "@t3tools/shared/composerInlineTokens";
 import { parse as parseYamlDocument } from "yaml";
 
 import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
+import { resolveClaudeConfigDirPath } from "./ClaudeHome.ts";
 
 type ClaudeSkillScope = "user" | "project";
 
@@ -406,25 +407,6 @@ const discoverPluginSkillRoots = Effect.fn("discoverPluginSkillRoots")(function*
     }
   }
   return roots;
-});
-
-const resolveClaudeConfigDirPath = Effect.fn("resolveClaudeConfigDirPath")(function* (
-  config: Pick<ClaudeSettings, "homePath">,
-  environment: NodeJS.ProcessEnv,
-  cwd?: string,
-): Effect.fn.Return<string, never, Path.Path> {
-  const path = yield* Path.Path;
-  const home = yield* HostProcess.HomeDirectory;
-  const homePath = config.homePath.trim();
-  if (homePath.length > 0) {
-    return path.resolve(expandHomePath(homePath, home));
-  }
-  // Match the spawned CLI: preserve a literal ~ and resolve relative config against workspace cwd.
-  const environmentConfigDir = environment.CLAUDE_CONFIG_DIR?.trim() ?? "";
-  if (environmentConfigDir.length > 0) {
-    return cwd ? path.resolve(cwd, environmentConfigDir) : path.resolve(environmentConfigDir);
-  }
-  return path.join(home, ".claude");
 });
 
 // Claude's --add-dir is repeatable and variadic; parseCliArgs keeps only one value.
