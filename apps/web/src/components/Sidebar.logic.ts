@@ -624,6 +624,7 @@ type ThreadStatusInput = Pick<
 > & {
   lastVisitedAt?: string | null | undefined;
   pendingBackgroundTasks?: SidebarThreadSummary["pendingBackgroundTasks"] | undefined;
+  completionAcknowledgedAt?: string | undefined;
 };
 
 export interface ThreadJumpHintVisibilityController {
@@ -740,11 +741,16 @@ export function hasUnseenCompletion(thread: ThreadStatusInput): boolean {
   if (!thread.latestRun?.completedAt) return false;
   const completedAt = Date.parse(thread.latestRun.completedAt);
   if (Number.isNaN(completedAt)) return false;
-  if (!thread.lastVisitedAt) return false;
 
-  const lastVisitedAt = Date.parse(thread.lastVisitedAt);
-  if (Number.isNaN(lastVisitedAt)) return true;
-  return completedAt > lastVisitedAt;
+  // The green "completed" dot persists until the completion is acknowledged
+  // (currently on visit). Fall back to last-visited so legacy state and callers
+  // that don't track acknowledgement keep the prior behavior.
+  const seenAt = thread.completionAcknowledgedAt ?? thread.lastVisitedAt;
+  if (!seenAt) return false;
+
+  const seenAtMs = Date.parse(seenAt);
+  if (Number.isNaN(seenAtMs)) return true;
+  return completedAt > seenAtMs;
 }
 
 export function shouldClearThreadSelectionOnMouseDown(target: HTMLElement | null): boolean {
