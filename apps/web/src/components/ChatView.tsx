@@ -374,6 +374,7 @@ import type { AssistantCitationRequest } from "./chat/AssistantCitationSource";
 import { resolveTimelineIsAtEnd, worktreeSetupAgentStarted } from "./chat/MessagesTimeline.logic";
 import { resolveComposerTimelineInset, resolveScrollToEndClearance } from "./composerFooterLayout";
 import { ChatHeader } from "./chat/ChatHeader";
+import { type GitCommitPreselection } from "./GitActionsControl";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { expandedImageKey, type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { NoActiveThreadState } from "./NoActiveThreadState";
@@ -9498,6 +9499,17 @@ export default function ChatView(props: ChatViewProps) {
     },
     [activeThreadRef, diffOpen, isServerThread, onDiffPanelOpen],
   );
+  // A turn's "Changed files" commit button routes to the header's git actions
+  // control, which opens the commit dialog with only these files checked.
+  const [commitPreselection, setCommitPreselection] = useState<GitCommitPreselection | null>(null);
+  const commitPreselectionRequestIdRef = useRef(0);
+  const onCommitTurnFiles = useCallback((_turnId: TurnId, filePaths: string[]) => {
+    commitPreselectionRequestIdRef.current += 1;
+    setCommitPreselection({
+      filePaths,
+      requestId: commitPreselectionRequestIdRef.current,
+    });
+  }, []);
   // The revert handler is read from a ref at call-time so the callback
   // reference is fully stable and never busts TimelineRowCtx identity.
   const onRevertToTurnCountRef = useRef(onRevertToTurnCount);
@@ -9840,6 +9852,7 @@ export default function ChatView(props: ChatViewProps) {
             availableEditors={availableEditors}
             rightPanelOpen={rightPanelOpen}
             gitCwd={gitCwd}
+            commitPreselection={commitPreselection}
             onNewThreadInProject={handleNewThreadInActiveProject}
             {...(activeDraftLogicalProjectKey
               ? { onOpenProjectSettings: handleOpenDraftProjectSettings }
@@ -9934,6 +9947,9 @@ export default function ChatView(props: ChatViewProps) {
                 }
                 onRevertToTurnCount={
                   paintOnlyDisplayedTimeline ? noopHeldRevert : onRevertTimelineTurn
+                }
+                onCommitTurnFiles={
+                  paintOnlyDisplayedTimeline || !isServerThread ? undefined : onCommitTurnFiles
                 }
                 isRevertingCheckpoint={!paintOnlyDisplayedTimeline && isRevertingCheckpoint}
                 onImageExpand={onExpandTimelineImage}
