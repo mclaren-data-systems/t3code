@@ -1,5 +1,16 @@
 # Release Runbook
 
+> **Fork note:** the workflows this document describes (`.github/workflows/release.yml`,
+> `release-desktop.yml`, `desktop-macos-preview.yml`, `desktop-macos-preview-publish.yml`,
+> `mobile-android-apk.yml`, `relay-preview.yml`, `relay-preview-cleanup.yml`,
+> `deploy-relay.yml`) are **not present in this fork** — they require Cloudflare,
+> PlanetScale, Axiom, Clerk, Apple, Azure, npm, and GitHub App credentials a fork does not
+> have, or Blacksmith runners. Kept as upstream reference for rebases. This fork builds unsigned
+> desktop binaries from `.github/workflows/desktop-artifacts.yml` on every push to `main`
+> and publishes them as pruned `desktop-dev-*` prereleases (development builds, keeping the
+> current one plus two); it cuts no stable releases. Code quality gates run from
+> `.github/workflows/ci.yml`.
+
 Unified release workflow: `.github/workflows/release.yml`. Beta is a product label, not a release channel—channels remain `stable` and `nightly` (plus `preview` for maintainer test builds).
 
 ## Channels and triggers
