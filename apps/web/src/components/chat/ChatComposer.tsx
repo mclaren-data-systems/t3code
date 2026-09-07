@@ -30,6 +30,7 @@ import type {
   ResolvedKeybindingsConfig,
   RuntimeMode,
   ScopedThreadRef,
+  ServerProviderUsageLimits,
   ServerProvider,
   ThreadId,
   SnapShotSource,
@@ -1188,6 +1189,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   compact: boolean;
   activeContextWindow: ContextWindowSnapshot | null;
   reserveContextWindowMeter: boolean;
+  activeSubscriptionUsage: ServerProviderUsageLimits | undefined;
   activeThreadModelDisplayName: string | null;
   isPreparingWorktree: boolean;
   pendingAction: {
@@ -1222,6 +1224,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
           onCompact={props.onCompactContext}
           compactDisabled={props.compactDisabled}
           compactDisabledReason={props.compactDisabledReason}
+          subscriptionUsage={props.activeSubscriptionUsage}
         />
       ) : props.reserveContextWindowMeter ? (
         <ContextWindowMeterPlaceholder />
@@ -2088,6 +2091,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ? selectedProviderStatus.reportsContextWindow === true
       : null,
   });
+  // Handed over raw. The meter ages it and reads the clock when its popover
+  // opens: deciding staleness here would memoise it against a snapshot that
+  // stops changing exactly when provider refreshes stop, so an expired
+  // allowance would never age out.
+  const activeSubscriptionUsage = selectedProviderEntry?.snapshot.usageLimits;
 
   // ------------------------------------------------------------------
   // Composer-local state
@@ -7026,6 +7034,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     }
                     reserveContextWindowMeter={reserveContextWindowMeter}
                     activeThreadModelDisplayName={activeThreadModelDisplayName}
+                    activeSubscriptionUsage={activeSubscriptionUsage}
                     pendingAction={pendingPrimaryAction}
                     isRunning={phase === "running"}
                     showPlanFollowUpPrompt={
