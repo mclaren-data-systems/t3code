@@ -5,6 +5,7 @@ import {
   enumerateHourStarts,
   formatDateTimeShort,
   formatHourShort,
+  formatInstanceLabel,
   formatPercent,
   formatRelativeHourShort,
   makeWindow,
@@ -18,6 +19,41 @@ describe("formatPercent", () => {
     expect(formatPercent(0.001)).toBe("0.1%");
     expect(formatPercent(0.023)).toBe("2.3%");
     expect(formatPercent(0.00004, 2)).toBe("<0.01%");
+  });
+});
+
+describe("formatInstanceLabel", () => {
+  it("shows the brand label for a provider's default instance", () => {
+    expect(
+      formatInstanceLabel({
+        instanceId: "claudeAgent",
+        displayName: null,
+        isDefaultInstance: true,
+        brandLabel: "Claude Code",
+      }),
+    ).toBe("Claude Code");
+  });
+
+  it("humanizes an added instance rather than repeating the brand label", () => {
+    expect(
+      formatInstanceLabel({
+        instanceId: "claudeAgent_work",
+        displayName: null,
+        isDefaultInstance: false,
+        brandLabel: "Claude Code",
+      }),
+    ).toBe("Claude Agent Work");
+  });
+
+  it("prefers the name the user configured", () => {
+    expect(
+      formatInstanceLabel({
+        instanceId: "claudeAgent_work",
+        displayName: "  Work account  ",
+        isDefaultInstance: false,
+        brandLabel: "Claude Code",
+      }),
+    ).toBe("Work account");
   });
 });
 
