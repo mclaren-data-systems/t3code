@@ -10,6 +10,7 @@ import {
   ChevronsUpDownIcon,
   FolderClosedIcon,
   FolderIcon,
+  GitCommitIcon,
 } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
@@ -40,6 +41,8 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
   onToggleAllDirectories: () => void;
   onOpenTurnDiff: (runId: RunId, filePath?: string) => void;
   onFileContextMenu?: ChangedFileContextMenuHandler | undefined;
+  /** When present, offers committing exactly this turn's files. */
+  onCommitTurnFiles?: ((runId: RunId, filePaths: string[]) => void) | undefined;
 }) {
   const {
     runId,
@@ -50,6 +53,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
     onToggleAllDirectories,
     onOpenTurnDiff,
     onFileContextMenu,
+    onCommitTurnFiles,
   } = props;
   const syncTimelineLayout = useSyncLayout();
   const hiddenFileCount = totals.count - files.length;
@@ -125,6 +129,31 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
             </TooltipTrigger>
             <TooltipPopup side="top">Open the full diff</TooltipPopup>
           </Tooltip>
+          {/* A capped list would commit only its prefix. */}
+          {onCommitTurnFiles && hiddenFileCount === 0 ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="ghost-muted"
+                    aria-label="Commit these files"
+                    onClick={() =>
+                      onCommitTurnFiles(
+                        runId,
+                        files.map((file) => file.path),
+                      )
+                    }
+                  />
+                }
+              >
+                <GitCommitIcon className="size-3" />
+                <span className="hidden @[24rem]/changed-files:inline">Commit</span>
+              </TooltipTrigger>
+              <TooltipPopup side="top">Commit with only these files selected</TooltipPopup>
+            </Tooltip>
+          ) : null}
         </div>
       </div>
       <ChangedFilesTree
