@@ -99,7 +99,13 @@ import {
   resolveUsageShortcut,
   type UsageMetric,
 } from "./usageShortcuts";
-import { PROVIDER_ORDER, PROVIDER_PRESENTATION, providersWithUsage } from "./usageProviders";
+import {
+  buildUsageSeries,
+  holdLoadingSeries,
+  PROVIDER_ORDER,
+  PROVIDER_PRESENTATION,
+  type UsageSeries,
+} from "./usageProviders";
 import {
   readUsagePagePreferences,
   saveUsagePagePreferences,
@@ -158,7 +164,7 @@ function UsageModelDialogHost({
   const model =
     selectedKey === null
       ? undefined
-      : models.find((candidate) => `${candidate.provider}:${candidate.model}` === selectedKey);
+      : models.find((candidate) => `${candidate.instanceId}:${candidate.model}` === selectedKey);
   if (model === undefined) return null;
   return (
     <UsageModelDialog
@@ -641,15 +647,29 @@ function UsageOverview({
   const loadingProviders = new Set(
     PROVIDER_ORDER.filter((provider) => loading.everyProvider || loading.providers.has(provider)),
   );
-  const providersWithData = new Set(providersWithUsage(merged.providers));
-  // Only loading.providers excludes hidden providers without data. Filter a fresh array so the compiler can
-  // cache independently.
-  const activeProviders = [...PROVIDER_ORDER].filter(
-    (provider) => providersWithData.has(provider) || loading.providers.has(provider),
-  );
+  // One series per configured provider instance, so two Claude accounts read
+  // as two rows rather than one merged line. `everyProvider` marks shown
+  // providers as loading; only `loading.providers`, which excludes hidden ones,
+  // may hold a row for a provider that has no data yet.
+  const series = holdLoadingSeries(buildUsageSeries(merged.instances), loading.providers);
   const chartLoadingProviders = new Set(
-    activeProviders.filter((provider) => loadingProviders.has(provider)),
+    series.map((entry) => entry.provider).filter((provider) => loadingProviders.has(provider)),
   );
+  const seriesColorByInstance = new Map(
+    series.map((entry) => [entry.instanceId, entry.color] as const),
+  );
+  // A model row names its instance only when the provider it belongs to has
+  // more than one; otherwise the brand mark beside it already says everything.
+  const instanceCounts = new Map<UsageProviderKind, number>();
+  for (const instance of merged.instances) {
+    instanceCounts.set(instance.provider, (instanceCounts.get(instance.provider) ?? 0) + 1);
+  }
+  const ambiguousInstanceLabels = new Map<string, string>();
+  for (const entry of series) {
+    if ((instanceCounts.get(entry.provider) ?? 0) > 1) {
+      ambiguousInstanceLabels.set(entry.instanceId, entry.label);
+    }
+  }
   const sourceMessages = [
     ...new Set(
       selectedEnvironments.flatMap(
@@ -679,18 +699,14 @@ function UsageOverview({
     0,
   );
   const cursorInsertAt =
-    Math.max(activeProviders.indexOf("codex"), activeProviders.indexOf("claude")) + 1;
+    series.findLastIndex((entry) => entry.provider === "codex" || entry.provider === "claude") + 1;
   const summaryRows: ReadonlyArray<
-    | { readonly kind: "usage"; readonly provider: UsageProviderKind }
+    | { readonly kind: "usage"; readonly series: UsageSeries }
     | { readonly kind: "enable"; readonly environment: EnvironmentUsageStatus }
   > = [
-    ...activeProviders
-      .slice(0, cursorInsertAt)
-      .map((provider) => ({ kind: "usage" as const, provider })),
+    ...series.slice(0, cursorInsertAt).map((entry) => ({ kind: "usage" as const, series: entry })),
     ...cursorAccessEnvironments.map((environment) => ({ kind: "enable" as const, environment })),
-    ...activeProviders
-      .slice(cursorInsertAt)
-      .map((provider) => ({ kind: "usage" as const, provider })),
+    ...series.slice(cursorInsertAt).map((entry) => ({ kind: "usage" as const, series: entry })),
   ];
 
   return (
@@ -755,29 +771,27 @@ function UsageOverview({
                 />
               );
             }
-            const provider = row.provider;
-            const totals = merged.providers.find((entry) => entry.provider === provider);
+            const entry = row.series;
+            const totals = entry.totals;
             const share = metric === "cost" ? (totals?.costShare ?? 0) : (totals?.tokenShare ?? 0);
-            const providerSessions = totals?.sessions ?? 0;
-            const sessionLabel = `${formatCount(providerSessions)} ${
-              providerSessions === 1 ? "session" : "sessions"
+            const instanceSessions = totals?.sessions ?? 0;
+            const sessionLabel = `${formatCount(instanceSessions)} ${
+              instanceSessions === 1 ? "session" : "sessions"
             }`;
-            const providerLoading = loadingProviders.has(provider);
-            const awaitingData = providerLoading && !providersWithData.has(provider);
+            const providerLoading = loadingProviders.has(entry.provider);
+            const awaitingData = providerLoading && totals === null;
             return (
-              <div key={provider} className="flex flex-col gap-1">
+              <div key={entry.instanceId} className="flex flex-col gap-1">
                 <div className="flex items-baseline justify-between gap-4">
                   <span className="flex min-w-0 items-center gap-2 text-sm text-foreground">
                     <span
                       aria-hidden
                       className="size-2 shrink-0 rounded-full"
-                      style={{
-                        backgroundColor: PROVIDER_PRESENTATION[provider].color,
-                      }}
+                      style={{ backgroundColor: entry.color }}
                     />
-                    <ProviderMark provider={provider} className="size-4" />
+                    <ProviderMark provider={entry.provider} className="size-4" />
                     <span className="flex min-w-0 items-baseline gap-1.5">
-                      <span className="truncate">{PROVIDER_PRESENTATION[provider].label}</span>
+                      <span className="truncate">{entry.label}</span>
                       <span
                         className={cn(
                           "shrink-0 whitespace-nowrap text-2xs text-muted-foreground tabular-nums",
@@ -823,7 +837,7 @@ function UsageOverview({
             {shownHourly ? "Hourly" : "Daily"} {metric === "tokens" ? "processed tokens" : "cost"}
           </h2>
           <UsageProviderChart
-            providers={activeProviders}
+            series={series}
             loadingProviders={chartLoadingProviders}
             days={days}
             daily={merged.daily}
@@ -944,7 +958,7 @@ function UsageOverview({
                 </tr>
               ) : (
                 breakdownModels.map((model, index) => {
-                  const key = `${model.provider}:${model.model}`;
+                  const key = `${model.instanceId}:${model.model}`;
                   const value = metric === "tokens" ? model.totalTokens : model.costUsd;
                   const hasBar = value > 0 && breakdownPeak > 0;
                   const share = modelShare(model, metric === "tokens" ? "tokens" : "cost");
@@ -966,6 +980,11 @@ function UsageOverview({
                         >
                           <ProviderMark provider={model.provider} className="size-3.5" />
                           {model.model}
+                          {ambiguousInstanceLabels.has(model.instanceId) ? (
+                            <span className="text-xs text-muted-foreground">
+                              {ambiguousInstanceLabels.get(model.instanceId)}
+                            </span>
+                          ) : null}
                         </button>
                         {hasBar ? (
                           <div aria-hidden className={cn("mt-1.5 h-0.5 max-w-48", rowFigures)}>
@@ -973,7 +992,9 @@ function UsageOverview({
                               className="h-full rounded-full"
                               style={{
                                 width: `max(0.5rem, ${(value / breakdownPeak) * 100}%)`,
-                                backgroundColor: PROVIDER_PRESENTATION[model.provider].color,
+                                backgroundColor:
+                                  seriesColorByInstance.get(model.instanceId) ??
+                                  PROVIDER_PRESENTATION[model.provider].color,
                               }}
                             />
                           </div>
@@ -1012,9 +1033,9 @@ function UsageOverview({
               <thead>
                 <tr className="border-b border-border text-left text-xs text-muted-foreground">
                   <th className="py-2 font-normal">{shownHourly ? "Hour" : "Day"}</th>
-                  {activeProviders.map((provider) => (
-                    <th key={provider} className="py-2 pl-4 text-right font-normal">
-                      {PROVIDER_PRESENTATION[provider].label}
+                  {series.map((entry) => (
+                    <th key={entry.instanceId} className="py-2 pl-4 text-right font-normal">
+                      {entry.label}
                     </th>
                   ))}
                   <th className="py-2 pl-4 text-right font-normal">Total</th>
@@ -1025,7 +1046,7 @@ function UsageOverview({
                 {breakdownPeriods.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={activeProviders.length + 3}
+                      colSpan={series.length + 3}
                       className="py-6 text-center text-muted-foreground"
                     >
                       No activity in this window.
@@ -1042,15 +1063,15 @@ function UsageOverview({
                           ? formatHourShort(period.hourStart, shownWindow.timeZone, hour12)
                           : formatDayShort(period.day)}
                       </td>
-                      {activeProviders.map((provider) => (
+                      {series.map((entry) => (
                         <td
-                          key={provider}
+                          key={entry.instanceId}
                           className={cn(
                             "py-2 pl-4 text-right text-muted-foreground tabular-nums",
-                            figureClass(loadingProviders.has(provider)),
+                            figureClass(loadingProviders.has(entry.provider)),
                           )}
                         >
-                          {formatUsd(period.byProvider.get(provider)?.costUsd ?? 0)}
+                          {formatUsd(period.byInstance.get(entry.instanceId)?.costUsd ?? 0)}
                         </td>
                       ))}
                       <td

@@ -52,7 +52,13 @@ import { SymbolView } from "../../components/ui/AppSymbol";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
 import type { UsageChartMetric } from "./usageChartData";
-import { PROVIDER_LABEL, useProviderColors, useUsageMixColors } from "./usageProviders";
+import {
+  PROVIDER_LABEL,
+  useProviderColors,
+  useUsageMixColors,
+  useUsageSeries,
+  type UsageSeries,
+} from "./usageProviders";
 
 type UsageView = UsageChartMetric | "limits";
 const VIEW_OPTIONS = [
@@ -150,8 +156,12 @@ function UsageScreen(props: {
         costUsd: hour.costUsd,
         totalTokens: hour.totalTokens,
         byProvider: hour.byProvider,
+        byInstance: hour.byInstance,
       }))
     : merged.daily;
+  // One band per configured provider instance, so two Claude accounts read as
+  // two bands rather than one merged one.
+  const series = useUsageSeries(merged.instances);
 
   const [refreshingUsage, setRefreshingUsage] = useState(false);
   const refreshingRef = useRef(false);
@@ -194,11 +204,12 @@ function UsageScreen(props: {
     sinceDay: window.sinceDay,
     untilDay: window.untilDay,
     isPast24Hours,
+    series,
     timeZone: window.timeZone,
   };
   const providers = (
     <ProviderSection
-      merged={merged}
+      series={series}
       metric={metric}
       cursorAccessEnvironments={cursorAccessEnvironments}
       showCursorEnvironment={selectedEnvironments.length > 1}
@@ -433,7 +444,12 @@ function UsageScreen(props: {
                         columns={width >= 900 ? 6 : wide ? 3 : 2}
                       />
                       <CostSection merged={merged} wide={wide} />
-                      <ModelsSection merged={merged} metric={metric} columns={wide ? 2 : 1} />
+                      <ModelsSection
+                        merged={merged}
+                        series={series}
+                        metric={metric}
+                        columns={wide ? 2 : 1}
+                      />
                     </UsageUpdating>
                   </>
                 )}
@@ -593,6 +609,7 @@ function ChartCard(props: {
   readonly sinceDay: string;
   readonly untilDay: string;
   readonly isPast24Hours: boolean;
+  readonly series: readonly UsageSeries[];
   readonly timeZone: string;
   readonly height: number;
   /** Replaces the summary when it sits beside the chart. */
@@ -601,12 +618,17 @@ function ChartCard(props: {
   readonly fill?: boolean;
 }) {
   const { merged, metric } = props;
-  const colors = useProviderColors();
   const hasActivity = props.daily.some((period) => period.totalTokens > 0);
   const [fillHeight, setFillHeight] = useState(0);
   const height = props.fill ? Math.max(fillHeight, props.height) : props.height;
   const chart = hasActivity ? (
-    <UsageDailyChart days={props.days} daily={props.daily} metric={metric} height={height} />
+    <UsageDailyChart
+      days={props.days}
+      daily={props.daily}
+      metric={metric}
+      height={height}
+      series={props.series}
+    />
   ) : (
     <View style={{ height }} className="items-center justify-center">
       <Text className="text-base text-foreground-muted">No activity in this window.</Text>
@@ -650,14 +672,11 @@ function ChartCard(props: {
           </Text>
         </View>
         <View className="flex-row flex-wrap items-center gap-x-4 gap-y-1">
-          {merged.providers.map((provider) => (
-            <View key={provider.provider} className="flex-row items-center gap-1.5">
-              <View
-                className="size-2 rounded-full"
-                style={{ backgroundColor: colors[provider.provider] }}
-              />
-              <Text className="text-xs text-foreground-muted">
-                {PROVIDER_LABEL[provider.provider]}
+          {props.series.map((entry) => (
+            <View key={entry.instanceId} className="flex-row items-center gap-1.5">
+              <View className="size-2 rounded-full" style={{ backgroundColor: entry.color }} />
+              <Text className="text-xs text-foreground-muted" numberOfLines={1}>
+                {entry.label}
               </Text>
             </View>
           ))}
@@ -687,7 +706,7 @@ function UsageSummary(props: { readonly merged: MergedUsage; readonly metric: Us
 }
 
 function ProviderSection(props: {
-  readonly merged: MergedUsage;
+  readonly series: readonly UsageSeries[];
   readonly metric: UsageChartMetric;
   readonly cursorAccessEnvironments: readonly EnvironmentUsageStatus[];
   readonly showCursorEnvironment: boolean;
@@ -695,23 +714,25 @@ function ProviderSection(props: {
   /** Drops the share bar so the list fits beside the chart. */
   readonly compact: boolean;
 }) {
-  const { merged, metric } = props;
-  const colors = useProviderColors();
-  if (merged.providers.length === 0 && props.cursorAccessEnvironments.length === 0) return null;
+  const { metric } = props;
+  const reported = props.series.filter((entry) => entry.totals !== null);
+  if (reported.length === 0 && props.cursorAccessEnvironments.length === 0) return null;
 
   // Hermes lacks toSorted.
-  const ordered = [...merged.providers].sort((a, b) =>
-    metric === "cost" ? b.costUsd - a.costUsd : b.totalTokens - a.totalTokens,
+  const ordered = [...reported].sort((a, b) =>
+    metric === "cost"
+      ? (b.totals?.costUsd ?? 0) - (a.totals?.costUsd ?? 0)
+      : (b.totals?.totalTokens ?? 0) - (a.totals?.totalTokens ?? 0),
   );
   const rows: Array<
-    | { readonly kind: "usage"; readonly provider: (typeof ordered)[number] }
+    | { readonly kind: "usage"; readonly series: UsageSeries }
     | { readonly kind: "enable"; readonly environment: EnvironmentUsageStatus }
-  > = ordered.map((provider) => ({ kind: "usage", provider }));
-  const cursorInsertAt =
-    Math.max(
-      ordered.findIndex((provider) => provider.provider === "codex"),
-      ordered.findIndex((provider) => provider.provider === "claude"),
-    ) + 1;
+  > = ordered.map((entry) => ({ kind: "usage", series: entry }));
+  // After the last Codex or Claude row; Hermes lacks findLastIndex.
+  let cursorInsertAt = 0;
+  ordered.forEach((entry, index) => {
+    if (entry.provider === "codex" || entry.provider === "claude") cursorInsertAt = index + 1;
+  });
   rows.splice(
     cursorInsertAt,
     0,
@@ -736,28 +757,30 @@ function ProviderSection(props: {
             />
           );
         }
-        const provider = row.provider;
-        const share = metric === "cost" ? provider.costShare : provider.tokenShare;
+        const entry = row.series;
+        const totals = entry.totals;
+        const share = (metric === "cost" ? totals?.costShare : totals?.tokenShare) ?? 0;
         return (
           <View
-            key={provider.provider}
+            key={entry.instanceId}
             className={cn(
               props.compact ? "gap-0.5 px-4 py-3" : "gap-2 p-4",
               index > 0 && "border-t border-border-subtle",
             )}
           >
             <View className="flex-row items-baseline justify-between gap-3">
-              <View className="flex-row items-center gap-2">
+              <View className="min-w-0 flex-1 flex-row items-center gap-2">
                 <View
-                  className="size-2.5 rounded-full"
-                  style={{ backgroundColor: colors[provider.provider] }}
+                  className="size-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: entry.color }}
                 />
                 <Text
                   className={
                     props.compact ? "text-base text-foreground" : "text-lg text-foreground"
                   }
+                  numberOfLines={1}
                 >
-                  {PROVIDER_LABEL[provider.provider]}
+                  {entry.label}
                 </Text>
               </View>
               <Text
@@ -768,23 +791,23 @@ function ProviderSection(props: {
                 }
               >
                 {metric === "cost"
-                  ? formatUsd(provider.costUsd)
-                  : formatTokens(provider.totalTokens)}
+                  ? formatUsd(totals?.costUsd ?? 0)
+                  : formatTokens(totals?.totalTokens ?? 0)}
               </Text>
             </View>
             {props.compact ? null : (
               <View className="h-1 flex-row overflow-hidden rounded-full bg-subtle">
                 <View
                   className="h-full rounded-full"
-                  style={{ flex: share, backgroundColor: colors[provider.provider] }}
+                  style={{ flex: share, backgroundColor: entry.color }}
                 />
                 <View style={{ flex: 1 - share }} />
               </View>
             )}
             <Text className="text-sm text-foreground-muted">
               {metric === "cost"
-                ? `${formatPercent(share)} of cost · ${formatTokens(provider.totalTokens)} tokens`
-                : `${formatPercent(share)} of tokens · ${formatUsd(provider.costUsd)}`}
+                ? `${formatPercent(share)} of cost · ${formatTokens(totals?.totalTokens ?? 0)} tokens`
+                : `${formatPercent(share)} of tokens · ${formatUsd(totals?.costUsd ?? 0)}`}
             </Text>
           </View>
         );
@@ -958,12 +981,21 @@ function MetricCell(props: {
 
 function ModelsSection(props: {
   readonly merged: MergedUsage;
+  readonly series: readonly UsageSeries[];
   readonly metric: UsageChartMetric;
   readonly columns: 1 | 2;
 }) {
   const { merged, metric } = props;
-  const colors = useProviderColors();
   if (merged.models.length === 0) return null;
+
+  const byInstance = new Map(props.series.map((entry) => [entry.instanceId as string, entry]));
+  // A model row names its instance only when the provider it belongs to has
+  // more than one; otherwise the row would repeat what the section already says.
+  const providerCounts = new Map<string, number>();
+  for (const entry of props.series) {
+    if (entry.totals === null) continue;
+    providerCounts.set(entry.provider, (providerCounts.get(entry.provider) ?? 0) + 1);
+  }
 
   // Hermes lacks toSorted.
   const ordered = [...merged.models].sort((a, b) =>
@@ -975,43 +1007,51 @@ function ModelsSection(props: {
   return (
     <SettingsSection title="By model">
       <View className="flex-row flex-wrap">
-        {ordered.map((model, index) => (
-          <View
-            key={`${model.provider}:${model.model}`}
-            className={cn(
-              "flex-row items-center gap-3 p-4",
-              index >= props.columns && "border-t border-border-subtle",
-              index % props.columns === 1 && "border-l border-border-subtle",
-            )}
-            style={{ width: `${100 / props.columns}%` }}
-          >
+        {ordered.map((model, index) => {
+          const instance = byInstance.get(model.instanceId);
+          const label =
+            instance !== undefined && (providerCounts.get(model.provider) ?? 0) > 1
+              ? instance.label
+              : null;
+          return (
             <View
-              className="size-2.5 shrink-0 rounded-full"
-              style={{ backgroundColor: colors[model.provider] }}
-            />
-            <View className="min-w-0 flex-1 gap-0.5">
-              <Text className="text-base text-foreground" numberOfLines={1}>
-                {model.model}
-              </Text>
-              <Text className="text-sm text-foreground-muted">
+              key={`${model.instanceId}:${model.model}`}
+              className={cn(
+                "flex-row items-center gap-3 p-4",
+                index >= props.columns && "border-t border-border-subtle",
+                index % props.columns === 1 && "border-l border-border-subtle",
+              )}
+              style={{ width: `${100 / props.columns}%` }}
+            >
+              <View
+                className="size-2.5 shrink-0 rounded-full"
+                style={{ backgroundColor: instance?.color ?? "transparent" }}
+              />
+              <View className="min-w-0 flex-1 gap-0.5">
+                <Text className="text-base text-foreground" numberOfLines={1}>
+                  {model.model}
+                </Text>
+                <Text className="text-sm text-foreground-muted">
+                  {label === null ? "" : `${label} · `}
+                  {metric === "tokens"
+                    ? `${formatPercent(model.tokenShare)} of tokens · ${
+                        isModelCostUnknown(model) ? "no known rates" : formatUsd(model.costUsd)
+                      }`
+                    : isModelCostUnknown(model)
+                      ? `no known rates · ${formatTokens(model.totalTokens)} tokens`
+                      : `${formatPercent(model.costShare)} of cost · ${formatTokens(model.totalTokens)} tokens`}
+                </Text>
+              </View>
+              <Text className="text-base tabular-nums text-foreground">
                 {metric === "tokens"
-                  ? `${formatPercent(model.tokenShare)} of tokens · ${
-                      isModelCostUnknown(model) ? "no known rates" : formatUsd(model.costUsd)
-                    }`
+                  ? formatTokens(model.totalTokens)
                   : isModelCostUnknown(model)
-                    ? `no known rates · ${formatTokens(model.totalTokens)} tokens`
-                    : `${formatPercent(model.costShare)} of cost · ${formatTokens(model.totalTokens)} tokens`}
+                    ? "Unpriced"
+                    : formatUsd(model.costUsd)}
               </Text>
             </View>
-            <Text className="text-base tabular-nums text-foreground">
-              {metric === "tokens"
-                ? formatTokens(model.totalTokens)
-                : isModelCostUnknown(model)
-                  ? "Unpriced"
-                  : formatUsd(model.costUsd)}
-            </Text>
-          </View>
-        ))}
+          );
+        })}
       </View>
     </SettingsSection>
   );
