@@ -223,6 +223,35 @@ function makeLatestRun(overrides?: {
   };
 }
 
+describe("hasUnseenCompletion", () => {
+  it("uses completion acknowledgement over last visit for the green dot", () => {
+    const base = {
+      hasActionableProposedPlan: false,
+      hasPendingApprovals: false,
+      hasPendingUserInput: false,
+      interactionMode: "default" as const,
+      latestRun: makeLatestRun(),
+      runtime: null,
+    };
+    // Acknowledged before completion → dot persists even though visited is later.
+    expect(
+      hasUnseenCompletion({
+        ...base,
+        lastVisitedAt: "2026-03-09T10:06:00.000Z",
+        completionAcknowledgedAt: "2026-03-09T10:04:00.000Z",
+      }),
+    ).toBe(true);
+    // Acknowledged after completion → dot cleared.
+    expect(
+      hasUnseenCompletion({
+        ...base,
+        lastVisitedAt: "2026-03-09T10:04:00.000Z",
+        completionAcknowledgedAt: "2026-03-09T10:06:00.000Z",
+      }),
+    ).toBe(false);
+  });
+});
+
 describe("orderItemsByPreferredIds", () => {
   it("resolves legacy preference aliases without materializing project state", () => {
     const ordered = orderItemsByPreferredIds({
