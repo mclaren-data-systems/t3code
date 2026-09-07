@@ -70,6 +70,21 @@ messages, review titles, and descriptions from your changes.
 Choose the writing style and model in **Settings → Source Control**. **Repository conventions**
 uses the project's instructions and recent commit subjects.
 
+## Name branches your way
+
+When a thread starts in a new worktree, T3 Code creates a branch for it and names it from your
+first message, such as `t3code/fix-login-redirect`. That branch is what a pull request opens from,
+so its prefix is what your teammates see in the branch list.
+
+Change the prefix in **Settings → Source Control → Branches**. Set it to your handle, your team, or
+whatever your repository's branch rules expect, and new branches use it: `theo/fix-login-redirect`.
+Prefixes can be nested (`theo/wip`), and the setting is cleaned up into a valid branch name, so
+capitals and spaces are fine to type. Leave it empty to go back to `t3code`.
+
+Threads that already have a branch keep it. So does any branch you named yourself: picking a branch
+before you send your first message opts that thread out of automatic naming entirely, even when
+that branch sits under the same prefix.
+
 ## Review and merge
 
 Open **Pull requests** to review changes and comments, request reviewers, check out a branch,

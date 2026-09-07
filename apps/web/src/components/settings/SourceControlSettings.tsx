@@ -57,6 +57,7 @@ import {
 } from "../Icons";
 import { RedactedSensitiveText } from "./RedactedSensitiveText";
 import { SourceControlWritingSettingsSection } from "./SourceControlWritingSettings";
+import { WorktreeBranchSettingsSection } from "./WorktreeBranchSettings";
 import {
   PolicyTooltip,
   SettingResetButton,
@@ -586,6 +587,8 @@ export function SourceControlSettingsPanel() {
           onScan={handleScan}
         />
       )}
+
+      {isPrimaryEnvironment ? <WorktreeBranchSettingsSection /> : null}
 
       {/* Its rows are serverScoped: without a primary they render inert with
           an explanation, which beats disappearing. */}
