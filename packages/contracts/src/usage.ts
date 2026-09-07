@@ -12,6 +12,7 @@
 import * as Schema from "effect/Schema";
 
 import { ForwardCompatibleArray, NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
 
 /**
  * Bumped whenever the shape of {@link UsageSummary} changes incompatibly. The
@@ -40,6 +41,24 @@ export const UsageProviderKind = Schema.Literals([
   "antigravity",
 ]);
 export type UsageProviderKind = typeof UsageProviderKind.Type;
+
+/**
+ * The driver kind behind each usage provider.
+ *
+ * Usage groups by the CLI whose transcripts it reads, which is coarser than a
+ * driver kind, but instance ids are minted from the driver
+ * (`defaultInstanceIdForDriver`). Consumers need this mapping to tell a
+ * driver's default instance from one the user added, and to attribute a source
+ * that names no instance to the driver's default.
+ */
+export const USAGE_PROVIDER_DRIVERS = {
+  claude: ProviderDriverKind.make("claudeAgent"),
+  codex: ProviderDriverKind.make("codex"),
+  grok: ProviderDriverKind.make("grok"),
+  cursor: ProviderDriverKind.make("cursor"),
+  opencode: ProviderDriverKind.make("opencode"),
+  antigravity: ProviderDriverKind.make("antigravity"),
+} as const satisfies Record<UsageProviderKind, ProviderDriverKind>;
 
 /**
  * A calendar day in the reporting time zone, formatted `YYYY-MM-DD`.
@@ -169,6 +188,17 @@ export type UsageSourceStatus = typeof UsageSourceStatus.Type;
 
 export const UsageSource = Schema.Struct({
   fingerprint: UsageSourceFingerprint,
+  /**
+   * The configured provider instance this directory was scanned for, so two
+   * accounts of one provider report apart. Buckets reach their instance
+   * through `sourcePath`. Absent from older servers and from sources that are
+   * not configured per instance, which clients attribute to the provider's
+   * default instance.
+   */
+  instanceId: Schema.optional(ProviderInstanceId),
+  /** The instance's configured name and accent color, passed through verbatim. */
+  displayName: Schema.optional(TrimmedNonEmptyString),
+  accentColor: Schema.optional(TrimmedNonEmptyString),
   status: UsageSourceStatus,
   scannedFiles: NonNegativeInt,
   skippedFiles: NonNegativeInt,
