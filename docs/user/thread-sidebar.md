@@ -13,6 +13,14 @@ an existing worktree, use **New thread in this worktree** from the branch toolba
 When you change a new thread's project, T3 Code stays in the current environment
 if that project exists there. Otherwise it selects an environment that has it.
 
+On web and desktop, the sidebar's **New thread** button follows the project filter beside it.
+With a project selected, it starts a thread in that project straight away. With **All
+projects** selected, it starts a thread in the project you are already in when there is nothing
+to choose between, and otherwise asks which project to use.
+
+Mobile and the original sidebar (Settings → Legacy features) start threads the way they always
+have.
+
 ### Start in the background
 
 In a desktop browser or the desktop app, press `Cmd+Enter` on macOS or `Ctrl+Enter`
