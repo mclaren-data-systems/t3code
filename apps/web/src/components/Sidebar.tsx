@@ -107,6 +107,7 @@ import {
   selectProjectGroupingSettings,
 } from "@t3tools/client-runtime/state/project-grouping";
 import {
+  buildSidebarProjectPickerEntries,
   projectGroupsSpanEnvironments,
   resolveSidebarProjectScopeKeys,
   getSidebarProjectSettingsKey,
@@ -128,7 +129,7 @@ import { useProjectPin } from "../hooks/useProjectGroupUpdate";
 import { useSidebarProjectGroups } from "../hooks/useSidebarProjectGroups";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { registerSettleAndAdvance } from "../settleAndAdvance";
-import { startNewThreadFromContext } from "../lib/chatThreadActions";
+import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
 import { useClientSettings } from "../hooks/useSettings";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../hooks/useLocalStorage";
@@ -189,6 +190,7 @@ import {
   planSidebarThreadDrop,
   reduceSidebarProjectScopeMenuState,
   resolveAdjacentThreadId,
+  resolveNewThreadClickTarget,
   resolveSidebarSweepKeys,
   resolveSidebarDropTarget,
   resolveSidebarDropVerb,
@@ -2943,28 +2945,49 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
 
   const showJumpHints = useThreadJumpHintsVisible(keybindings, routeThreadRef);
 
-  const handleNewThreadClick = (event?: ReactMouseEvent) => {
-    if (
-      shouldCreateNewThreadInCurrentProject(
-        event?.shiftKey ?? false,
-        scopeGroups.length,
-        projectGroups.length,
-      )
-    ) {
-      if (isMobile) setOpenMobile(false);
-      // With no current or open project, such as when every project is archived, pick one.
-      void startNewThreadFromContext({
+  // Scoped to exactly one project, the button creates there instead of re-asking. Resolved through
+  // the picker's own entry builder so a grouped project lands on the same member either way.
+  const scopedProjectGroup = scopedProjectGroups.length === 1 ? scopedProjectGroups[0] : undefined;
+  const scopedNewThreadProjectRef = (() => {
+    if (!scopedProjectGroup) return null;
+    const entry = buildSidebarProjectPickerEntries({
+      groups: [scopedProjectGroup],
+      preferredProjectRef: resolveThreadActionProjectRef({
         activeDraftThread: newThreadContext.activeDraftThread,
         activeThread: newThreadContext.activeThread ?? undefined,
         defaultProjectRef: newThreadContext.defaultProjectRef,
         handleNewThread,
-      }).then((started) => {
-        if (!started) openCommandPalette({ open: "new-thread-in" });
-      });
+      }),
+    })[0];
+    if (!entry) return null;
+    return scopeProjectRef(entry.targetProject.environmentId, entry.targetProject.id);
+  })();
+
+  const handleNewThreadClick = (event?: ReactMouseEvent) => {
+    const target = resolveNewThreadClickTarget({
+      hasScopedProject: scopedNewThreadProjectRef !== null,
+      shiftKey: event?.shiftKey ?? false,
+      openProjectGroupCount: scopeGroups.length,
+      projectGroupCount: projectGroups.length,
+    });
+    if (isMobile) setOpenMobile(false);
+    if (target === "scoped-project" && scopedNewThreadProjectRef) {
+      void handleNewThread(scopedNewThreadProjectRef);
       return;
     }
-    if (isMobile) setOpenMobile(false);
-    openCommandPalette({ open: "new-thread-in" });
+    if (target === "picker") {
+      openCommandPalette({ open: "new-thread-in" });
+      return;
+    }
+    // With no current or open project, such as when every project is archived, pick one.
+    void startNewThreadFromContext({
+      activeDraftThread: newThreadContext.activeDraftThread,
+      activeThread: newThreadContext.activeThread ?? undefined,
+      defaultProjectRef: newThreadContext.defaultProjectRef,
+      handleNewThread,
+    }).then((started) => {
+      if (!started) openCommandPalette({ open: "new-thread-in" });
+    });
   };
 
   const newThreadShortcutLabel =
@@ -2973,6 +2996,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       ? shortcutLabelForCommand(keybindings, "chat.newLocal")
       : undefined);
   const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
+  // Scoped, the button targets one project, so the tooltip names it. No
+  // shortcut on that label on purpose: chat.new is not scope-aware, so
+  // advertising it next to a scoped button would promise the wrong target.
+  const scopedNewThreadLabel = scopedProjectGroup
+    ? `New thread in ${scopedProjectGroup.displayName}`
+    : undefined;
   return (
     <SidebarFolderDrop>
       <SidebarChromeHeader isElectron={isElectron} />
@@ -3187,9 +3216,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               onNewProject={openAddProjectCommandPalette}
               onNewThread={handleNewThreadClick}
               newThreadDisabled={projects.length === 0}
+              newThreadLabel={scopedNewThreadLabel}
               newThreadShortcutLabel={newThreadShortcutLabel}
               newThreadInProjectShortcutLabel={newThreadInProjectShortcutLabel}
               showNewThreadInProjectHint={
+                !scopedProjectGroup &&
                 !shouldCreateNewThreadInCurrentProject(
                   false,
                   scopeGroups.length,

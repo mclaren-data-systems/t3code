@@ -854,6 +854,26 @@ export function shouldCreateNewThreadInCurrentProject(
   return shiftKey || openProjectGroupCount === 1 || projectGroupCount === 0;
 }
 
+export type NewThreadClickTarget = "scoped-project" | "current-project" | "picker";
+
+// A scope of exactly one project is the sidebar's visible context, so the button creates there.
+// Otherwise upstream's rule holds.
+export function resolveNewThreadClickTarget(input: {
+  hasScopedProject: boolean;
+  shiftKey: boolean;
+  openProjectGroupCount: number;
+  projectGroupCount: number;
+}): NewThreadClickTarget {
+  if (input.hasScopedProject) return "scoped-project";
+  return shouldCreateNewThreadInCurrentProject(
+    input.shiftKey,
+    input.openProjectGroupCount,
+    input.projectGroupCount,
+  )
+    ? "current-project"
+    : "picker";
+}
+
 export function orderItemsByPreferredIds<TItem, TId>(input: {
   items: readonly TItem[];
   preferredIds: readonly TId[];
