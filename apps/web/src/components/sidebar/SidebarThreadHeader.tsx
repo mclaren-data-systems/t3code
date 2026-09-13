@@ -36,6 +36,8 @@ export interface SidebarThreadHeaderProps {
   /** Receives the click so Shift+click can skip the project picker. */
   onNewThread: (event: ReactMouseEvent) => void;
   newThreadDisabled: boolean;
+  /** Replaces the tooltip's first line, e.g. to name a scoped target. */
+  newThreadLabel?: string | undefined;
   newThreadShortcutLabel: string | null | undefined;
   newThreadInProjectShortcutLabel: string | null | undefined;
   /** Shift+click only matters once there is more than one project to pick. */
@@ -57,6 +59,7 @@ export function SidebarThreadHeader({
   onNewProject,
   onNewThread,
   newThreadDisabled,
+  newThreadLabel: newThreadLabelOverride,
   newThreadShortcutLabel,
   newThreadInProjectShortcutLabel,
   showNewThreadInProjectHint,
@@ -74,9 +77,9 @@ export function SidebarThreadHeader({
   // list; pointing aria-activedescendant at a removed option strands the
   // screen reader on nothing.
   const activeResultExists = resultsVisible && activeSearchResultIndex < searchResultCount;
-  const newThreadLabel = newThreadShortcutLabel
-    ? `New thread (${newThreadShortcutLabel})`
-    : "New thread";
+  const newThreadLabel =
+    newThreadLabelOverride ??
+    (newThreadShortcutLabel ? `New thread (${newThreadShortcutLabel})` : "New thread");
 
   return (
     <div className="flex items-center gap-1">
