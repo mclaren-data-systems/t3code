@@ -755,11 +755,26 @@ export function isSidebarNestedLinkClick(target: EventTarget | null): boolean {
   return nodeClosest(parent, "a[href]") !== null;
 }
 
-export function shouldCreateNewThreadInCurrentProject(
+function shouldCreateNewThreadInCurrentProject(
   shiftKey: boolean,
   projectGroupCount: number,
 ): boolean {
   return shiftKey || projectGroupCount <= 1;
+}
+
+export type NewThreadClickTarget = "scoped-project" | "current-project" | "picker";
+
+// The new thread button follows the project scope menu: a scoped project is the sidebar's visible
+// context, so the button creates there. "All projects" keeps the old rule (current project or picker).
+export function resolveNewThreadClickTarget(input: {
+  hasScopedProject: boolean;
+  shiftKey: boolean;
+  projectGroupCount: number;
+}): NewThreadClickTarget {
+  if (input.hasScopedProject) return "scoped-project";
+  return shouldCreateNewThreadInCurrentProject(input.shiftKey, input.projectGroupCount)
+    ? "current-project"
+    : "picker";
 }
 
 export function orderItemsByPreferredIds<TItem, TId>(input: {
