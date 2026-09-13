@@ -19,6 +19,8 @@ export interface SidebarThreadHeaderProps {
   onNewProject: () => void;
   onNewThread: (event: ReactMouseEvent) => void;
   newThreadDisabled: boolean;
+  /** Replaces the tooltip's first line, e.g. to name a scoped target. */
+  newThreadLabel?: string | undefined;
   newThreadShortcutLabel: string | null | undefined;
   newThreadInProjectShortcutLabel: string | null | undefined;
   showNewThreadInProjectHint: boolean;
@@ -38,6 +40,7 @@ export function SidebarThreadHeader({
   onNewProject,
   onNewThread,
   newThreadDisabled,
+  newThreadLabel: newThreadLabelOverride,
   newThreadShortcutLabel,
   newThreadInProjectShortcutLabel,
   showNewThreadInProjectHint,
@@ -54,9 +57,11 @@ export function SidebarThreadHeader({
   const resultsVisible = isSearching && searchResultCount > 0;
   // Shrinking results can remove the active option; never leave aria-activedescendant pointing at it.
   const activeResultExists = resultsVisible && activeSearchResultIndex < searchResultCount;
-  const newThreadLabel = newThreadShortcutLabel
-    ? gt("New thread ({shortcut})", { shortcut: newThreadShortcutLabel })
-    : gt("New thread");
+  const newThreadLabel =
+    newThreadLabelOverride ??
+    (newThreadShortcutLabel
+      ? gt("New thread ({shortcut})", { shortcut: newThreadShortcutLabel })
+      : gt("New thread"));
 
   return (
     <div className="flex items-center gap-1">
