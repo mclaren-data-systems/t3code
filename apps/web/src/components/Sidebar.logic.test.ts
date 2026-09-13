@@ -27,6 +27,7 @@ import {
   sortProjectsForSidebar,
   sortScopedProjectsForSidebar,
   sortSidebarV2ProjectGroups,
+  resolveNewThreadClickTarget,
   shouldNavigateAfterThreadPark,
   type SidebarListItem,
   type SidebarListMarker,
@@ -252,6 +253,74 @@ describe("hasUnseenCompletion", () => {
         completionAcknowledgedAt: "2026-03-09T10:06:00.000Z",
       }),
     ).toBe(false);
+  });
+});
+
+describe("resolveNewThreadClickTarget", () => {
+  it("targets the scoped project whatever the project count", () => {
+    expect(
+      resolveNewThreadClickTarget({
+        hasScopedProject: true,
+        boringSidebar: false,
+        shiftKey: false,
+        projectGroupCount: 4,
+      }),
+    ).toBe("scoped-project");
+  });
+
+  it("keeps targeting the scoped project on shift+click", () => {
+    expect(
+      resolveNewThreadClickTarget({
+        hasScopedProject: true,
+        boringSidebar: false,
+        shiftKey: true,
+        projectGroupCount: 4,
+      }),
+    ).toBe("scoped-project");
+  });
+
+  it("opens the picker from All projects with several projects", () => {
+    expect(
+      resolveNewThreadClickTarget({
+        hasScopedProject: false,
+        boringSidebar: false,
+        shiftKey: false,
+        projectGroupCount: 2,
+      }),
+    ).toBe("picker");
+  });
+
+  it("creates in the current project from All projects on shift+click", () => {
+    expect(
+      resolveNewThreadClickTarget({
+        hasScopedProject: false,
+        boringSidebar: false,
+        shiftKey: true,
+        projectGroupCount: 2,
+      }),
+    ).toBe("current-project");
+  });
+
+  it("creates in the current project from the boring sidebar", () => {
+    expect(
+      resolveNewThreadClickTarget({
+        hasScopedProject: false,
+        boringSidebar: true,
+        shiftKey: false,
+        projectGroupCount: 2,
+      }),
+    ).toBe("current-project");
+  });
+
+  it("creates in the current project when there is nothing to pick", () => {
+    expect(
+      resolveNewThreadClickTarget({
+        hasScopedProject: false,
+        boringSidebar: false,
+        shiftKey: false,
+        projectGroupCount: 1,
+      }),
+    ).toBe("current-project");
   });
 });
 

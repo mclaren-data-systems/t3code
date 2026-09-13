@@ -734,11 +734,28 @@ export function isSidebarNestedLinkClick(target: EventTarget | null): boolean {
   return nodeClosest(parent, "a[href]") !== null;
 }
 
-export function shouldCreateNewThreadInCurrentProject(
+function shouldCreateNewThreadInCurrentProject(
   shiftKey: boolean,
   projectGroupCount: number,
 ): boolean {
   return shiftKey || projectGroupCount <= 1;
+}
+
+export type NewThreadClickTarget = "scoped-project" | "current-project" | "picker";
+
+// A scope of exactly one project is the sidebar's visible context, so the button creates there.
+// Otherwise the old rule holds; the boring sidebar always creates in the current project.
+export function resolveNewThreadClickTarget(input: {
+  hasScopedProject: boolean;
+  boringSidebar: boolean;
+  shiftKey: boolean;
+  projectGroupCount: number;
+}): NewThreadClickTarget {
+  if (input.hasScopedProject) return "scoped-project";
+  return input.boringSidebar ||
+    shouldCreateNewThreadInCurrentProject(input.shiftKey, input.projectGroupCount)
+    ? "current-project"
+    : "picker";
 }
 
 export function orderItemsByPreferredIds<TItem, TId>(input: {

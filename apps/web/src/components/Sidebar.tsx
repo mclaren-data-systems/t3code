@@ -105,6 +105,7 @@ import { readLocalApi } from "../localApi";
 import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
 import { selectProjectGroupingSettings } from "@t3tools/client-runtime/state/project-grouping";
 import {
+  buildSidebarProjectPickerEntries,
   projectGroupsSpanEnvironments,
   resolveSidebarProjectScopeKeys,
   getSidebarProjectSettingsKey,
@@ -125,7 +126,7 @@ import { useSidebarProjectGroups } from "../hooks/useSidebarProjectGroups";
 import { useTerminalFocus } from "../hooks/useTerminalFocus";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { registerSettleAndAdvance } from "../settleAndAdvance";
-import { startNewThreadFromContext } from "../lib/chatThreadActions";
+import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
 import { useBoringSidebarEnabled, useClientSettings } from "../hooks/useSettings";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../hooks/useLocalStorage";
@@ -185,12 +186,12 @@ import {
   planSidebarThreadDrop,
   reduceSidebarProjectScopeMenuState,
   resolveAdjacentThreadId,
+  resolveNewThreadClickTarget,
   resolveSidebarSweepKeys,
   resolveSidebarDropTarget,
   resolveSidebarDropVerb,
   resolveSidebarThreadSection,
   searchSidebarThreads,
-  shouldCreateNewThreadInCurrentProject,
   shouldNavigateAfterThreadPark,
   sidebarListItemId,
   sidebarThreadKeyAtY,
@@ -2867,28 +2868,58 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   );
   const showJumpHints = useThreadJumpHintsVisible(shouldShowJumpHintsNow);
 
-  const handleNewThreadClick = (event?: ReactMouseEvent) => {
-    if (
-      boringSidebarEnabled ||
-      shouldCreateNewThreadInCurrentProject(event?.shiftKey ?? false, projectGroups.length)
-    ) {
-      if (isMobile) setOpenMobile(false);
-      void startNewThreadFromContext({
+  // Scoped to exactly one project, the button creates there instead of re-asking. Resolved through
+  // the picker's own entry builder so a grouped project lands on the same member either way.
+  const scopedProjectGroup = scopedProjectGroups.length === 1 ? scopedProjectGroups[0] : undefined;
+  const scopedNewThreadProjectRef = (() => {
+    if (!scopedProjectGroup) return null;
+    const entry = buildSidebarProjectPickerEntries({
+      groups: [scopedProjectGroup],
+      preferredProjectRef: resolveThreadActionProjectRef({
         activeDraftThread: newThreadContext.activeDraftThread,
         activeThread: newThreadContext.activeThread ?? undefined,
         defaultProjectRef: newThreadContext.defaultProjectRef,
         handleNewThread,
-      });
+      }),
+    })[0];
+    if (!entry) return null;
+    return scopeProjectRef(entry.targetProject.environmentId, entry.targetProject.id);
+  })();
+
+  const handleNewThreadClick = (event?: ReactMouseEvent) => {
+    const target = resolveNewThreadClickTarget({
+      hasScopedProject: scopedNewThreadProjectRef !== null,
+      boringSidebar: boringSidebarEnabled,
+      shiftKey: event?.shiftKey ?? false,
+      projectGroupCount: projectGroups.length,
+    });
+    if (isMobile) setOpenMobile(false);
+    if (target === "scoped-project" && scopedNewThreadProjectRef) {
+      void handleNewThread(scopedNewThreadProjectRef);
       return;
     }
-    if (isMobile) setOpenMobile(false);
-    openCommandPalette({ open: "new-thread-in" });
+    if (target === "picker") {
+      openCommandPalette({ open: "new-thread-in" });
+      return;
+    }
+    void startNewThreadFromContext({
+      activeDraftThread: newThreadContext.activeDraftThread,
+      activeThread: newThreadContext.activeThread ?? undefined,
+      defaultProjectRef: newThreadContext.defaultProjectRef,
+      handleNewThread,
+    });
   };
 
   const newThreadShortcutLabel =
     shortcutLabelForCommand(keybindings, "chat.new") ??
     (projectGroups.length <= 1 ? shortcutLabelForCommand(keybindings, "chat.newLocal") : undefined);
   const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
+  // Scoped, the button targets one project, so the tooltip names it. No
+  // shortcut on that label on purpose: chat.new is not scope-aware, so
+  // advertising it next to a scoped button would promise the wrong target.
+  const scopedNewThreadLabel = scopedProjectGroup
+    ? `New thread in ${scopedProjectGroup.displayName}`
+    : undefined;
   return (
     <>
       <ThreadContextDragGhost />
@@ -3069,9 +3100,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               onNewProject={openAddProjectCommandPalette}
               onNewThread={handleNewThreadClick}
               newThreadDisabled={projects.length === 0}
+              newThreadLabel={scopedNewThreadLabel}
               newThreadShortcutLabel={newThreadShortcutLabel}
               newThreadInProjectShortcutLabel={newThreadInProjectShortcutLabel}
-              showNewThreadInProjectHint={!boringSidebarEnabled && projectGroups.length > 1}
+              showNewThreadInProjectHint={
+                !boringSidebarEnabled && !scopedProjectGroup && projectGroups.length > 1
+              }
               searchInputRef={threadSearchInputRef}
               searchQuery={threadSearchQuery}
               onSearchQueryChange={(value) => {

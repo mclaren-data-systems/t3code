@@ -19,6 +19,11 @@ machine, the thread starts on a connected one if any is connected.
 When you change a new thread's project, T3 Code stays in the current environment
 if that project exists there. Otherwise it selects an environment that has it.
 
+On web and desktop, the sidebar's **New thread** button follows the project filter beside it.
+With exactly one project selected, it starts a thread in that project straight away. Otherwise it
+starts a thread in the project you are already in when there is nothing to choose between, and
+asks which project to use when there is.
+
 ### Start without a project
 
 A thread does not need a project. To start one without a project, click **or
