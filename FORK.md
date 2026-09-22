@@ -250,10 +250,10 @@ intent against current upstream code, taking upstream's version of anything that
 - **Repaired in place at `7a32d882`.** `d547e3b1` (#12326) landed `pnpm-workspace.yaml` with
   `msgpackr-extract: set this to true or false` under `allowBuilds`, an unfilled placeholder:
   pnpm tolerates it and `ci.yml` stayed green, but `build-desktop-artifact.ts` decodes
-  `allowBuilds` as a boolean record, so every Desktop Artifacts leg failed on `SchemaError:
-  Expected boolean`. Nothing in `pnpm-lock.yaml` references that package, and upstream's current
-  `main` no longer carries the line, so the fork deletes it. Take upstream's file on the next
-  sync; this is not a fork change to keep.
+  `allowBuilds` as a boolean record, so every Desktop Artifacts leg failed on
+  `SchemaError: Expected boolean`. Nothing in `pnpm-lock.yaml` references that package, and
+  upstream's current `main` no longer carries the line, so the fork deletes it. Take upstream's
+  file on the next sync; this is not a fork change to keep.
 
 ### 15. A logged-out Claude instance reports as unauthenticated, and shows the directory it resolved
 
