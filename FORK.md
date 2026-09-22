@@ -15,8 +15,8 @@ support (15, 19), a configurable worktree branch prefix (17), upstream's provide
 limits surfaced in the model picker and context bubble (22, web-only), and three web UX changes
 (5, 6, 18). Everything else is byte-identical to upstream — `native/`, `scripts/` (one
 orphaned release script deleted aside, entry 14), `apps/desktop/`, `packages/client-runtime/`
-(one test fixture aside), `apps/server/src/persistence/`, `pnpm-lock.yaml` and
-`pnpm-workspace.yaml` are untouched, and the only edits under `infra/` and `packaging/` are the
+(one test fixture aside), `apps/server/src/persistence/` and `pnpm-lock.yaml` are untouched,
+`pnpm-workspace.yaml` differs by one deleted placeholder line (entry 14), and the only edits under `infra/` and `packaging/` are the
 entry 14 notes explaining which workflow no longer runs them. Mobile carries
 entry 19's usage screens and nothing else.
 
@@ -247,6 +247,13 @@ intent against current upstream code, taking upstream's version of anything that
   #12417) — no flag, env or job-shape change, so `desktop-artifacts.yml` needed nothing. No
   new upstream workflow this range. `grep -rn blacksmith .github/workflows/` still matches only
   the explanatory comment in `desktop-artifacts.yml`.
+- **Repaired in place at `7a32d882`.** `d547e3b1` (#12326) landed `pnpm-workspace.yaml` with
+  `msgpackr-extract: set this to true or false` under `allowBuilds`, an unfilled placeholder:
+  pnpm tolerates it and `ci.yml` stayed green, but `build-desktop-artifact.ts` decodes
+  `allowBuilds` as a boolean record, so every Desktop Artifacts leg failed on `SchemaError:
+  Expected boolean`. Nothing in `pnpm-lock.yaml` references that package, and upstream's current
+  `main` no longer carries the line, so the fork deletes it. Take upstream's file on the next
+  sync; this is not a fork change to keep.
 
 ### 15. A logged-out Claude instance reports as unauthenticated, and shows the directory it resolved
 
