@@ -12,6 +12,7 @@
 import * as Schema from "effect/Schema";
 
 import { ForwardCompatibleArray, NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
 
 /**
  * Bumped whenever the shape of {@link UsageSummary} changes incompatibly. The
@@ -39,6 +40,23 @@ export const UsageProviderKind = Schema.Literals([
   "antigravity",
 ]);
 export type UsageProviderKind = typeof UsageProviderKind.Type;
+
+/**
+ * The driver kind behind each usage provider.
+ *
+ * Usage groups by the CLI whose transcripts it reads, which is coarser than a
+ * driver kind, but instance ids are minted from the driver
+ * (`defaultInstanceIdForDriver`). Consumers need this mapping to tell a
+ * driver's default instance from one the user added.
+ */
+export const USAGE_PROVIDER_DRIVERS = {
+  claude: ProviderDriverKind.make("claudeAgent"),
+  codex: ProviderDriverKind.make("codex"),
+  grok: ProviderDriverKind.make("grok"),
+  cursor: ProviderDriverKind.make("cursor"),
+  opencode: ProviderDriverKind.make("opencode"),
+  antigravity: ProviderDriverKind.make("antigravity"),
+} as const satisfies Record<UsageProviderKind, ProviderDriverKind>;
 
 /**
  * A calendar day in the reporting time zone, formatted `YYYY-MM-DD`.
@@ -146,6 +164,20 @@ export type UsageSourceStatus = typeof UsageSourceStatus.Type;
 
 export const UsageSource = Schema.Struct({
   fingerprint: UsageSourceFingerprint,
+  /**
+   * The provider instance this directory was resolved from. Buckets name their
+   * directory through `sourcePath`, so this is what lets a client report two
+   * accounts of one provider apart. Deliberately not part of the fingerprint:
+   * the fingerprint answers "is this the same directory", which two
+   * environments must agree on even when they route to it under different
+   * instance ids. Absent from older environments, whose buckets a client
+   * attributes to the provider's default instance.
+   */
+  instanceId: Schema.optional(ProviderInstanceId),
+  /** The instance's configured name, or null when the user never set one. */
+  displayName: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  /** The instance's configured accent color, or null. Presentation only. */
+  accentColor: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   status: UsageSourceStatus,
   scannedFiles: NonNegativeInt,
   skippedFiles: NonNegativeInt,

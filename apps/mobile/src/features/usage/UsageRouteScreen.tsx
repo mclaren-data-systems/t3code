@@ -1,5 +1,5 @@
 import { ScreenScrollView as ScrollView } from "../../components/ScreenScrollView";
-import { EnvironmentId, USAGE_CONTRACT_VERSION } from "@t3tools/contracts";
+import { EnvironmentId, USAGE_CONTRACT_VERSION, type UsageProviderKind } from "@t3tools/contracts";
 import { type RouteProp, useIsFocused, useNavigation, useRoute } from "@react-navigation/native";
 import { cursorKeychainAccessEnvironments } from "@t3tools/client-runtime/state/usage";
 import {
@@ -41,7 +41,7 @@ import { UsageLimitsSection } from "./UsageLimitsPooled";
 import { ControlPillMenu } from "../../components/ControlPill";
 import { SymbolView } from "../../components/AppSymbol";
 import type { UsageChartMetric } from "./usageChartData";
-import { PROVIDER_LABEL, useProviderColors } from "./usageProviders";
+import { useProviderColors, useUsageSeries, type UsageSeries } from "./usageProviders";
 
 type UsageTab = "usage" | "limits";
 const TAB_OPTIONS = [
@@ -144,10 +144,14 @@ export function UsageRouteScreen() {
             costUsd: hour.costUsd,
             totalTokens: hour.totalTokens,
             byProvider: hour.byProvider,
+            byInstance: hour.byInstance,
           }))
         : merged.daily,
     [isPast24Hours, merged.daily, merged.hourly],
   );
+  // One band per configured provider instance, so two Claude accounts read as
+  // two bands rather than one merged one.
+  const series = useUsageSeries(merged.instances);
 
   const [refreshingUsage, setRefreshingUsage] = useState(false);
   const refreshingRef = useRef(false);
@@ -348,17 +352,18 @@ export function UsageRouteScreen() {
                     sinceDay={window.sinceDay}
                     untilDay={window.untilDay}
                     isPast24Hours={isPast24Hours}
+                    series={series}
                     timeZone={window.timeZone}
                   />
                   <ProviderSection
-                    merged={merged}
+                    series={series}
                     metric={metric}
                     cursorAccessEnvironments={cursorAccessEnvironments}
                     showCursorEnvironment={selectedEnvironments.length > 1}
                     onCursorEnabled={refreshAfterCursorEnable}
                   />
                   <TotalsSection merged={merged} isPast24Hours={isPast24Hours} />
-                  <ModelsSection merged={merged} />
+                  <ModelsSection merged={merged} series={series} />
                 </>
               )}
             </>
@@ -482,10 +487,10 @@ function ChartCard(props: {
   readonly sinceDay: string;
   readonly untilDay: string;
   readonly isPast24Hours: boolean;
+  readonly series: readonly UsageSeries[];
   readonly timeZone: string;
 }) {
   const { merged, metric } = props;
-  const colors = useProviderColors();
   const hasActivity = props.daily.some((period) => period.totalTokens > 0);
 
   return (
@@ -510,6 +515,7 @@ function ChartCard(props: {
           daily={props.daily}
           metric={metric}
           height={CHART_HEIGHT}
+          series={props.series}
         />
       ) : (
         <View style={{ height: CHART_HEIGHT }} className="items-center justify-center">
@@ -524,14 +530,11 @@ function ChartCard(props: {
             : formatDayShort(props.sinceDay)}
         </Text>
         <View className="flex-row items-center gap-4">
-          {merged.providers.map((provider) => (
-            <View key={provider.provider} className="flex-row items-center gap-1.5">
-              <View
-                className="size-2 rounded-full"
-                style={{ backgroundColor: colors[provider.provider] }}
-              />
-              <Text className="text-xs text-foreground-muted">
-                {PROVIDER_LABEL[provider.provider]}
+          {props.series.map((entry) => (
+            <View key={entry.instanceId} className="flex-row items-center gap-1.5">
+              <View className="size-2 rounded-full" style={{ backgroundColor: entry.color }} />
+              <Text className="text-xs text-foreground-muted" numberOfLines={1}>
+                {entry.label}
               </Text>
             </View>
           ))}
@@ -547,30 +550,32 @@ function ChartCard(props: {
 }
 
 function ProviderSection(props: {
-  readonly merged: MergedUsage;
+  readonly series: readonly UsageSeries[];
   readonly metric: UsageChartMetric;
   readonly cursorAccessEnvironments: readonly EnvironmentUsageStatus[];
   readonly showCursorEnvironment: boolean;
   readonly onCursorEnabled: () => void;
 }) {
-  const { merged, metric } = props;
-  const colors = useProviderColors();
-  if (merged.providers.length === 0 && props.cursorAccessEnvironments.length === 0) return null;
+  const { metric } = props;
+  if (props.series.length === 0 && props.cursorAccessEnvironments.length === 0) return null;
 
   // Ranked by whatever the toggle is showing, so the rows always descend.
   // .sort() on a copy, not .toSorted(): Hermes doesn't ship the ES2023 method.
-  const ordered = [...merged.providers].sort((a, b) =>
-    metric === "cost" ? b.costUsd - a.costUsd : b.totalTokens - a.totalTokens,
+  const ordered = [...props.series].sort((a, b) =>
+    metric === "cost"
+      ? b.totals.costUsd - a.totals.costUsd
+      : b.totals.totalTokens - a.totals.totalTokens,
   );
   const rows: Array<
-    | { readonly kind: "usage"; readonly provider: (typeof ordered)[number] }
+    | { readonly kind: "usage"; readonly entry: (typeof ordered)[number] }
     | { readonly kind: "enable"; readonly environment: EnvironmentUsageStatus }
-  > = ordered.map((provider) => ({ kind: "usage", provider }));
-  const cursorInsertAt =
-    Math.max(
-      ordered.findIndex((provider) => provider.provider === "codex"),
-      ordered.findIndex((provider) => provider.provider === "claude"),
-    ) + 1;
+  > = ordered.map((entry) => ({ kind: "usage", entry }));
+  // The Cursor prompt sits after the last Codex or Claude instance row, however
+  // many of each are reported.
+  let cursorInsertAt = 0;
+  ordered.forEach((entry, index) => {
+    if (entry.provider === "codex" || entry.provider === "claude") cursorInsertAt = index + 1;
+  });
   rows.splice(
     cursorInsertAt,
     0,
@@ -595,38 +600,39 @@ function ProviderSection(props: {
             />
           );
         }
-        const provider = row.provider;
-        const share = metric === "cost" ? provider.costShare : provider.tokenShare;
+        const { entry } = row;
+        const { totals } = entry;
+        const share = metric === "cost" ? totals.costShare : totals.tokenShare;
         return (
           <View
-            key={provider.provider}
+            key={entry.instanceId}
             className={index === 0 ? "gap-2 p-4" : "gap-2 border-t border-border-subtle p-4"}
           >
             <View className="flex-row items-baseline justify-between gap-3">
-              <View className="flex-row items-center gap-2">
+              <View className="min-w-0 flex-1 flex-row items-center gap-2">
                 <View
-                  className="size-2.5 rounded-full"
-                  style={{ backgroundColor: colors[provider.provider] }}
+                  className="size-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: entry.color }}
                 />
-                <Text className="text-lg text-foreground">{PROVIDER_LABEL[provider.provider]}</Text>
+                <Text className="text-lg text-foreground" numberOfLines={1}>
+                  {entry.label}
+                </Text>
               </View>
               <Text className="text-lg tabular-nums text-foreground">
-                {metric === "cost"
-                  ? formatUsd(provider.costUsd)
-                  : formatTokens(provider.totalTokens)}
+                {metric === "cost" ? formatUsd(totals.costUsd) : formatTokens(totals.totalTokens)}
               </Text>
             </View>
             <View className="h-1 flex-row overflow-hidden rounded-full bg-subtle">
               <View
                 className="h-full rounded-full"
-                style={{ flex: share, backgroundColor: colors[provider.provider] }}
+                style={{ flex: share, backgroundColor: entry.color }}
               />
               <View style={{ flex: 1 - share }} />
             </View>
             <Text className="text-sm text-foreground-muted">
               {metric === "cost"
-                ? `${formatPercent(share)} of cost · ${formatTokens(provider.totalTokens)} tokens`
-                : `${formatPercent(share)} of tokens · ${formatUsd(provider.costUsd)}`}
+                ? `${formatPercent(share)} of cost · ${formatTokens(totals.totalTokens)} tokens`
+                : `${formatPercent(share)} of tokens · ${formatUsd(totals.costUsd)}`}
             </Text>
           </View>
         );
@@ -700,41 +706,59 @@ function MetricCell(props: {
   );
 }
 
-function ModelsSection(props: { readonly merged: MergedUsage }) {
+function ModelsSection(props: {
+  readonly merged: MergedUsage;
+  readonly series: readonly UsageSeries[];
+}) {
   const { merged } = props;
-  const colors = useProviderColors();
   if (merged.models.length === 0) return null;
+
+  const byInstance = new Map(props.series.map((entry) => [entry.instanceId, entry]));
+  // A model row names its instance only when the provider it belongs to has
+  // more than one; otherwise the row would repeat what the section already says.
+  const providerCounts = new Map<UsageProviderKind, number>();
+  for (const entry of props.series) {
+    providerCounts.set(entry.provider, (providerCounts.get(entry.provider) ?? 0) + 1);
+  }
 
   return (
     <SettingsSection title="By model">
-      {merged.models.map((model, index) => (
-        <View
-          key={`${model.provider}:${model.model}`}
-          className={
-            index === 0
-              ? "flex-row items-center gap-3 p-4"
-              : "flex-row items-center gap-3 border-t border-border-subtle p-4"
-          }
-        >
+      {merged.models.map((model, index) => {
+        const instance = byInstance.get(model.instanceId);
+        const label =
+          instance !== undefined && (providerCounts.get(model.provider) ?? 0) > 1
+            ? instance.label
+            : null;
+        return (
           <View
-            className="size-2.5 shrink-0 rounded-full"
-            style={{ backgroundColor: colors[model.provider] }}
-          />
-          <View className="min-w-0 flex-1 gap-0.5">
-            <Text className="text-base text-foreground" numberOfLines={1}>
-              {model.model}
-            </Text>
-            <Text className="text-sm text-foreground-muted">
-              {isModelCostUnknown(model)
-                ? `no known rates · ${formatTokens(model.totalTokens)} tokens`
-                : `${formatPercent(model.costShare)} of cost · ${formatTokens(model.totalTokens)} tokens`}
+            key={`${model.instanceId}:${model.model}`}
+            className={
+              index === 0
+                ? "flex-row items-center gap-3 p-4"
+                : "flex-row items-center gap-3 border-t border-border-subtle p-4"
+            }
+          >
+            <View
+              className="size-2.5 shrink-0 rounded-full"
+              style={{ backgroundColor: instance?.color ?? "transparent" }}
+            />
+            <View className="min-w-0 flex-1 gap-0.5">
+              <Text className="text-base text-foreground" numberOfLines={1}>
+                {model.model}
+              </Text>
+              <Text className="text-sm text-foreground-muted">
+                {label === null ? "" : `${label} · `}
+                {isModelCostUnknown(model)
+                  ? `no known rates · ${formatTokens(model.totalTokens)} tokens`
+                  : `${formatPercent(model.costShare)} of cost · ${formatTokens(model.totalTokens)} tokens`}
+              </Text>
+            </View>
+            <Text className="text-base tabular-nums text-foreground">
+              {isModelCostUnknown(model) ? "Unpriced" : formatUsd(model.costUsd)}
             </Text>
           </View>
-          <Text className="text-base tabular-nums text-foreground">
-            {isModelCostUnknown(model) ? "Unpriced" : formatUsd(model.costUsd)}
-          </Text>
-        </View>
-      ))}
+        );
+      })}
     </SettingsSection>
   );
 }

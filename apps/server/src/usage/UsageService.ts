@@ -17,8 +17,11 @@ import * as NodeOS from "node:os";
 import {
   ClaudeSettings,
   CodexSettings,
+  defaultInstanceIdForDriver,
+  ProviderDriverKind,
   type ProviderInstanceConfig,
   USAGE_CONTRACT_VERSION,
+  USAGE_PROVIDER_DRIVERS,
   ProviderInstanceId,
   type ServerSettings as ServerSettingsValue,
   type UsageProviderKind,
@@ -89,6 +92,36 @@ const MAX_HOURLY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const CACHE_RETENTION_DAYS = 90;
 
 const decodeCodexSettings = Schema.decodeOption(CodexSettings);
+
+/**
+ * The provider instance a scanned directory reports under, with the name and
+ * accent color the user configured for it. Instances sharing a directory
+ * collapse onto the first one in scan order; the transcripts underneath carry
+ * nothing to tell them apart.
+ */
+type UsageInstanceIdentity = Pick<UsageSource, "displayName" | "accentColor"> & {
+  readonly instanceId: ProviderInstanceId;
+};
+
+function instanceIdentity(
+  settings: ServerSettingsValue,
+  instanceId: ProviderInstanceId,
+): UsageInstanceIdentity {
+  const configured = settings.providerInstances[instanceId];
+  return {
+    instanceId,
+    displayName: configured?.displayName ?? null,
+    accentColor: configured?.accentColor ?? null,
+  };
+}
+
+/** Providers scanned from one shared location report under their driver's default instance. */
+function defaultInstanceIdentity(
+  settings: ServerSettingsValue,
+  provider: UsageProviderKind,
+): UsageInstanceIdentity {
+  return instanceIdentity(settings, defaultInstanceIdForDriver(USAGE_PROVIDER_DRIVERS[provider]));
+}
 const decodeClaudeSettings = Schema.decodeOption(ClaudeSettings);
 
 /** On-disk shape of the rate snapshot. */
@@ -265,16 +298,34 @@ export const make = Effect.gen(function* () {
       provider: UsageProviderKind;
       dir: string;
       volumeId: string;
+      instance: UsageInstanceIdentity;
       fileName?: string;
     }> = [];
     const seen = new Set<string>();
     for (const driver of ["claudeAgent", "codex", "grok"] as const) {
       // Disabled accounts still have history. Explicit default slots replace
-      // the legacy settings, just as they do in the provider registry.
-      const instances: Array<Pick<ProviderInstanceConfig, "config" | "environment">> =
-        Object.values(settings.providerInstances).filter((instance) => instance.driver === driver);
+      // the legacy settings, just as they do in the provider registry. The
+      // default slot scans first so a custom instance sharing its directory
+      // reports under the id a single-account setup already shows.
+      const instances: Array<
+        Pick<ProviderInstanceConfig, "config" | "environment"> & {
+          readonly instanceId: ProviderInstanceId;
+        }
+      > = Object.entries(settings.providerInstances)
+        .filter(([, instance]) => instance.driver === driver)
+        .sort(([left], [right]) =>
+          left === driver ? -1 : right === driver ? 1 : left.localeCompare(right),
+        )
+        .map(([instanceId, instance]) => ({
+          instanceId: ProviderInstanceId.make(instanceId),
+          config: instance.config,
+          ...(instance.environment ? { environment: instance.environment } : {}),
+        }));
       if (!Object.hasOwn(settings.providerInstances, driver)) {
-        instances.push({ config: settings.providers[driver] });
+        instances.unshift({
+          instanceId: defaultInstanceIdForDriver(ProviderDriverKind.make(driver)),
+          config: settings.providers[driver],
+        });
       }
       for (const instance of instances) {
         const environment = mergeProviderInstanceEnvironment(instance.environment, hostEnvironment);
@@ -337,6 +388,7 @@ export const make = Effect.gen(function* () {
           provider,
           dir,
           volumeId,
+          instance: instanceIdentity(settings, instance.instanceId),
           ...(provider === "grok" ? { fileName: "updates.jsonl" } : {}),
         });
       }
@@ -454,6 +506,7 @@ export const make = Effect.gen(function* () {
     readonly provider: UsageProviderKind;
     readonly dir: string;
     readonly volumeId: string;
+    readonly instance: UsageInstanceIdentity;
     readonly hostId?: string;
     readonly status?: UsageSource["status"];
     readonly message?: string;
@@ -475,12 +528,12 @@ export const make = Effect.gen(function* () {
       Effect.provideService(Path.Path, path),
     );
     const scanned: ScannedDir[] = [];
-    for (const { provider, dir, volumeId, fileName } of dirs) {
+    for (const { provider, dir, volumeId, instance, fileName } of dirs) {
       const exists = yield* fileSystem
         .exists(dir)
         .pipe(Effect.catchCause(() => Effect.succeed(false)));
       if (!exists) {
-        scanned.push({ provider, dir, volumeId, files: null });
+        scanned.push({ provider, dir, volumeId, instance, files: null });
         continue;
       }
       const files = yield* Effect.promise(() =>
@@ -491,7 +544,7 @@ export const make = Effect.gen(function* () {
         const records = yield* readFileRecords(file.path, file.size, file.mtimeMs, provider);
         parsedFiles.push({ path: file.path, records });
       }
-      scanned.push({ provider, dir, volumeId, files: parsedFiles });
+      scanned.push({ provider, dir, volumeId, instance, files: parsedFiles });
     }
 
     const home = NodeOS.homedir();
@@ -521,6 +574,7 @@ export const make = Effect.gen(function* () {
         provider: "opencode",
         dir,
         volumeId: yield* Effect.promise(() => readDirectoryVolumeId(dir)),
+        instance: defaultInstanceIdentity(settings, "opencode"),
         files: result.missing && !result.error ? null : result.files,
         status: result.error ? "partial" : "ok",
         ...(result.error ? { message: "Some OpenCode history could not be read." } : {}),
@@ -532,6 +586,9 @@ export const make = Effect.gen(function* () {
       ),
       path.join(home, ".config", "antigravity"),
     ]);
+    // Shared roots report under the default instance; a configured instance's
+    // own profile directory reports under that instance.
+    const antigravityInstanceByRoot = new Map<string, UsageInstanceIdentity>();
     for (const [instanceId, instance] of Object.entries(settings.providerInstances)) {
       if (instance.driver === "antigravity") {
         const directories = yield* resolveAntigravityInstanceDirectories(
@@ -549,10 +606,15 @@ export const make = Effect.gen(function* () {
               }),
           ),
         );
-        antigravityRoots.push(path.join(directories.profile, "antigravity-acp"));
+        const root = path.join(directories.profile, "antigravity-acp");
+        antigravityRoots.push(root);
+        antigravityInstanceByRoot.set(
+          root,
+          instanceIdentity(settings, ProviderInstanceId.make(instanceId)),
+        );
       }
     }
-    const antigravityDirs = new Set<string>();
+    const antigravityDirs = new Map<string, UsageInstanceIdentity>();
     for (const root of antigravityRoots) {
       const resolvedRoot = yield* fileSystem.realPath(root).pipe(Effect.orElseSucceed(() => root));
       const nested = path.join(resolvedRoot, "conversations");
@@ -561,12 +623,17 @@ export const make = Effect.gen(function* () {
         .pipe(Effect.catchCause(() => Effect.succeed(false))))
         ? nested
         : resolvedRoot;
-      antigravityDirs.add(yield* fileSystem.realPath(dir).pipe(Effect.orElseSucceed(() => dir)));
+      const canonical = yield* fileSystem.realPath(dir).pipe(Effect.orElseSucceed(() => dir));
+      if (antigravityDirs.has(canonical)) continue;
+      antigravityDirs.set(
+        canonical,
+        antigravityInstanceByRoot.get(root) ?? defaultInstanceIdentity(settings, "antigravity"),
+      );
     }
     const antigravity = yield* Effect.promise(() =>
-      readAntigravityUsage([...antigravityDirs], windowStartMs),
+      readAntigravityUsage([...antigravityDirs.keys()], windowStartMs),
     );
-    for (const dir of antigravityDirs) {
+    for (const [dir, instance] of antigravityDirs) {
       const exists = yield* fileSystem
         .exists(dir)
         .pipe(Effect.catchCause(() => Effect.succeed(false)));
@@ -577,6 +644,7 @@ export const make = Effect.gen(function* () {
         provider: "antigravity",
         dir,
         volumeId: yield* Effect.promise(() => readDirectoryVolumeId(dir)),
+        instance,
         files: !exists && !failed ? null : antigravity.files.filter((file) => file.root === dir),
         status: failed ? "partial" : "ok",
         ...(failed ? { message: "Some Antigravity history could not be read." } : {}),
@@ -612,6 +680,7 @@ export const make = Effect.gen(function* () {
         provider: "cursor",
         dir: cursorAuthPath,
         volumeId: "",
+        instance: defaultInstanceIdentity(settings, "cursor"),
         files: null,
         message: "Cursor account usage is off on this environment.",
         action: "enableCursorKeychain",
@@ -644,6 +713,7 @@ export const make = Effect.gen(function* () {
       scanned.push({
         provider: "cursor",
         dir: source,
+        instance: defaultInstanceIdentity(settings, "cursor"),
         hostId: "cursor.com",
         volumeId: account.accountKey,
         files: [{ path: source, records: account.records }],
@@ -655,6 +725,7 @@ export const make = Effect.gen(function* () {
       provider: "cursor",
       dir: cursorAuthPath,
       volumeId: yield* Effect.promise(() => readDirectoryVolumeId(cursorAuthPath)),
+      instance: defaultInstanceIdentity(settings, "cursor"),
       // Never combine a local fallback with another server's account-wide history.
       files: null,
       message:
@@ -738,6 +809,7 @@ export const make = Effect.gen(function* () {
       provider,
       dir,
       volumeId,
+      instance,
       files,
       status,
       message,
@@ -797,6 +869,7 @@ export const make = Effect.gen(function* () {
 
       sources.push({
         fingerprint: { hostId: sourceHostId ?? hostId, provider, resolvedHomePath: dir, volumeId },
+        ...instance,
         // Clients exclude missing sources, so saved records remain an available source.
         status: files === null && scannedFiles === 0 ? "missing" : (status ?? "ok"),
         scannedFiles,

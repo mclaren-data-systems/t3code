@@ -39,9 +39,15 @@ vi.mock("./usageProviders", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./usageProviders")>();
   return {
     ...actual,
+    // Must cover every UsageProviderKind: PROVIDER_ORDER is derived from it and
+    // the page reads it for whichever providers the merged report names.
     PROVIDER_PRESENTATION: {
-      codex: { color: "white", label: "Codex", mark: "span" },
-      claude: { color: "orange", label: "Claude Code", mark: "span" },
+      codex: { colors: ["white"], label: "Codex", mark: "span" },
+      claude: { colors: ["orange"], label: "Claude Code", mark: "span" },
+      grok: { colors: ["grey"], label: "Grok Build", mark: "span" },
+      cursor: { colors: ["silver"], label: "Cursor", mark: "span" },
+      opencode: { colors: ["blue"], label: "OpenCode", mark: "span" },
+      antigravity: { colors: ["purple"], label: "Antigravity", mark: "span" },
     },
   };
 });

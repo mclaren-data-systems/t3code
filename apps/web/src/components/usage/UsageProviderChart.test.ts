@@ -1,7 +1,17 @@
+import { ProviderInstanceId } from "@t3tools/contracts";
+import type { InstanceTotals } from "@t3tools/shared/usageMerge";
 import { describe, expect, it } from "vite-plus/test";
 
 import { buildPeriodColumns, niceScale } from "./UsageProviderChart";
-import { providersWithUsage } from "./usageProviders";
+import { buildUsageSeries, PROVIDER_PRESENTATION, providersWithUsage } from "./usageProviders";
+
+const CODEX = ProviderInstanceId.make("codex");
+const CLAUDE = ProviderInstanceId.make("claudeAgent");
+const CLAUDE_WORK = ProviderInstanceId.make("claudeAgent_work");
+
+/** Series carry more than the columns need; only the key is read here. */
+const series = (...instanceIds: readonly ProviderInstanceId[]) =>
+  instanceIds.map((instanceId) => ({ instanceId }));
 
 describe("niceScale", () => {
   it("never puts the peak above the top of the scale", () => {
@@ -50,9 +60,9 @@ describe("buildPeriodColumns", () => {
         day: "2026-08-01",
         costUsd: 30,
         totalTokens: 300,
-        byProvider: new Map([
-          ["codex" as const, { costUsd: 10, totalTokens: 100 }],
-          ["claude" as const, { costUsd: 20, totalTokens: 200 }],
+        byInstance: new Map([
+          [CODEX, { costUsd: 10, totalTokens: 100 }],
+          [CLAUDE, { costUsd: 20, totalTokens: 200 }],
         ]),
       },
     ],
@@ -63,19 +73,20 @@ describe("buildPeriodColumns", () => {
         day: "2026-08-03",
         costUsd: 5,
         totalTokens: 50,
-        byProvider: new Map([["claude" as const, { costUsd: 5, totalTokens: 50 }]]),
+        byInstance: new Map([[CLAUDE, { costUsd: 5, totalTokens: 50 }]]),
       },
     ],
   ]);
+  const both = series(CODEX, CLAUDE);
 
   it("plots each day on its own", () => {
-    expect(buildPeriodColumns(days, byDay, "cost").map((column) => column.total)).toEqual([
+    expect(buildPeriodColumns(days, byDay, "cost", both).map((column) => column.total)).toEqual([
       30, 0, 5,
     ]);
   });
 
   it("reads the requested metric", () => {
-    expect(buildPeriodColumns(days, byDay, "tokens").map((column) => column.total)).toEqual([
+    expect(buildPeriodColumns(days, byDay, "tokens", both).map((column) => column.total)).toEqual([
       300, 0, 50,
     ]);
   });
@@ -83,23 +94,47 @@ describe("buildPeriodColumns", () => {
   it("keeps band values absolute rather than cumulative", () => {
     // Regression: the bands were once stack offsets, which drew Claude Code
     // permanently above Codex regardless of which provider spent more.
-    const [first] = buildPeriodColumns(days, byDay, "cost");
+    const [first] = buildPeriodColumns(days, byDay, "cost", both);
 
     expect(first?.bands).toEqual([
-      { provider: "codex", value: 10 },
-      { provider: "claude", value: 20 },
-      { provider: "grok", value: 0 },
-      { provider: "cursor", value: 0 },
-      { provider: "opencode", value: 0 },
-      { provider: "antigravity", value: 0 },
+      { instanceId: "codex", value: 10 },
+      { instanceId: "claudeAgent", value: 20 },
     ]);
   });
 
   it("reports the total as the sum of its bands", () => {
-    for (const column of buildPeriodColumns(days, byDay, "cost")) {
+    for (const column of buildPeriodColumns(days, byDay, "cost", both)) {
       const sum = column.bands.reduce((running, band) => running + band.value, 0);
       expect(column.total).toBeCloseTo(sum, 9);
     }
+  });
+
+  it("gives each instance of one provider its own band", () => {
+    const twoClaudes = new Map([
+      [
+        "2026-08-01",
+        {
+          day: "2026-08-01",
+          costUsd: 30,
+          totalTokens: 300,
+          byInstance: new Map([
+            [CLAUDE, { costUsd: 20, totalTokens: 200 }],
+            [CLAUDE_WORK, { costUsd: 10, totalTokens: 100 }],
+          ]),
+        },
+      ],
+    ]);
+    const [first] = buildPeriodColumns(
+      ["2026-08-01"],
+      twoClaudes,
+      "cost",
+      series(CLAUDE, CLAUDE_WORK),
+    );
+
+    expect(first?.bands).toEqual([
+      { instanceId: "claudeAgent", value: 20 },
+      { instanceId: "claudeAgent_work", value: 10 },
+    ]);
   });
 });
 
@@ -114,8 +149,70 @@ describe("providersWithUsage", () => {
   });
 });
 
+describe("buildUsageSeries", () => {
+  const instance = (
+    overrides: Partial<InstanceTotals> & Pick<InstanceTotals, "instanceId" | "provider">,
+  ): InstanceTotals => ({
+    displayName: null,
+    accentColor: null,
+    isDefaultInstance: false,
+    shadeIndex: 0,
+    costUsd: 1,
+    totalTokens: 1_000,
+    records: 1,
+    sessions: 1,
+    costShare: 0,
+    tokenShare: 0,
+    ...overrides,
+  });
+
+  it("keeps provider reading order with each provider's accounts together", () => {
+    // Instances arrive richest first; the page still reads Codex before Claude
+    // and the default account before an added one, like the single-account page.
+    const series = buildUsageSeries([
+      instance({ instanceId: CLAUDE_WORK, provider: "claude", shadeIndex: 1, costUsd: 30 }),
+      instance({ instanceId: CODEX, provider: "codex", isDefaultInstance: true, costUsd: 20 }),
+      instance({ instanceId: CLAUDE, provider: "claude", isDefaultInstance: true, costUsd: 10 }),
+      instance({
+        instanceId: ProviderInstanceId.make("grok"),
+        provider: "grok",
+        costUsd: 0,
+        totalTokens: 0,
+      }),
+    ]);
+
+    expect(series.map((entry) => entry.instanceId)).toEqual([CODEX, CLAUDE, CLAUDE_WORK]);
+  });
+
+  it("labels and colours each account on its own", () => {
+    const [personal, work] = buildUsageSeries([
+      instance({ instanceId: CLAUDE, provider: "claude", isDefaultInstance: true }),
+      instance({
+        instanceId: CLAUDE_WORK,
+        provider: "claude",
+        displayName: "Work",
+        accentColor: "#123456",
+        shadeIndex: 1,
+      }),
+    ]);
+
+    expect(personal?.label).toBe("Claude Code");
+    expect(personal?.color).toBe(PROVIDER_PRESENTATION.claude.colors[0]);
+    expect(work?.label).toBe("Work");
+    expect(work?.color).toBe("#123456");
+  });
+
+  it("falls back to the ramp shade when an account has no usable accent", () => {
+    const [work] = buildUsageSeries([
+      instance({ instanceId: CLAUDE_WORK, provider: "claude", accentColor: "blue", shadeIndex: 1 }),
+    ]);
+
+    expect(work?.color).toBe(PROVIDER_PRESENTATION.claude.colors[1]);
+  });
+});
+
 describe("hourly chart columns", () => {
-  it("zero-fills inactive hours and preserves hourly provider values", () => {
+  it("zero-fills inactive hours and preserves hourly instance values", () => {
     const byHour = new Map([
       [
         "2026-08-11T09:37:00.000Z",
@@ -124,7 +221,7 @@ describe("hourly chart columns", () => {
           hourStart: "2026-08-11T09:37:00.000Z",
           costUsd: 4,
           totalTokens: 40,
-          byProvider: new Map([["codex" as const, { costUsd: 4, totalTokens: 40 }]]),
+          byInstance: new Map([[CODEX, { costUsd: 4, totalTokens: 40 }]]),
         },
       ],
     ]);
@@ -134,6 +231,7 @@ describe("hourly chart columns", () => {
         ["2026-08-11T08:37:00.000Z", "2026-08-11T09:37:00.000Z", "2026-08-11T10:37:00.000Z"],
         byHour,
         "cost",
+        series(CODEX, CLAUDE),
       ).map((column) => column.total),
     ).toEqual([0, 4, 0]);
   });
