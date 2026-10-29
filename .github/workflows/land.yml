@@ -25,8 +25,10 @@ on:
 permissions:
   contents: read
 
+# Per request: one pending slot per group would silently drop requests, and the
+# target lease already serialises competing moves of the same branch.
 concurrency:
-  group: land
+  group: land-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -83,5 +85,9 @@ jobs:
           if [[ "$TARGET" == "main" ]]; then
             refs+=("+$EXPECTED:refs/heads/backup/main-pre-rebase")
           fi
-          git push --atomic --force-with-lease="refs/heads/$TARGET:$EXPECTED" origin "${refs[@]}"
+          # The second lease fails a run whose request was re-pushed since it started.
+          git push --atomic \
+            --force-with-lease="refs/heads/$TARGET:$EXPECTED" \
+            --force-with-lease="refs/heads/$REQUEST:$GITHUB_SHA" \
+            origin "${refs[@]}"
           echo "Moved $TARGET from $EXPECTED to $GITHUB_SHA." >> "$GITHUB_STEP_SUMMARY"
