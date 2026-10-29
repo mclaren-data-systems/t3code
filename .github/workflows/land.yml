@@ -1,0 +1,87 @@
+# Fork workflow (FORK.md entry 24): moves a branch for agents that may not.
+#
+# Cloud agent sessions cannot force-push or overwrite branches. To move a
+# branch, an agent pushes the commit it should point at as a new branch named
+#   land/<target-branch>/<full sha the target points at now>
+# and this job, with no human in the loop:
+#   - for `main`, checks the new tip is not based on older upstream code than
+#     the current one, and overwrites `backup/main-pre-rebase` with the old tip
+#   - moves <target-branch> with a lease on that sha, so a branch that moved in
+#     the meantime is left alone
+#   - deletes the request branch
+# all in one atomic push. A failed run leaves the request branch for a re-run.
+#
+# Needs `FORK_LANDING_TOKEN`: a fine-grained token for this repository only,
+# with Contents and Workflows read/write. GITHUB_TOKEN cannot push commits
+# that touch .github/workflows/ (every rebase does), and its pushes would not
+# trigger CI or desktop builds on the landed `main`.
+name: Land
+
+on:
+  push:
+    branches:
+      - "land/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: land
+  cancel-in-progress: false
+
+jobs:
+  land:
+    name: Land ${{ github.ref_name }}
+    if: github.event.deleted != true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Parse request
+        id: request
+        env:
+          REQUEST: ${{ github.ref_name }}
+          HAS_TOKEN: ${{ secrets.FORK_LANDING_TOKEN != '' }}
+        run: |
+          rest="${REQUEST#land/}"
+          target="${rest%/*}"
+          expected="${rest##*/}"
+          if [[ "$rest" != */* || -z "$target" || ! "$expected" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Name the request land/<target-branch>/<40-char sha of its current tip>, not $REQUEST."
+            exit 1
+          fi
+          if [[ "$HAS_TOKEN" != "true" ]]; then
+            echo "::error::Add the FORK_LANDING_TOKEN secret (see this workflow's header), then re-run."
+            exit 1
+          fi
+          echo "target=$target" >> "$GITHUB_OUTPUT"
+          echo "expected=$expected" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.FORK_LANDING_TOKEN }}
+
+      - name: Check main keeps up with upstream
+        if: steps.request.outputs.target == 'main'
+        env:
+          EXPECTED: ${{ steps.request.outputs.expected }}
+        run: |
+          git fetch --no-tags https://github.com/pingdotgg/t3code.git main
+          old_base="$(git merge-base "$EXPECTED" FETCH_HEAD)"
+          if ! git merge-base --is-ancestor "$old_base" "$GITHUB_SHA"; then
+            echo "::error::$GITHUB_SHA does not contain upstream $old_base, which main is already based on."
+            exit 1
+          fi
+
+      - name: Move the branch
+        env:
+          TARGET: ${{ steps.request.outputs.target }}
+          EXPECTED: ${{ steps.request.outputs.expected }}
+          REQUEST: ${{ github.ref_name }}
+        run: |
+          refs=("$GITHUB_SHA:refs/heads/$TARGET" ":refs/heads/$REQUEST")
+          if [[ "$TARGET" == "main" ]]; then
+            refs+=("+$EXPECTED:refs/heads/backup/main-pre-rebase")
+          fi
+          git push --atomic --force-with-lease="refs/heads/$TARGET:$EXPECTED" origin "${refs[@]}"
+          echo "Moved $TARGET from $EXPECTED to $GITHUB_SHA." >> "$GITHUB_STEP_SUMMARY"

@@ -19,7 +19,8 @@
 > scoped to, a commit button on a turn's changed-files card that preselects just those files,
 > and the completed dot persisting until a thread is actually read). Fork builds also **never
 > check for updates**, and the sidebar carries a link back to this repository whose tooltip
-> names the running build. `native/`, `apps/desktop/`, `pnpm-workspace.yaml` and
+> names the running build, and a small workflow lands agent rebases without force-pushes from
+> the agent itself. `native/`, `apps/desktop/`, `pnpm-workspace.yaml` and
 > `pnpm-lock.yaml` are byte-identical to upstream.
 >
 > The authoritative, up-to-date list of everything that sets this fork apart from upstream —
