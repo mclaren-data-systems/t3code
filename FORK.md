@@ -23,8 +23,8 @@ Land the rebased tip through entry 24 (`land/main/<old main sha>`), never by for
 run 100x fewer background queries and 4.8M fewer spans a day (#27098)_. Took in **252** upstream
 commits (`c570c2cd5c..dd14848153`). The previous `main` (`6c75e86e`) is backed up at
 `origin/backup/main-pre-rebase`. The routine's own force-push was refused by the cloud session's
-auto-mode classifier even with entry 23's allow rules, which is why entry 24 exists; this tip is
-landed through it.
+auto-mode classifier even with entry 23's allow rules, so the maintainer landed this tip by hand
+and entry 24 was added for the next run.
 
 - **Replayed:** all 10 fork commits (entries 5, 6, 12, 13, 14, 15, 18, 19, 20, 22, 23). Every
   drop-check came back empty except 22's context-bubble half.
