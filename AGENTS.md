@@ -13,6 +13,11 @@ You can think of T3 Code as an open source "bring-your-own-subscription" alterna
   `issue create`, `pr comment`, `pr close`, `pr merge`) MUST explicitly target the fork.**
 - The ONLY interaction with upstream is `git fetch upstream` to pull changes. Everything
   else targets `origin` (the fork).
+- Agents never force-push or overwrite a branch themselves. To move one (landing a rebase on
+  `main`, for example), push the new tip as
+  `git push origin HEAD:refs/heads/land/<branch>/<full sha the branch points at now>`.
+  `.github/workflows/land.yml` moves the branch with that lease, backs up `main` to
+  `backup/main-pre-rebase`, and deletes the request branch. Check the Land run's result.
 
 ## Fork-First Policy
 
