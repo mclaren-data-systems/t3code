@@ -5,14 +5,14 @@
 > This is a development fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3code),
 > maintained at [mclaren-data-systems/t3code](https://github.com/mclaren-data-systems/t3code).
 > Upstream (`pingdotgg`) is treated as the source of truth and `main` here is periodically
-> rebased onto it — most recently onto `dd14848153` on 2026-10-29.
+> rebased onto it — most recently onto `ab9e6a2792` on 2026-11-13.
 >
 > On top of upstream this fork carries a deliberately thin layer: a **workflow set a fork can
 > actually run** — standard GitHub-hosted runners instead of upstream's Blacksmith ones, no
 > workflow needing credentials a fork lacks, and unsigned desktop artifacts built on every
 > push to `main` and published as pruned development-build prereleases — plus two server
-> changes for **running more than one provider instance** (a logged-out Claude instance names
-> the config directory it actually resolved, and the usage report breaks totals down per instance),
+> changes for **running more than one provider instance** (each Claude instance shows the config
+> directory it actually resolved, and the usage report breaks totals down per instance),
 > the **subscription allowances upstream reports on its Limits view** surfaced in the model
 > picker so you can see which plan still has room at the moment of choosing, and three web UX
 > changes (the sidebar new-thread button creating directly in the one project the sidebar is

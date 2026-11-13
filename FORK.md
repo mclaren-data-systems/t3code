@@ -17,33 +17,52 @@ upstream now covers the intent, move the entry to section 4, otherwise re-derive
 upstream code. Sync by rebase, never merge, so `git diff upstream/main main` is the whole fork.
 Land the rebased tip through entry 24 (`land/main/<old main sha>`), never by force-pushing.
 
+Upstream: <https://github.com/pingdotgg/t3code>, tracking `main`.
+
 ## 2. Last rebase
 
-**2026-10-29**, onto `pingdotgg/t3code` `main` at **`dd14848153`** — _perf(server): idle servers
-run 100x fewer background queries and 4.8M fewer spans a day (#27098)_. Took in **252** upstream
-commits (`c570c2cd5c..dd14848153`). The previous `main` (`6c75e86e`) is backed up at
-`origin/backup/main-pre-rebase`. The routine's own force-push was refused by the cloud session's
-auto-mode classifier even with entry 23's allow rules, which is why entry 24 exists; this tip is
-landed through it.
+**2026-11-13**, onto `pingdotgg/t3code` `main` at **`ab9e6a2792`** — _fix(web): closing Settings no
+longer leaves it as a back/forward stop (#36437)_. Took in **2,829** upstream commits
+(`dd14848153..ab9e6a2792`). The previous `main` (`1a0bf610c3`) is backed up at
+`origin/rebase-backup-2026-11-13`, and `land.yml` also copies it to `backup/main-pre-rebase`.
+Landed through entry 24 by the scheduled routine. The 2026-10-29 rebase was landed by the
+maintainer by hand, because the routine's own force-push was refused (the reason entry 24 exists).
 
-- **Replayed:** all 10 fork commits (entries 5, 6, 12, 13, 14, 15, 18, 19, 20, 22, 23). Every
-  drop-check came back empty except 22's context-bubble half.
-- **Superseded:** 22 (bubble) — upstream's thread details usage (#26859) shows the thread's
-  provider limits and context window together; the fork's popover section is gone, the picker half
-  stays.
-- **Re-derived:** 18 for upstream's multi-project scope (#25284) and boring sidebar (#21039);
-  5 for the capped checkpoint file list (#27110) and the configurable details card (#26904).
-- **Entry 14:** `ci.yml` re-derived (upstream dropped the C-toolchain step from `test` and raised
-  `test_server` to 20 min); eight modify/delete files re-deleted; the new
-  `mobile-fingerprint-label.yml` deleted. No new `build-desktop-artifact.ts` flag, so
-  `desktop-artifacts.yml` needs nothing.
-- **Verification:** Node 26.12.1 and pnpm 12.14.0, `pnpm install --frozen-lockfile` clean; `tsc
-  --noEmit` 0 errors in contracts, shared, provider-core, client-runtime, server, web and mobile;
-  `vp lint` and `vp fmt --check` clean over all 71 fork-changed files; `knip:check` clean; tests
-  pass for server registry and usage (83, 1 upstream skip), shared usage (28), provider-core (155),
-  mobile usage (7), web unit files for sidebar logic, session logic, ui state, git actions logic,
-  subscription usage and the usage folder (194), and the ThreadVisitWatermark, ThreadDetailsCard
-  and Sidebar browser suites (11) in headless Chromium. Nothing was checked by hand in a browser.
+- **Replayed:** all 12 fork commits (entries 5, 6, 12, 13, 14, 15, 18, 19, 20, 22, 23, 24; 23 is
+  two commits, the maintainer's prune kept as its own). 24's follow-up fix is folded into it.
+- **Superseded:** 15 (message) — upstream's `claudeSignedOutMessage` now reaches the status probe
+  and names `CLAUDE_CONFIG_DIR` for an instance's own home and an inherited value (#32951); the
+  fork's message is dropped, the snapshot field and settings row stay.
+- **Re-derived:** 15 — `resolveClaudeConfigDirPath` stays in `ClaudeSkills.ts` (exported) because
+  upstream's `ClaudeHome.ts` now imports from `ClaudeSkills.ts`, and moving it would make a cycle.
+  18 — upstream reworked the click rule around open (unarchived) projects (#26154) and dropped the
+  boring sidebar special case, so `resolveNewThreadClickTarget` delegates to upstream's exported
+  `shouldCreateNewThreadInCurrentProject` and keeps upstream's fall-back to the picker. 19 — threads
+  the instance through upstream's refreshing and in-memory scan paths (#33993), keeps upstream's
+  shared `usageSourceMessages`, and ranks the per-instance summary rows by the chosen metric
+  (`rankSeriesByMetric`, mirroring upstream's `rankProvidersByMetric`); upstream removed the Cursor
+  enable rows, so the fork's interleaving of them is gone on web and mobile. 5 — the button is not
+  offered in an embedded side chat, which mounts no details panel.
+- **Entry 14:** `ci.yml` re-derived (upstream now restricts apt components in its Blacksmith mirror
+  `sed`, which is dropped whole, and added two script tests to the release-checks step, which stays
+  deleted); 22 modify/delete files re-deleted; the new `issue-vouch.yml`, `pr-limits.yml` (community
+  triage; `issue-vouch` reads the deleted `VOUCHED.td`), `mobile-dev-client.yml` and
+  `mobile-eas-preview-fork.yml` (Blacksmith and credentials) deleted. `CONTRIBUTING.md` now cites
+  `VOUCHED.td` in its PR-limit rules; the link is unlinked rather than the rule removed.
+  `desktop-artifacts.yml` gained upstream's Rosetta step for macOS x64 (#29484) and the Electron
+  runtime libraries on Linux (#33050), both needed to generate server bytecode.
+- **Verification:** Node 26.12.1 and pnpm 12.14.0, `pnpm install --frozen-lockfile` clean;
+  `vp run typecheck` 0 errors in contracts, shared, provider-core, client-runtime, server, web and
+  mobile; `vp lint` clean over all fork-changed sources; `vp fmt --check` clean except
+  `.claude/settings.json` (see entry 23); `knip:check` clean; tests pass for server registry and
+  usage (138, 1 upstream skip), shared usage (37), provider-core (266), mobile usage (7), web unit
+  files for sidebar logic, session logic, ui state, subscription usage and the usage folder (206),
+  and the Sidebar, Sidebar logic, ThreadDetailsCard, ThreadDetailsPanel, ThreadVisitWatermark,
+  ProviderInstanceCard and usage browser suites (72) in headless Chromium. Nothing was checked by
+  hand in a browser.
+- **Undocumented changes:** none. Every file the fork touched maps to an entry in section 3.
+- **Flagged:** the `ci.yml` `lint` job fails `vp check` on `.claude/settings.json` (entry 23),
+  the same as on the previous `main`.
 
 ## 3. Fork changes
 
@@ -120,8 +139,9 @@ Numbers are **durable identifiers** and are never reused. Gaps are in section 4 
   NSIS, **unsigned**, on every push to `main` and on dispatch, published as a `desktop-dev-<run>`
   prerelease with older `desktop-dev-*` releases pruned to the current one plus two (that
   publish-and-prune tail is intent). It carries the secret-free parts of upstream's
-  `release-desktop.yml` build job (Rust toolchain per target, Spectre MSVC libs, Linux
-  `libsecret-1-dev pkg-config`), never passes `--signed` or `--skip-build`, and ships Windows
+  `release-desktop.yml` build job (Rust toolchain per target, Rosetta for macOS x64, Spectre MSVC
+  libs, Linux `libsecret-1-dev pkg-config` plus the Electron runtime libraries server bytecode
+  generation runs), never passes `--signed` or `--skip-build`, and ships Windows
   without the WSL runtime archive (revisit via `scripts/build-cli-archive.ts`, not node-pty).
 - **Deleted:** `release`, `release-desktop`, `deploy-relay`, `relay-preview`,
   `relay-preview-cleanup`, `mobile-eas-preview`, `mobile-eas-production`, `mobile-android-apk`,
@@ -129,8 +149,9 @@ Numbers are **durable identifiers** and are never reused. Gaps are in section 4 
   `desktop-macos-preview-publish` (credentials and/or Blacksmith); `windows-tests`,
   `desktop-macos-preview` (Blacksmith); `agent-context-budget` (PR-policy gate;
   `AgentContextBudget.test.ts` already pins the budget), `mobile-fingerprint-check` and
-  `mobile-fingerprint-label` (store-build OTA labelling this fork does not do); `pr-vouch` +
-  `.github/VOUCHED.td`, `pr-size`, `stale-needs-more-info` (upstream community triage). Also
+  `mobile-fingerprint-label` (store-build OTA labelling this fork does not do), `mobile-dev-client`
+  and `mobile-eas-preview-fork` (Blacksmith and credentials); `pr-vouch` + `.github/VOUCHED.td`,
+  `issue-vouch`, `pr-size`, `pr-limits`, `stale-needs-more-info` (upstream community triage). Also
   `.github/scripts/mirror-play-apk.cjs`, `scripts/smoke-cli-archive.ts` and
   `scripts/notify-discord-release.ts` (+ test), which only deleted workflows ran and which knip or
   their own tests fail on here. `knip.jsonc` lists `build-cli-archive.ts` and
@@ -145,24 +166,25 @@ Numbers are **durable identifiers** and are never reused. Gaps are in section 4 
 
 ### 15. A logged-out Claude instance shows the directory it resolved
 
-- **Intent.** When a Claude instance is not logged in, say **where** Claude Code looked. A second
+- **Intent.** When a Claude instance is not logged in, show **where** Claude Code looked. A second
   instance is usually logged out because its home resolved somewhere other than where the user
-  logged in (PowerShell's unexpanded `~`, a relative path, an inherited `CLAUDE_CONFIG_DIR`), and
-  upstream's message does not name the directory.
+  logged in (PowerShell's unexpanded `~`, a relative path, an inherited `CLAUDE_CONFIG_DIR`).
+  Upstream's message now names the directory except for the default `~/.claude`; the settings row
+  shows the resolved path for every instance, and whether a credentials file sits there.
 - **Files:** `packages/contracts/src/server.ts` (optional `ServerProvider.configDirectory`),
   `packages/provider-core/src/server/snapshotProbe.ts`,
-  `apps/server/src/provider/providerStatusCache.ts`, `provider/Drivers/ClaudeHome.ts` (owns
-  `resolveClaudeConfigDirPath`, moved from `ClaudeSkills.ts`), `provider/Drivers/ClaudeSkills.ts`,
+  `apps/server/src/provider/providerStatusCache.ts`, `provider/Drivers/ClaudeHome.ts`
+  (`resolveClaudeConfigDirectory`), `provider/Drivers/ClaudeSkills.ts` (exports upstream's
+  `resolveClaudeConfigDirPath`),
   `provider/ClaudeProvider.ts`, `apps/web/src/components/settings/ProviderInstanceCard.tsx`, two
   tests in `provider/ProviderRegistry.test.ts`, `docs/user/providers-claude.md`
 - **How.** Additive on upstream's `claudeAuthStatus`: `configDirectory`
-  (`{ path, credentialsFound }`) is reported on every Claude outcome; the only edit in the
-  unauthenticated branch is the message, naming the path. The card shows a "Resolved config
-  directory" row. `resolveClaudeConfigDirPath` stays the one resolver for skills discovery and the
-  probe — move upstream's current body, never fork it.
-- **Drop-check:** `grep -c configDirectory packages/contracts/src/server.ts` on clean upstream, and
-  whether upstream's `claudeSignedOutMessage` (`ClaudeHome.ts`, today used only by
-  `ClaudeAdapterV2.ts`) reaches the status probe.
+  (`{ path, credentialsFound }`) is reported on every Claude outcome, and the card shows a
+  "Resolved config directory" row (a warning once auth has failed). The unauthenticated message is
+  upstream's (see 15 (message) in section 4). `resolveClaudeConfigDirPath` stays the one resolver
+  for skills discovery, settings env and the probe; it stays in `ClaudeSkills.ts` because
+  `ClaudeHome.ts` imports from there — never fork its body.
+- **Drop-check:** `grep -c configDirectory packages/contracts/src/server.ts` on clean upstream.
 
 ### 18. The sidebar new thread button creates in the scoped project
 
@@ -173,10 +195,11 @@ Numbers are **durable identifiers** and are never reused. Gaps are in section 4 
   `components/sidebar/SidebarThreadHeader.tsx` (one optional `newThreadLabel` prop),
   `docs/user/thread-sidebar.md`
 - **How.** `resolveNewThreadClickTarget` (pure, tested) returns `"scoped-project" |
-  "current-project" | "picker"`; a scope of **exactly one** project wins, else upstream's rule (the
-  boring sidebar always uses the current project; otherwise shift or a single project creates in
-  the current project, several open the picker). Upstream's scope is multi-select since #25284, so
-  two or more scoped projects fall back to that rule. The target resolves through
+  "current-project" | "picker"`; a scope of **exactly one** project wins, else upstream's exported
+  `shouldCreateNewThreadInCurrentProject` decides (shift, one open project or none creates in the
+  current project, falling back to the picker when there is none; several open the picker).
+  Upstream's scope is multi-select since #25284, so two or more scoped projects fall back to that
+  rule. The target resolves through
   `buildSidebarProjectPickerEntries` (the picker's own builder) so grouped checkouts land on the
   same member. The scoped tooltip drops the shortcut (`chat.new` is not scope-aware) and hides the
   shift+click hint.
@@ -202,7 +225,8 @@ Numbers are **durable identifiers** and are never reused. Gaps are in section 4 
   grows (a build break). `mergeUsage` keeps `providers`/`byProvider` and adds `instances`,
   `byInstance` and per-instance model rows; series are keyed by instance id alone. Colors: a
   configured accent wins, else the brand color then the provider's shade ramp by a stable
-  `shadeIndex`. The model dialog stays per provider.
+  `shadeIndex`. Summary rows rank by the chosen metric (`rankSeriesByMetric`, the per-instance
+  twin of upstream's `rankProvidersByMetric`). The model dialog stays per provider.
 - **Drop-check:** `grep -c instanceId packages/contracts/src/usage.ts` on clean upstream.
 
 ### 20. No update checking, and a sidebar link to this fork with build provenance
@@ -241,10 +265,12 @@ Numbers are **durable identifiers** and are never reused. Gaps are in section 4 
   permission prompt for the pushes it needs.
 - **Files:** `.claude/settings.json` (fork-only; upstream has none). On conflict, merge upstream's
   keys and keep the fork's `allow` rules.
-- **Note.** The `--force-with-lease=main:*` rule does not get past the cloud auto-mode classifier,
-  which refuses force-pushes to `main` as destructive regardless of allow rules; entry 24 replaces
-  it. Agents may not edit this file themselves (refused as self-modification), so pruning the
-  stale rule is a maintainer edit.
+- **Note.** The `--force-with-lease=main:*` rule did not get past the cloud auto-mode classifier,
+  which refuses force-pushes to `main` as destructive regardless of allow rules; entry 24 replaced
+  it, and the maintainer pruned both rules (`1a0bf610c3`), so `allow` is empty and the entry is
+  currently a no-op. That edit left whitespace `vp fmt --check` rejects, which turns `ci.yml`'s
+  `lint` job red. Agents may not edit this file themselves (refused as self-modification), so the
+  fix (format it, or delete the entry) is a maintainer edit.
 
 ### 24. A workflow that moves branches for agents
 
@@ -281,6 +307,7 @@ Implemented upstream; **do not re-introduce**.
 | 14 (repair)  | `pnpm-workspace.yaml` placeholder fix    | `803f94e78` (#12544)                                                                            |
 | 15 (banner)  | Status banner prefers the server message | `06336460` (#9348) — `getProviderStatusMessage`                                                 |
 | 15 (auth)    | Logged-out Claude CLI is unauthenticated | `563645cf6e` (#15459) — `claudeAuthStatus`                                                      |
+| 15 (message) | Sign-in message names the directory      | `feb9c6b842` (#32951) — `claudeSignedOutMessage` names `CLAUDE_CONFIG_DIR` in the status probe  |
 | 16           | Usage scans every provider instance      | `2db675ae` (#11485) — per-instance homes in `UsageService.ts`                                   |
 | 17           | Configurable worktree branch prefix      | `de3439142` (#2829) — `branchNamingMode` / `branchNamePrefix` settings                          |
 | 18 (layout)  | Labelled new-thread button under scope   | `d1d15c67` (#11315) — scope folded into the search row                                          |
