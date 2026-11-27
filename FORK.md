@@ -11,7 +11,7 @@ prereleases), fork identity (this file, the `README.md` banner, the `AGENTS.md` 
 no update checking, a sidebar link to this repo, a workflow that moves branches for agents that
 may not force-push), and a
 few product changes for people driving several provider accounts all day (per-instance usage, the
-resolved Claude config directory, subscription room in the model picker) plus three web UX fixes.
+resolved Claude config directory, subscription room in the model picker) plus one web UX fix.
 **When rebasing, work from each entry's intent, not its old diff:** run the drop-check first; if
 upstream now covers the intent, move the entry to section 4, otherwise re-derive it against current
 upstream code. Sync by rebase, never merge, so `git diff upstream/main main` is the whole fork.
@@ -21,46 +21,51 @@ Upstream: <https://github.com/pingdotgg/t3code>, tracking `main`.
 
 ## 2. Last rebase
 
-**2026-11-20**, onto `pingdotgg/t3code` `main` at **`732c03f410`** — _fix(web): fold accents in thread
-link picker search (#39557)_. Took in **1,530** upstream commits (`ab9e6a2792..732c03f410`). The
-previous `main` (`5510310e2a`) is backed up at `origin/rebase-backup-2026-11-20`, and `land.yml`
-also copies it to `backup/main-pre-rebase`. Landed through entry 24 by the scheduled routine.
+**2026-11-27**, onto `pingdotgg/t3code` `main` at **`aee6cf558d`** — _perf(server): run-filtered
+turn-item reads no longer walk a long thread (#43981)_. Took in **1,653** upstream commits
+(`732c03f410..aee6cf558d`). The previous `main` (`2dc935bc47`) is backed up at
+`origin/rebase-backup-2026-11-27`. **Not landed:** pushed to `rebase-attempt` because entry 5 needs
+a maintainer decision (below); land it through entry 24 once that is settled.
 
-- **Replayed:** all 12 fork commits (entries 5, 6, 12, 13, 14, 15, 18, 19, 20, 22, 23, 24; 23 is
-  two commits), plus one generated commit regenerating the web i18n catalogs for the fork's strings.
-- **Superseded:** none. Every drop-check still fails on clean upstream.
-- **Re-derived:** upstream translated the whole app (#37893): every fork string on web is now
-  wrapped (`gt()`, `<T>`, `msg()` with a `MessageResolver`, per `docs/internals/i18n.md`), and
-  `formatRemainingPercent` takes a resolver like upstream's `formatResetsIn`, which moved to
-  `@t3tools/shared/usageLimitsCopy` (entries 5, 15, 18, 20, 22). 19 — upstream now always scans the
-  driver's default home as a trailing unconfigured entry and dedupes by `physicalSourceId`; the fork
-  keeps that entry last when the default slot is configured and first otherwise, so a shared
-  directory still reports under the default id, and stamps the trailing entry with the default
-  instance's name and colour; both `instance` and `physicalSourceId` travel on a scanned source. Upstream replaced the web chart's `aria-label` with a screen-reader table, which
-  now lists instances ("… by provider instance"); the mobile usage screen was re-applied by hand on
-  upstream's translated rewrite. 6 — the row status is upstream's new `resolveSidebarRowStatus`;
-  only the completed dot reads the acknowledgement.
-- **Entry 14:** `ci.yml` kept upstream's two new `lint` steps (Linear GraphQL generate check,
-  `i18n:check`); the release-checks step (which gained `mobile-ios-preview-record.test.cjs`) stays
-  deleted. Upstream's edits to the deleted `release`, `mobile-eas-*`, `mobile-fingerprint-check`
-  and `issue-vouch` workflows, and to `VOUCHED.td`, were re-deleted. Its new composite actions
-  (`drop-checkout-credentials`, `eas-local-build`, `record-build-tag`) and scripts are only used by
-  deleted workflows and are left as upstream wrote them. Two new `CONTRIBUTING.md` links to
-  `VOUCHED.td` are unlinked. `desktop-artifacts.yml` needed no change (`build-desktop-artifact.ts`
-  and `release-desktop.yml` did not change upstream; `resolveGitHubPublishConfig` still rejects
-  the single-segment repository, so entry 20's update disable holds).
-- **Verification:** Node 26.13.1 and pnpm 12.14.0, `pnpm install --frozen-lockfile` clean;
-  `vp run check:changed upstream/main` passes lint, knip, GraphQL generate, typecheck of the 42
-  affected packages, the 855 tests beside the changes (1 upstream skip; browser suites in headless
-  Chromium) and React Compiler coverage, and fails only `format` on `.claude/settings.json`;
-  `vp run i18n:check` clean. The rebase surfaced one behavior change: upstream's trailing
-  default-home entry now appears as an extra source of the default instance when that instance
-  points elsewhere; it carries the instance's configured name and colour (test updated). Nothing
-  was checked by hand in a browser.
-- **Undocumented changes:** none. Every file the fork touched maps to an entry in section 3.
-- **Flagged:** the `ci.yml` `lint` job still fails `vp check` on `.claude/settings.json` (entry 23).
-  New keys in the non-English web catalogs carry English text until translated, and the four chart
-  captions renamed to "… by provider instance" lost their upstream translations.
+- **Replayed:** entries 6, 12, 13, 14, 15, 19, 20, 22, 23 (two commits), 24, plus one generated
+  commit regenerating the web and mobile i18n catalogs for the fork's strings.
+- **Superseded:** 18 — upstream `46ee2fc7ff` (#35185) makes sidebar **New** start the thread in the
+  one scoped project (`resolveScopedNewThreadProjectRef`). Differences from the fork: shift-click
+  bypasses the scope upstream, and the tooltip does not name the target project.
+- **Blocked — entry 5:** upstream `1c6d41a9ba` (#41317) deliberately removed the changed-files card
+  under assistant turns (`ChangedFilesTree.tsx`, `AssistantChangedFilesSection`, the expansion state
+  in `uiStateStore`), which is where the turn **Commit** button lived. Upstream does not offer
+  turn-scoped commits, so this is not superseded, but re-adding means restoring ~550 lines upstream
+  chose to delete or finding a new host (e.g. the turn view in the diff panel). Left out of this
+  attempt pending a decision: re-derive on a new surface, restore the card, or move 5 to section 5.
+- **Re-derived:** 14 — upstream's new `mobile-eas-preview-build.yml` and
+  `mobile-eas-production-build.yml` (reusable, Blacksmith runners, `EXPO_*` secrets) are deleted;
+  the `ci.yml` `test` job again drops the preview/release script-test steps (now also
+  `workflow-credentials.test.cjs`). Upstream renamed the operations docs with number prefixes and
+  deleted `mobile-app-store-screenshots.md`; the release fork note moved to
+  `docs/operations/03_release.md`, and the `development.md` note (manual Windows lane) no longer has
+  a target. 15, 19, 22 — upstream condensed `providers-claude.md`, `usage.md` and `composer.md`
+  into bullet lists; each fork paragraph is now one bullet/short section. 19 — upstream now scans
+  the implicit default Antigravity instance's profile (#41155) and orphaned profiles of removed
+  instances (#43526); the fork's `configured` filter is gone and orphaned profiles carry no
+  instance (they fall to the default instance). 6 — upstream removed
+  `threadChangedFilesExpandedById` beside the acknowledgement field. 20 — the sidebar moved to
+  `SharedTooltipTrigger`; the GitHub link's build tooltip now uses it. Upstream dropped
+  `T3CODE_FEATURE_SECRETS` from `vite.config.ts`; the provenance defines sit beside upstream's.
+  `resolveGitHubPublishConfig` and `T3CODE_DESKTOP_UPDATE_REPOSITORY` are unchanged, so the update
+  disable holds. `release-desktop.yml`'s new manifest-restore step only matters for its split
+  bundle job; `desktop-artifacts.yml` builds in-job.
+- **Verification:** Node 26.13.1, pnpm 12.14.0, `pnpm install --frozen-lockfile` clean;
+  `vp run check:changed upstream/main` passes lint, knip, GraphQL generate, typecheck of 43
+  packages, the 23 test files beside the changes (452 tests, 1 upstream skip; browser suites in
+  headless Chromium) and React Compiler coverage, and fails only `format` on
+  `.claude/settings.json` (entry 23); `vp run i18n:check` clean. Nothing was checked by hand in a
+  browser.
+- **Undocumented changes:** none. Every file the fork touches maps to an entry in section 3.
+- **Flagged:** entry 5 (above). The oldest backup `rebase-backup-2026-11-13` could not be deleted
+  from the agent session (remote refused the delete); remove it by hand. The `ci.yml` `lint` job
+  still fails `vp check` on `.claude/settings.json`. New keys in the non-English catalogs carry
+  English text until translated.
 
 ## 3. Fork changes
 
@@ -68,6 +73,10 @@ Numbers are **durable identifiers** and are never reused. Gaps are in section 4 
 (dropped).
 
 ### 5. Commit exactly the files a turn changed
+
+> **Status (2026-11-27): not on the rebased branch.** Its host card was removed upstream
+> (`1c6d41a9ba`, #41317); awaiting a decision, see section 2. The notes below describe the
+> 2026-11-20 implementation.
 
 - **Intent.** Committing a thread's work should not require unchecking every unrelated dirty file.
   The turn's "Changed files" card gets a **Commit** button that opens the commit dialog with only
@@ -147,14 +156,15 @@ Numbers are **durable identifiers** and are never reused. Gaps are in section 4 
   `desktop-macos-preview-publish` (credentials and/or Blacksmith); `windows-tests`,
   `desktop-macos-preview` (Blacksmith); `agent-context-budget` (PR-policy gate;
   `AgentContextBudget.test.ts` already pins the budget), `mobile-fingerprint-check` and
-  `mobile-fingerprint-label` (store-build OTA labelling this fork does not do), `mobile-dev-client`
-  and `mobile-eas-preview-fork` (Blacksmith and credentials); `pr-vouch` + `.github/VOUCHED.td`,
+  `mobile-fingerprint-label` (store-build OTA labelling this fork does not do), `mobile-dev-client`,
+  `mobile-eas-preview-fork`, `mobile-eas-preview-build` and `mobile-eas-production-build`
+  (Blacksmith and credentials); `pr-vouch` + `.github/VOUCHED.td`,
   `issue-vouch`, `pr-size`, `pr-limits`, `stale-needs-more-info` (upstream community triage). Also
   `.github/scripts/mirror-play-apk.cjs`, `scripts/smoke-cli-archive.ts` and
   `scripts/notify-discord-release.ts` (+ test), which only deleted workflows ran and which knip or
   their own tests fail on here. `knip.jsonc` lists `build-cli-archive.ts` and
   `resolve-nightly-release.ts` as entries for the same reason. Fork notes in
-  `docs/operations/{release,mobile-app-store-screenshots,development}.md`, `infra/relay/README.md`,
+  `docs/operations/03_release.md`, `infra/relay/README.md`,
   `packaging/aur/README.md` and `CONTRIBUTING.md` explain what no longer runs.
 - **Re-apply.** Re-derive from upstream's new workflow files and apply the rule; a new upstream
   workflow is opt-in. `desktop-artifacts.yml` can drift from upstream's desktop build without a
@@ -183,26 +193,6 @@ Numbers are **durable identifiers** and are never reused. Gaps are in section 4 
   for skills discovery, settings env and the probe; it stays in `ClaudeSkills.ts` because
   `ClaudeHome.ts` imports from there — never fork its body.
 - **Drop-check:** `grep -c configDirectory packages/contracts/src/server.ts` on clean upstream.
-
-### 18. The sidebar new thread button creates in the scoped project
-
-- **Intent.** With the sidebar filtered to one project, the new thread button should create there
-  instead of opening the project picker; its tooltip names the target. Otherwise behaviour is
-  upstream's.
-- **Files:** `apps/web/src/components/Sidebar.tsx`, `components/Sidebar.logic.ts` (+ test),
-  `components/sidebar/SidebarThreadHeader.tsx` (one optional `newThreadLabel` prop),
-  `docs/user/thread-sidebar.md`
-- **How.** `resolveNewThreadClickTarget` (pure, tested) returns `"scoped-project" |
-  "current-project" | "picker"`; a scope of **exactly one** project wins, else upstream's exported
-  `shouldCreateNewThreadInCurrentProject` decides (shift, one open project or none creates in the
-  current project, falling back to the picker when there is none; several open the picker).
-  Upstream's scope is multi-select since #25284, so two or more scoped projects fall back to that
-  rule. The target resolves through
-  `buildSidebarProjectPickerEntries` (the picker's own builder) so grouped checkouts land on the
-  same member. The scoped tooltip drops the shortcut (`chat.new` is not scope-aware) and hides the
-  shift+click hint.
-- **Drop-check:** upstream's `handleNewThreadClick` in `Sidebar.tsx` consults
-  `scopedProjectGroups`.
 
 ### 19. Usage reports each provider instance separately
 
@@ -308,6 +298,7 @@ Implemented upstream; **do not re-introduce**.
 | 15 (message) | Sign-in message names the directory      | `feb9c6b842` (#32951) — `claudeSignedOutMessage` names `CLAUDE_CONFIG_DIR` in the status probe  |
 | 16           | Usage scans every provider instance      | `2db675ae` (#11485) — per-instance homes in `UsageService.ts`                                   |
 | 17           | Configurable worktree branch prefix      | `de3439142` (#2829) — `branchNamingMode` / `branchNamePrefix` settings                          |
+| 18           | New thread creates in the scoped project | `46ee2fc7ff` (#35185) — `resolveScopedNewThreadProjectRef`                                      |
 | 18 (layout)  | Labelled new-thread button under scope   | `d1d15c67` (#11315) — scope folded into the search row                                          |
 | 19 (owner)   | Usage ownership resolved per instance    | `e5a46d6c5` (#10409) — ownership per `(provider, sourcePath)`                                   |
 | 21           | New project inside the scope menu        | `d1d15c67` (#11315)                                                                             |
